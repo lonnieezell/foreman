@@ -43,6 +43,12 @@
                 ${{ number_format($spentToday, 2) }}
                 <small>spent today{{ $budget !== null ? ' of $'.number_format($budget, 2) : ', no daily limit' }}</small>
             </div>
+            @foreach ($tokensByProfile as $profile => $tokens)
+                <div class="spend" wire:key="tokens-{{ $profile }}">
+                    {{ Number::abbreviate($tokens['in'], maxPrecision: 1) }} / {{ Number::abbreviate($tokens['out'], maxPrecision: 1) }}
+                    <small>{{ $profile }} tokens in / out today</small>
+                </div>
+            @endforeach
             <form wire:submit="saveGlobalBudget" class="field" style="gap:.2rem">
                 <label for="globalBudget" class="hint">Daily limit, all repositories</label>
                 <div class="field-inline">
@@ -170,6 +176,7 @@
                         <th>Status</th>
                         <th class="num">Turns</th>
                         <th class="num">Cost</th>
+                        <th class="num">Tokens in / out</th>
                         <th class="num">Time</th>
                         <th></th>
                     </tr>
@@ -185,6 +192,7 @@
                             <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->cancel_requested && $run->status->isActive() ? 'Cancelling' : $run->status->label() }}</span></td>
                             <td class="num">{{ $run->num_turns ?? '' }}</td>
                             <td class="num">{{ $run->cost_usd > 0 ? '$'.number_format($run->cost_usd, 2) : '' }}</td>
+                            <td class="num">{{ $run->input_tokens !== null ? Number::abbreviate($run->inputTokens(), maxPrecision: 1).' / '.Number::abbreviate($run->output_tokens, maxPrecision: 1) : '' }}</td>
                             <td class="num">{{ $run->duration() }}</td>
                             <td class="num">
                                 @if ($run->pr_url)

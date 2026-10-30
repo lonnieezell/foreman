@@ -103,6 +103,7 @@ class Dashboard extends Component
             'pauseReason' => Setting::get('pause_reason'),
             'pausedProfiles' => Setting::pausedProfiles(),
             'spentToday' => Setting::spentToday(),
+            'tokensByProfile' => Run::tokensTodayByProfile(),
             'budget' => Setting::globalBudget(),
             'problems' => app(Preflight::class)->problems(),
             'stations' => RunStatus::stations(),

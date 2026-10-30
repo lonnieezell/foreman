@@ -102,7 +102,7 @@ class ProcessRun implements ShouldQueue
     private function runAgent(Run $run, string $worktree): void
     {
         $repo = $run->repository;
-        $run->moveTo(RunStatus::Working);
+        $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
         $run->log("Starting Claude ({$repo->model}, {$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
 
         $command = [

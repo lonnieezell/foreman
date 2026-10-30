@@ -63,6 +63,7 @@ class TokenUsageTest extends TestCase
         $this->assertSame(3400, $run->output_tokens);
         $this->assertSame(250000, $run->cache_read_tokens);
         $this->assertSame(18000, $run->cache_write_tokens);
+        $this->assertSame('default', $run->claude_profile);
 
         Livewire::test(RunDetail::class, ['run' => $run])
             ->assertSee('Tokens in')
@@ -74,5 +75,30 @@ class TokenUsageTest extends TestCase
     {
         Livewire::test(RunDetail::class, ['run' => $this->makeRun()])
             ->assertDontSee('Tokens in');
+    }
+
+    public function test_dashboard_tallies_todays_tokens_per_profile(): void
+    {
+        $usage = fn (string $profile, int $in, int $out) => [
+            'claude_profile' => $profile, 'input_tokens' => $in, 'output_tokens' => $out,
+            'cache_read_tokens' => 1000, 'cache_write_tokens' => 0,
+        ];
+
+        $this->makeRun()->update($usage('work', 500, 2000));
+        $this->makeRun()->update($usage('work', 500, 2000));
+        $this->makeRun()->update($usage('personal', 0, 700));
+        $this->makeRun()->update([...$usage('personal', 0, 99999), 'created_at' => now()->subDay()]);
+        $this->makeRun()->update(['claude_profile' => 'work']);   // no token counts yet
+
+        $this->assertSame([
+            'personal' => ['in' => 1000, 'out' => 700],
+            'work' => ['in' => 3000, 'out' => 4000],
+        ], Run::tokensTodayByProfile());
+
+        $this->get('/')
+            ->assertSee('work tokens in / out today')
+            ->assertSee('3K / 4K')
+            ->assertSee('Tokens in / out')
+            ->assertSee('1.5K / 2K');   // a single work run in the recent runs table
     }
 }

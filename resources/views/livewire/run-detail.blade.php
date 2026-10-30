@@ -47,7 +47,7 @@
         <div><dt>Turns</dt><dd>{{ $run->num_turns ?? '–' }}</dd></div>
         <div><dt>Cost</dt><dd>${{ number_format($run->cost_usd, 2) }}</dd></div>
         @if ($run->input_tokens !== null)
-            <div><dt>Tokens in</dt><dd title="{{ number_format($run->input_tokens) }} new, {{ number_format($run->cache_read_tokens) }} cache read, {{ number_format($run->cache_write_tokens) }} cache write">{{ Number::abbreviate($run->input_tokens + $run->cache_read_tokens + $run->cache_write_tokens, maxPrecision: 1) }}</dd></div>
+            <div><dt>Tokens in</dt><dd title="{{ number_format($run->input_tokens) }} new, {{ number_format($run->cache_read_tokens) }} cache read, {{ number_format($run->cache_write_tokens) }} cache write">{{ Number::abbreviate($run->inputTokens(), maxPrecision: 1) }}</dd></div>
             <div><dt>Tokens out</dt><dd title="{{ number_format($run->output_tokens) }}">{{ Number::abbreviate($run->output_tokens, maxPrecision: 1) }}</dd></div>
         @endif
         <div><dt>Time</dt><dd>{{ $run->duration() ?? '–' }}</dd></div>

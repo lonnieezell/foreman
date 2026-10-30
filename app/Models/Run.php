@@ -68,6 +68,29 @@ class Run extends Model
         return implode("\n", array_slice($all, -$lines));
     }
 
+    /** New, cache-read and cache-write input together, since agent runs read mostly from cache. */
+    public function inputTokens(): ?int
+    {
+        return $this->input_tokens === null
+            ? null
+            : $this->input_tokens + (int) $this->cache_read_tokens + (int) $this->cache_write_tokens;
+    }
+
+    /** @return array<string,array{in:int,out:int}> profile => today's tokens */
+    public static function tokensTodayByProfile(): array
+    {
+        return static::query()
+            ->where('created_at', '>=', now()->startOfDay())
+            ->whereNotNull('claude_profile')
+            ->whereNotNull('input_tokens')
+            ->groupBy('claude_profile')
+            ->orderBy('claude_profile')
+            ->selectRaw('claude_profile, sum(input_tokens + coalesce(cache_read_tokens, 0) + coalesce(cache_write_tokens, 0)) as tokens_in, sum(output_tokens) as tokens_out')
+            ->get()
+            ->mapWithKeys(fn ($row) => [$row->claude_profile => ['in' => (int) $row->tokens_in, 'out' => (int) $row->tokens_out]])
+            ->all();
+    }
+
     public function duration(): ?string
     {
         if (! $this->started_at) {
