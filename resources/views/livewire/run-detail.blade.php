@@ -9,7 +9,7 @@
             <h1>#{{ $run->issue_number }} {{ $run->issue_title }}</h1>
             <p style="margin-top:.4rem">
                 <span class="status tone-{{ $run->status->tone() }}">
-                    {{ $run->cancel_requested && $run->status->isActive() ? 'Cancelling' : $run->status->label() }}
+                    {{ $run->statusLabel() }}
                 </span>
             </p>
         </div>
@@ -21,18 +21,24 @@
             @if ($run->pr_url)
                 <a class="btn btn-go" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a>
             @endif
-            @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->session_id && $run->worktree_path)
+            @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->session_id && $run->worktree_path && ! $run->pr_url)
                 <button class="btn btn-go" wire:click="continueRun" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
             @endif
             @if ($run->status->isActive())
                 <button class="btn btn-halt" wire:click="cancel" wire:confirm="Stop working on #{{ $run->issue_number }}?">Cancel run</button>
-            @elseif (in_array($run->status, [\App\Enums\RunStatus::Failed, \App\Enums\RunStatus::Cancelled, \App\Enums\RunStatus::NeedsHuman], true))
+            @elseif ($run->status === \App\Enums\RunStatus::WatchingPr)
+                <button class="btn btn-halt" wire:click="cancel" wire:confirm="Stop watching the PR for #{{ $run->issue_number }}? The PR stays open.">Stop watching</button>
+            @elseif (in_array($run->status, [\App\Enums\RunStatus::Failed, \App\Enums\RunStatus::Cancelled, \App\Enums\RunStatus::NeedsHuman], true) && ! $run->pr_url)
                 <button class="btn" wire:click="retry">Start over</button>
             @endif
         </div>
     </div>
 
-    @if ($run->status === \App\Enums\RunStatus::NeedsHuman)
+    @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url)
+        <div class="notice">
+            <p>The PR still has failing checks or open review threads that the agent couldn’t settle. It’s yours from here: see the latest comment on the PR.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman)
         <div class="notice">
             <p>The agent stopped and asked for help on the issue. Reply there, then choose <strong>Continue after my reply</strong> to resume with everything it already knows, or <strong>Start over</strong> for a fresh run.</p>
         </div>
@@ -52,7 +58,9 @@
         @endif
         <div><dt>Time</dt><dd>{{ $run->duration() ?? '–' }}</dd></div>
         <div><dt>Branch</dt><dd>{{ $run->branch }}</dd></div>
-        @if ($run->resume_session_id)
+        @if ($run->previousRun)
+            <div><dt>Resumed from</dt><dd><a href="{{ route('runs.show', $run->previousRun) }}" wire:navigate>run {{ $run->previous_run_id }}</a></dd></div>
+        @elseif ($run->resume_session_id)
             <div><dt>Resumed from</dt><dd>an earlier run</dd></div>
         @endif
     </dl>

@@ -135,7 +135,7 @@
                         <p class="hint" style="margin-top:.3rem">Nothing yet.</p>
                     @else
                         <dl>
-                            @foreach (['pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
+                            @foreach (['pr_ready', 'watching_pr', 'pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
                                 @if ($finishedToday->get($value))
                                     <dt class="tone-{{ \App\Enums\RunStatus::from($value)->tone() }}">{{ $finishedToday->get($value) }}</dt>
                                     <dd>{{ \App\Enums\RunStatus::from($value)->label() }}</dd>
@@ -200,7 +200,7 @@
                                 @endif
                             </td>
                             <td>{{ $run->repository->name }}</td>
-                            <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->cancel_requested && $run->status->isActive() ? 'Cancelling' : $run->status->label() }}</span></td>
+                            <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span></td>
                             <td class="num">{{ $run->num_turns ?? '' }}</td>
                             <td class="num">{{ $run->cost_usd > 0 ? '$'.number_format($run->cost_usd, 2) : '' }}</td>
                             <td class="num">{{ $run->input_tokens !== null ? Number::abbreviate($run->inputTokens(), maxPrecision: 1).' / '.Number::abbreviate($run->output_tokens, maxPrecision: 1) : '' }}</td>

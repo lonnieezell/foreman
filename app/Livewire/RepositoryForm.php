@@ -31,6 +31,7 @@ class RepositoryForm extends Component
     public string $setup_script = Repository::DEFAULT_SETUP_SCRIPT;
     public string $prompt_template = '';
     public bool $cleanup_worktrees = true;
+    public bool $watch_prs = true;
 
     public function mount(?Repository $repository = null): void
     {
@@ -39,7 +40,7 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model', 'max_turns',
-                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees',
+                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs',
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
             $this->claude_profile = (string) $repository->claude_profile;
@@ -105,6 +106,7 @@ class RepositoryForm extends Component
             'setup_script' => ['required', 'string'],
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
+            'watch_prs' => ['boolean'],
         ], [
             'github_repo.regex' => 'Use the owner/name form, like vault-innovation/vault-app.',
         ]);

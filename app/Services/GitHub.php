@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Repository;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
@@ -76,6 +77,113 @@ class GitHub
         return json_decode($output, true)[0]['url'] ?? null;
     }
 
+    private const PULL_REQUEST_QUERY = <<<'GRAPHQL'
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      state
+      headRefOid
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+        __typename
+        ... on CheckRun { name status conclusion detailsUrl }
+        ... on StatusContext { context state targetUrl }
+      } } } } } }
+      reviewThreads(first: 100) { nodes {
+        id isResolved path line
+        comments(first: 1) { nodes { author { __typename login } body url } }
+      } }
+      comments(last: 50) { nodes { author { __typename } updatedAt } }
+      reviews(last: 50) { nodes { author { __typename } submittedAt } }
+    }
+  }
+}
+GRAPHQL;
+
+    /**
+     * What the PR watcher needs: state, head, checks, unresolved bot threads, and when a bot last posted.
+     *
+     * @return array{state:string,head_sha:string,checks:list<array{name:string,state:string,url:?string}>,threads:list<array{id:string,path:?string,line:?int,author:string,body:string,url:string}>,bot_activity_at:?Carbon}
+     */
+    public function pullRequest(Repository $repo, string $url): array
+    {
+        [$owner, $name] = explode('/', $repo->github_repo, 2);
+
+        $output = $this->api($repo, ['graphql',
+            '-f', 'query='.self::PULL_REQUEST_QUERY,
+            '-F', "owner={$owner}", '-F', "name={$name}", '-F', 'number='.self::prNumber($url)]);
+
+        $pr = json_decode($output, true)['data']['repository']['pullRequest'];
+        $isBot = fn (?array $author) => ($author['__typename'] ?? null) === 'Bot';
+
+        $checks = collect($pr['commits']['nodes'][0]['commit']['statusCheckRollup']['contexts']['nodes'] ?? [])
+            ->map(fn (array $c) => $c['__typename'] === 'CheckRun'
+                ? ['name' => $c['name'], 'url' => $c['detailsUrl'] ?? null, 'state' => match (true) {
+                    $c['status'] !== 'COMPLETED' => 'pending',
+                    in_array($c['conclusion'], ['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'], true) => 'failed',
+                    default => 'passed',
+                }]
+                : ['name' => $c['context'], 'url' => $c['targetUrl'] ?? null, 'state' => match ($c['state']) {
+                    'PENDING', 'EXPECTED' => 'pending',
+                    'FAILURE', 'ERROR' => 'failed',
+                    default => 'passed',
+                }])
+            ->values()->all();
+
+        $threads = collect($pr['reviewThreads']['nodes'])
+            ->filter(fn (array $t) => ! $t['isResolved'] && $isBot($t['comments']['nodes'][0]['author'] ?? null))
+            ->map(fn (array $t) => [
+                'id' => $t['id'],
+                'path' => $t['path'],
+                'line' => $t['line'],
+                'author' => $t['comments']['nodes'][0]['author']['login'],
+                'body' => $t['comments']['nodes'][0]['body'],
+                'url' => $t['comments']['nodes'][0]['url'],
+            ])
+            ->values()->all();
+
+        $botActivity = collect($pr['comments']['nodes'])->filter(fn ($c) => $isBot($c['author']))->pluck('updatedAt')
+            ->merge(collect($pr['reviews']['nodes'])->filter(fn ($r) => $isBot($r['author']))->pluck('submittedAt'))
+            ->filter()
+            ->max();
+
+        return [
+            'state' => $pr['state'],
+            'head_sha' => $pr['headRefOid'],
+            'checks' => $checks,
+            'threads' => $threads,
+            'bot_activity_at' => $botActivity ? Carbon::parse($botActivity) : null,
+        ];
+    }
+
+    public function replyToThread(Repository $repo, string $threadId, string $body): void
+    {
+        $this->api($repo, ['graphql',
+            '-f', 'query=mutation($id: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $id, body: $body}) { comment { id } } }',
+            '-f', "id={$threadId}", '-f', "body={$body}"], allowFailure: true);
+    }
+
+    public function resolveThread(Repository $repo, string $threadId): void
+    {
+        $this->api($repo, ['graphql',
+            '-f', 'query=mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }',
+            '-f', "id={$threadId}"], allowFailure: true);
+    }
+
+    public function commentOnPullRequest(Repository $repo, string $url, string $body): void
+    {
+        $this->gh($repo, ['pr', 'comment', (string) self::prNumber($url), '--body', $body], allowFailure: true);
+    }
+
+    public function addHumanLabel(Repository $repo, int $issue): void
+    {
+        $this->gh($repo, ['issue', 'edit', (string) $issue, '--add-label', $repo->human_label], allowFailure: true);
+    }
+
+    private static function prNumber(string $url): int
+    {
+        return (int) str($url)->rtrim('/')->afterLast('/')->toString();
+    }
+
     /** Create the three labels if they don't exist yet (--force makes it idempotent). */
     public function ensureLabels(Repository $repo): void
     {
@@ -107,6 +215,18 @@ class GitHub
         $result = Process::path($repo->local_path)
             ->timeout(60)
             ->run(['gh', ...$args, '--repo', $repo->github_repo]);
+
+        if (! $allowFailure) {
+            $result->throw();
+        }
+
+        return $result->output();
+    }
+
+    /** `gh api` takes no --repo flag. */
+    private function api(Repository $repo, array $args, bool $allowFailure = false): string
+    {
+        $result = Process::path($repo->local_path)->timeout(60)->run(['gh', 'api', ...$args]);
 
         if (! $allowFailure) {
             $result->throw();

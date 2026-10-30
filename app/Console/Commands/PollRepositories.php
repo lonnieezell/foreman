@@ -8,6 +8,7 @@ use App\Models\Repository;
 use App\Models\Run;
 use App\Models\Setting;
 use App\Services\GitHub;
+use App\Services\PrWatcher;
 use App\Services\Usage;
 use Illuminate\Console\Command;
 use Throwable;
@@ -20,11 +21,14 @@ class PollRepositories extends Command
 
     protected $description = 'Check enabled repositories for ready issues and start runs. Spends no tokens unless work is found.';
 
-    public function handle(GitHub $github, Usage $usage): int
+    public function handle(GitHub $github, Usage $usage, PrWatcher $watcher): int
     {
         Setting::put('last_poll_heartbeat', now()->toIso8601String());
 
         $this->reapStaleRuns($github);
+
+        // Before the pause check: watching costs nothing, and rounds check the pause themselves
+        $this->watchPullRequests($watcher);
 
         if (Setting::paused()) {
             $this->line('Factory is paused.');
@@ -100,6 +104,20 @@ class PollRepositories extends Command
         $this->info("Started run {$run->id} for {$repo->github_repo}#{$issue['number']}");
 
         ProcessRun::dispatch($run)->onQueue('runs');
+    }
+
+    private function watchPullRequests(PrWatcher $watcher): void
+    {
+        Run::query()
+            ->where('status', RunStatus::WatchingPr)
+            ->when($this->option('repo'), fn ($q, $id) => $q->where('repository_id', $id))
+            ->each(function (Run $run) use ($watcher) {
+                try {
+                    $watcher->check($run);
+                } catch (Throwable $e) {
+                    $run->log('Couldn’t check the PR: '.str(trim($e->getMessage()))->limit(300));
+                }
+            });
     }
 
     /** Runs whose worker died (laptop closed, process killed) stop sending heartbeats. */

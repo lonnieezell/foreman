@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 
 class Run extends Model
 {
@@ -21,12 +22,20 @@ class Run extends Model
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'heartbeat_at' => 'datetime',
+            'watch_started_at' => 'datetime',
+            'pr_feedback' => 'array',
         ];
     }
 
     public function repository(): BelongsTo
     {
         return $this->belongsTo(Repository::class);
+    }
+
+    /** The run this one continues, for review rounds. */
+    public function previousRun(): BelongsTo
+    {
+        return $this->belongsTo(Run::class, 'previous_run_id');
     }
 
     public function scopeActive(Builder $query): void
@@ -37,6 +46,31 @@ class Run extends Model
     public function moveTo(RunStatus $status, array $extra = []): void
     {
         $this->update(['status' => $status, ...$extra]);
+    }
+
+    public function statusLabel(): string
+    {
+        if ($this->cancel_requested && $this->status->isActive()) {
+            return 'Cancelling';
+        }
+
+        if (! $this->pr_round) {
+            return $this->status->label();
+        }
+
+        $label = $this->status === RunStatus::PrOpened ? 'Fixes pushed' : $this->status->label();
+
+        return "{$label} · round {$this->pr_round}/".config('factory.pr_watch.max_rounds');
+    }
+
+    public function removeWorktree(): void
+    {
+        if (! $this->repository->cleanup_worktrees || ! $this->worktree_path) {
+            return;
+        }
+
+        Process::path($this->repository->local_path)->run(['git', 'worktree', 'remove', '--force', $this->worktree_path]);
+        $this->log('Worktree removed.');
     }
 
     /** Human-readable log the UI tails. */
