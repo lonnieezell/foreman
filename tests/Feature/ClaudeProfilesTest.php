@@ -6,7 +6,6 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Livewire\RepositoryForm;
 use App\Models\Repository;
-use App\Models\Setting;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -81,45 +80,10 @@ class ClaudeProfilesTest extends TestCase
             && $process->environment === ['CLAUDE_CONFIG_DIR' => '/home/me/.claude-work']);
     }
 
-    public function test_usage_limit_pauses_only_that_profile(): void
-    {
-        $this->processRun($this->repository(['claude_profile' => 'work']), [
-            'is_error' => true, 'subtype' => 'error', 'result' => 'Claude AI usage limit reached',
-        ]);
-
-        $this->assertTrue(Setting::profilePaused('work'));
-        $this->assertFalse(Setting::profilePaused('default'));
-        $this->assertFalse(Setting::paused());
-    }
-
     public function test_repositories_without_a_profile_use_the_default_login(): void
     {
         $this->assertSame([], $this->repository()->claudeEnv());
         $this->assertSame('default', $this->repository()->profileName());
-    }
-
-    public function test_poller_skips_repositories_on_a_paused_profile(): void
-    {
-        $this->repository(['claude_profile' => 'work']);
-        $other = $this->repository(['name' => 'other', 'github_repo' => 'owner/other']);
-        Setting::pauseProfile('work', 'Out of usage.');
-
-        $github = Mockery::mock(GitHub::class);
-        $github->expects('readyIssues')->once()->withArgs(fn ($repo) => $repo->is($other))->andReturn([]);
-        $this->app->instance(GitHub::class, $github);
-
-        $this->artisan('factory:poll')->assertSuccessful();
-    }
-
-    public function test_paused_profiles_can_be_resumed(): void
-    {
-        Setting::pauseProfile('work', 'Out of usage.');
-        $this->assertSame(['work' => 'Out of usage.'], Setting::pausedProfiles());
-
-        Setting::resumeProfile('work');
-
-        $this->assertFalse(Setting::profilePaused('work'));
-        $this->assertSame([], Setting::pausedProfiles());
     }
 
     public function test_form_saves_a_known_profile_and_rejects_unknown_ones(): void

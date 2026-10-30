@@ -8,6 +8,7 @@ use App\Models\Run;
 use App\Models\Setting;
 use App\Services\GitHub;
 use App\Services\Preflight;
+use App\Services\Usage;
 use Illuminate\Support\Facades\Artisan;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -60,10 +61,10 @@ class Dashboard extends Component
         $this->flash = Setting::paused() ? 'Factory paused. Runs in progress will finish.' : 'Factory resumed.';
     }
 
-    public function resumeProfile(string $profile): void
+    public function runAnyway(string $profile): void
     {
-        Setting::resumeProfile($profile);
-        $this->flash = "Resumed the {$profile} profile.";
+        app(Usage::class)->override($profile);
+        $this->flash = "Next check will start runs on {$profile} regardless of usage.";
     }
 
     public function saveGlobalBudget(): void
@@ -105,12 +106,17 @@ class Dashboard extends Component
             ->orderBy('name')
             ->get();
 
+        $usage = app(Usage::class);
+        $profiles = $repositories->map->profileName()->unique()->sort()->values();
+
         return view('livewire.dashboard', [
             'repositories' => $repositories,
             'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
-            'pausedProfiles' => Setting::pausedProfiles(),
+            'usageByProfile' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->summary($p)])->all(),
+            'heldProfiles' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->holdReason($p)])->filter()->all(),
+            'overrides' => $profiles->filter(fn ($p) => $usage->overridePending($p))->values()->all(),
             'spentToday' => Setting::spentToday(),
             'tokensByProfile' => Run::tokensTodayByProfile(),
             'budget' => Setting::globalBudget(),

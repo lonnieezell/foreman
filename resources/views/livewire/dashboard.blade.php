@@ -14,11 +14,15 @@
         </div>
     @endif
 
-    @foreach ($pausedProfiles as $profile => $reason)
-        <div class="notice notice-halt" wire:key="profile-pause-{{ $profile }}">
+    @foreach ($heldProfiles as $profile => $reason)
+        <div class="notice" wire:key="profile-hold-{{ $profile }}">
             <p>
-                <strong>The {{ $profile }} Claude profile is paused.</strong> {{ $reason }}
-                <button class="btn btn-go" wire:click="resumeProfile(@js($profile))">Resume {{ $profile }}</button>
+                <strong>Holding new runs on the {{ $profile }} profile.</strong> {{ $reason }}
+                @if (in_array($profile, $overrides, true))
+                    Next check will start runs on {{ $profile }} regardless of usage.
+                @else
+                    <button class="btn" wire:click="runAnyway(@js($profile))">Run anyway</button>
+                @endif
             </p>
         </div>
     @endforeach
@@ -36,6 +40,9 @@
                     Nothing on the line. Label an issue “ready-for-agent” to start one.
                 @endif
             </p>
+            @foreach ($usageByProfile as $profile => $summary)
+                <p class="hint" wire:key="usage-{{ $profile }}"><strong>{{ $profile }}</strong> · {{ $summary }}</p>
+            @endforeach
         </div>
 
         <div class="overview-controls">
@@ -72,7 +79,7 @@
                 ->countBy(fn ($run) => $run->status->value);
             $spent = $repo->spentToday();
             $limit = $repo->daily_budget !== null ? (float) $repo->daily_budget : null;
-            $running = $repo->enabled && ! $paused && ! isset($pausedProfiles[$repo->profileName()]);
+            $running = $repo->enabled && ! $paused && ! isset($heldProfiles[$repo->profileName()]);
         @endphp
 
         <article @class(['line', 'is-running' => $running]) wire:key="repo-{{ $repo->id }}">

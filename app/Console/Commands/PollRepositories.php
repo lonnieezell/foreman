@@ -8,6 +8,7 @@ use App\Models\Repository;
 use App\Models\Run;
 use App\Models\Setting;
 use App\Services\GitHub;
+use App\Services\Usage;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -19,7 +20,7 @@ class PollRepositories extends Command
 
     protected $description = 'Check enabled repositories for ready issues and start runs. Spends no tokens unless work is found.';
 
-    public function handle(GitHub $github): int
+    public function handle(GitHub $github, Usage $usage): int
     {
         Setting::put('last_poll_heartbeat', now()->toIso8601String());
 
@@ -43,10 +44,6 @@ class PollRepositories extends Command
             ->get();
 
         foreach ($repos as $repo) {
-            if (Setting::profilePaused($repo->profileName())) {
-                continue;
-            }
-
             if (! $this->option('force') && ! $repo->dueForPoll()) {
                 continue;
             }
@@ -63,6 +60,12 @@ class PollRepositories extends Command
                 $repo->update(['last_error' => null]);
             } catch (Throwable $e) {
                 $repo->update(['last_error' => trim($e->getMessage())]);
+                continue;
+            }
+
+            // Only now, so a profile with nothing to do is never probed
+            if ($issues && ! $usage->allows($repo)) {
+                $this->line("Holding {$repo->name}: ".$usage->holdReason($repo->profileName()));
                 continue;
             }
 
