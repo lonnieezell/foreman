@@ -4,8 +4,8 @@ namespace App\Jobs;
 
 use App\Enums\RunStatus;
 use App\Models\Run;
-use App\Models\Setting;
 use App\Services\GitHub;
+use App\Services\Usage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -22,6 +22,7 @@ class ProcessRun implements ShouldQueue
 
     private string $buffer = '';
     private ?array $result = null;
+    private bool $limitReported = false;
 
     public function __construct(public Run $run) {}
 
@@ -157,7 +158,7 @@ class ProcessRun implements ShouldQueue
             'cache_write_tokens' => $this->result['usage']['cache_creation_input_tokens'] ?? null,
         ]);
 
-        $this->pauseIfOutOfUsage($run);
+        $this->holdIfOutOfUsage($run);
 
         if ($this->result === null && $result->failed()) {
             throw new RuntimeException('Claude exited without a result: '.str($result->errorOutput())->limit(500));
@@ -186,6 +187,13 @@ class ProcessRun implements ShouldQueue
 
             if (isset($event['session_id']) && $run->session_id !== $event['session_id']) {
                 $run->update(['session_id' => $event['session_id']]);
+            }
+
+            if (($event['type'] ?? null) === 'rate_limit_event') {
+                app(Usage::class)->record($run->repository->profileName(), $event['rate_limit_info'] ?? []);
+                $this->limitReported = ($event['rate_limit_info']['status'] ?? null) === 'rejected';
+
+                continue;
             }
 
             if (($event['type'] ?? null) === 'result') {
@@ -274,17 +282,21 @@ class ProcessRun implements ShouldQueue
     }
 
     /**
-     * On a subscription, factory runs share your usage limit with interactive sessions.
-     * When it runs out, pause that profile instead of failing every queued issue in turn.
+     * Running out of usage holds the profile until it resets, instead of failing every queued issue in turn.
+     * The rejected rate_limit_event normally does that; this covers Claude stopping without one.
      */
-    private function pauseIfOutOfUsage(Run $run): void
+    private function holdIfOutOfUsage(Run $run): void
     {
         $text = ($this->result['result'] ?? '').' '.($this->result['subtype'] ?? '');
 
         if (($this->result['is_error'] ?? false) && preg_match('/usage limit|rate limit|quota/i', $text)) {
             $profile = $run->repository->profileName();
-            Setting::pauseProfile($profile, 'Claude reported a usage limit during run '.$run->id.'. Resume once your limit resets.');
-            $run->log("Usage limit reached. Paused the {$profile} profile.");
+
+            if (! $this->limitReported) {
+                app(Usage::class)->recordLimitHit($profile);
+            }
+
+            $run->log("Usage limit reached. Holding the {$profile} profile until it resets.");
         }
     }
 

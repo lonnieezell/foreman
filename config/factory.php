@@ -18,4 +18,16 @@ foreach (array_filter(array_map('trim', explode(',', (string) env('CLAUDE_PROFIL
 
 return [
     'claude_profiles' => $profiles,
+
+    /*
+     * When to hold new runs on a profile, from its /usage numbers (0–1).
+     * The weekly window is paced: hold once usage is more than the margin ahead
+     * of how much of the week has gone, or at the cap whatever the pace.
+     */
+    'usage' => [
+        'five_hour_ceiling' => (float) env('FACTORY_USAGE_FIVE_HOUR_CEILING', 0.80),
+        'weekly_pace_margin' => (float) env('FACTORY_USAGE_WEEKLY_PACE_MARGIN', 0.10),
+        'weekly_cap' => (float) env('FACTORY_USAGE_WEEKLY_CAP', 0.90),
+        'probe_minutes' => (int) env('FACTORY_USAGE_PROBE_MINUTES', 15),
+    ],
 ];
