@@ -150,6 +150,10 @@ class ProcessRun implements ShouldQueue
             'pid' => null,
             'cost_usd' => $this->result['total_cost_usd'] ?? 0,
             'num_turns' => $this->result['num_turns'] ?? null,
+            'input_tokens' => $this->result['usage']['input_tokens'] ?? null,
+            'output_tokens' => $this->result['usage']['output_tokens'] ?? null,
+            'cache_read_tokens' => $this->result['usage']['cache_read_input_tokens'] ?? null,
+            'cache_write_tokens' => $this->result['usage']['cache_creation_input_tokens'] ?? null,
         ]);
 
         $this->pauseIfOutOfUsage($run);
