@@ -147,8 +147,13 @@
             </div>
 
             <label class="check">
+                <input type="checkbox" wire:model="watch_prs">
+                Watch PRs for failing checks and review-bot comments, and fix them (up to {{ config('factory.pr_watch.max_rounds') }} rounds)
+            </label>
+
+            <label class="check">
                 <input type="checkbox" wire:model="cleanup_worktrees">
-                Remove the worktree once a PR is open
+                Remove the worktree once the factory is done with the PR
             </label>
         </section>
 

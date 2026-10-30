@@ -17,6 +17,9 @@ class ProcessRun implements ShouldQueue
 {
     use Queueable;
 
+    /** Where a review round writes its verdicts, relative to the worktree. */
+    public const REVIEW_FILE = '.factory/review.json';
+
     public int $tries = 1;
     public int $timeout = 0;   // we enforce max_minutes ourselves so we can clean up
 
@@ -42,6 +45,11 @@ class ProcessRun implements ShouldQueue
             $worktree = $run->resume_session_id && $run->worktree_path && File::isDirectory($run->worktree_path)
                 ? $run->worktree_path          // continuing: keep the agent's work in progress
                 : $this->prepareWorktree($run);
+
+            if ($run->pr_round) {
+                $this->prepareReviewFile($worktree);
+            }
+
             $this->runAgent($run, $worktree);
             $this->settle($run, $github);
         } catch (Throwable $e) {
@@ -75,9 +83,14 @@ class ProcessRun implements ShouldQueue
             $this->step($run, 'Removing old worktree', ['git', 'worktree', 'remove', '--force', $worktree], $repo->local_path);
         }
 
+        // Continuing without a worktree: rebuild from what was pushed, never reset the branch to base
+        $pushed = ($run->resume_session_id || $run->pr_round) && Process::path($repo->local_path)
+            ->run(['git', 'rev-parse', '--verify', '--quiet', "origin/{$run->branch}"])->successful();
+        $from = $pushed ? "origin/{$run->branch}" : "origin/{$repo->base_branch}";
+
         File::ensureDirectoryExists(dirname($worktree));
-        $this->step($run, "Creating worktree on {$run->branch}",
-            ['git', 'worktree', 'add', '-B', $run->branch, $worktree, "origin/{$repo->base_branch}"], $repo->local_path);
+        $this->step($run, "Creating worktree on {$run->branch} from {$from}",
+            ['git', 'worktree', 'add', '-B', $run->branch, $worktree, $from], $repo->local_path);
 
         $run->update(['worktree_path' => $worktree]);
 
@@ -106,11 +119,18 @@ class ProcessRun implements ShouldQueue
         $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
         $run->log("Starting Claude ({$repo->model}, {$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
 
+        $prompt = match (true) {
+            (bool) $run->pr_round => $this->roundPrompt($run),
+            (bool) $run->resume_session_id => $this->resumePrompt($run),
+            default => $repo->renderPrompt($run),
+        };
+
         $command = [
-            'claude', '-p', $run->resume_session_id ? $this->resumePrompt($run) : $repo->renderPrompt($run),
+            'claude', '-p', $prompt,
             '--model', $repo->model,
             '--max-turns', (string) $repo->max_turns,
-            '--allowedTools', $repo->allowed_tools,
+            // Rounds read CI results; GitHub writes stay with the factory
+            '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
             '--output-format', 'stream-json',
             '--verbose',
         ];
@@ -244,6 +264,12 @@ class ProcessRun implements ShouldQueue
     /** Decide how the run ended by looking at GitHub, not at what the agent claims. */
     private function settle(Run $run, GitHub $github): void
     {
+        if ($run->pr_round) {
+            $this->settleRound($run, $github);
+
+            return;
+        }
+
         $repo = $run->repository;
         $prUrl = $github->pullRequestFor($repo, $run->branch);
         $labels = $github->labels($repo, $run->issue_number);
@@ -255,14 +281,17 @@ class ProcessRun implements ShouldQueue
             return;
         }
 
+        if ($prUrl && $repo->watch_prs) {
+            $this->watch($run, $github->pullRequest($repo, $prUrl)['head_sha'], ['pr_url' => $prUrl]);
+            $run->log("PR opened: {$prUrl}. Watching it for checks and review bots.");
+
+            return;
+        }
+
         if ($prUrl) {
             $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
             $run->log("PR opened: {$prUrl}");
-
-            if ($repo->cleanup_worktrees) {
-                Process::path($repo->local_path)->run(['git', 'worktree', 'remove', '--force', $run->worktree_path]);
-                $run->log('Worktree removed.');
-            }
+            $run->removeWorktree();
 
             return;
         }
@@ -272,6 +301,103 @@ class ProcessRun implements ShouldQueue
             : 'The agent finished without opening a PR or flagging the issue.';
 
         throw new RuntimeException($reason);
+    }
+
+    /** Post the agent's verdicts on the bot threads it was given, then watch the new head. */
+    private function settleRound(Run $run, GitHub $github): void
+    {
+        $repo = $run->repository;
+        $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
+        $pushed = $head !== $run->head_sha;
+        $verdicts = $this->readVerdicts($run->worktree_path);
+
+        foreach ($run->pr_feedback['threads'] ?? [] as $thread) {
+            $verdict = $verdicts[$thread['id']] ?? null;
+            $reply = trim($verdict['reply'] ?? '');
+
+            [$body, $resolve] = match (true) {
+                $verdict === null => [null, false],
+                $verdict['verdict'] === 'fixed' && $pushed => ['Fixed in '.substr($head, 0, 7).": {$reply}", true],
+                $verdict['verdict'] === 'declined' => ["Not changing: {$reply}", true],
+                $verdict['verdict'] === 'unsure' => ["Leaving for a human: {$reply}", false],
+                default => [null, false],   // "fixed" with nothing pushed, or an unknown verdict
+            };
+
+            if ($body) {
+                $github->replyToThread($repo, $thread['id'], $body);
+            }
+
+            if ($resolve) {
+                $github->resolveThread($repo, $thread['id']);
+            }
+
+            $run->log("Thread {$thread['url']}: ".($resolve ? 'resolved' : 'left open').($body ? '' : ', no reply posted'));
+        }
+
+        $this->watch($run, $head);
+        $run->log($pushed ? 'Pushed '.substr($head, 0, 7).'. Watching the PR again.' : 'Nothing new pushed. Watching the PR again.');
+    }
+
+    private function watch(Run $run, string $head, array $extra = []): void
+    {
+        $run->moveTo(RunStatus::WatchingPr, [
+            'head_sha' => $head,
+            'watch_started_at' => now(),
+            'finished_at' => now(),
+            ...$extra,
+        ]);
+    }
+
+    /** @return array<string,array{verdict:string,reply?:string}> thread id => verdict; anything unreadable is left out */
+    private function readVerdicts(string $worktree): array
+    {
+        $entries = json_decode((string) @file_get_contents("{$worktree}/".self::REVIEW_FILE), true);
+
+        return collect(is_array($entries) ? $entries : [])
+            ->filter(fn ($e) => is_array($e) && is_string($e['thread_id'] ?? null) && is_string($e['verdict'] ?? null))
+            ->keyBy('thread_id')
+            ->all();
+    }
+
+    /** Clear the last round's verdicts and keep the file out of git without touching .gitignore. */
+    private function prepareReviewFile(string $worktree): void
+    {
+        File::delete("{$worktree}/".self::REVIEW_FILE);
+
+        $exclude = trim(Process::path($worktree)->run(['git', 'rev-parse', '--git-path', 'info/exclude'])->output());
+
+        if ($exclude === '') {
+            return;
+        }
+
+        $exclude = str_starts_with($exclude, '/') ? $exclude : "{$worktree}/{$exclude}";
+
+        if (! str_contains((string) @file_get_contents($exclude), "\n.factory/\n")) {
+            File::ensureDirectoryExists(dirname($exclude));
+            File::append($exclude, "\n.factory/\n");
+        }
+    }
+
+    private function roundPrompt(Run $run): string
+    {
+        $checks = collect($run->pr_feedback['checks'] ?? [])
+            ->map(fn ($c) => "- {$c['name']}: {$c['state']}".($c['url'] ? " ({$c['url']})" : ''))
+            ->implode("\n") ?: 'None.';
+
+        $threads = collect($run->pr_feedback['threads'] ?? [])
+            ->map(fn ($t) => "### {$t['id']}\n{$t['author']} on {$t['path']}".($t['line'] ? ":{$t['line']}" : '')."\n\n{$t['body']}")
+            ->implode("\n\n") ?: 'None.';
+
+        return strtr(file_get_contents(resource_path('prompts/pr-round.md')), [
+            '{{issue}}' => (string) $run->issue_number,
+            '{{branch}}' => $run->branch,
+            '{{pr}}' => $run->pr_url,
+            '{{round}}' => (string) $run->pr_round,
+            '{{max_rounds}}' => (string) config('factory.pr_watch.max_rounds'),
+            '{{review_file}}' => self::REVIEW_FILE,
+            '{{checks}}' => $checks,
+            '{{threads}}' => $threads,
+        ]);
     }
 
     private function resumePrompt(Run $run): string

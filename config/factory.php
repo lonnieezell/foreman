@@ -30,4 +30,14 @@ return [
         'weekly_cap' => (float) env('FACTORY_USAGE_WEEKLY_CAP', 0.90),
         'probe_minutes' => (int) env('FACTORY_USAGE_PROBE_MINUTES', 15),
     ],
+
+    /*
+     * Watching a PR after it opens. A round starts once no check is pending and
+     * review bots have been quiet for quiet_minutes, or timeout_minutes after the push.
+     */
+    'pr_watch' => [
+        'max_rounds' => (int) env('FACTORY_PR_MAX_ROUNDS', 2),
+        'quiet_minutes' => (int) env('FACTORY_PR_QUIET_MINUTES', 5),
+        'timeout_minutes' => (int) env('FACTORY_PR_TIMEOUT_MINUTES', 30),
+    ],
 ];

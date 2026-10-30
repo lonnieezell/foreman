@@ -21,6 +21,11 @@ class RunDetail extends Component
         if ($this->run->status === RunStatus::Queued) {
             $this->run->moveTo(RunStatus::Cancelled, ['finished_at' => now()]);
             $github->release($this->run->repository, $this->run->issue_number);
+        } elseif ($this->run->status === RunStatus::WatchingPr) {
+            // No worker attached: stop watching and leave the PR as it is
+            $this->run->moveTo(RunStatus::Cancelled);
+            $this->run->log('Stopped watching the PR.');
+            $this->run->removeWorktree();
         } elseif ($this->run->status->isActive()) {
             $this->run->update(['cancel_requested' => true]);
         }

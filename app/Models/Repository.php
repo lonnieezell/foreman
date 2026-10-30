@@ -23,6 +23,7 @@ SH;
         return [
             'enabled' => 'boolean',
             'cleanup_worktrees' => 'boolean',
+            'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
             'last_polled_at' => 'datetime',
         ];
