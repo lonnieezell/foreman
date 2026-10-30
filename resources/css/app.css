@@ -189,6 +189,7 @@
     .runs .num { text-align: right; font-variant-numeric: tabular-nums; }
     .runs td a { text-decoration-color: var(--rule); text-underline-offset: 3px; }
     .runs .issue-title { color: var(--muted); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runs .run-error { color: var(--halt); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
 
     .empty { background: var(--panel); padding: 2.5rem 1.5rem; }
     .empty h2 { font-size: 1.5rem; font-weight: 600; }

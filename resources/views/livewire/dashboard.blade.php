@@ -93,9 +93,10 @@
                         <span>{{ $repo->concurrency }} at a time</span>
                         <button wire:click="changeConcurrency({{ $repo->id }}, 1)" @disabled($repo->concurrency >= 8) aria-label="More at a time">+</button>
                     </div>
-                    <button class="btn" wire:click="checkNow({{ $repo->id }})" wire:loading.attr="disabled" wire:target="checkNow({{ $repo->id }})" @disabled(! $repo->enabled || $paused)>
-                        <span wire:loading.remove wire:target="checkNow({{ $repo->id }})">Check now</span>
-                        <span wire:loading wire:target="checkNow({{ $repo->id }})">Checking…</span>
+                    @php $checkTargets = "checkNow({$repo->id})".($repo->enabled ? '' : ", toggleRepository({$repo->id})"); @endphp
+                    <button class="btn" wire:click="checkNow({{ $repo->id }})" wire:loading.attr="disabled" wire:target="{{ $checkTargets }}" @disabled(! $repo->enabled || $paused)>
+                        <span wire:loading.remove wire:target="{{ $checkTargets }}">Check now</span>
+                        <span wire:loading wire:target="{{ $checkTargets }}">Checking…</span>
                     </button>
                     <button wire:click="toggleRepository({{ $repo->id }})" class="btn {{ $repo->enabled ? 'btn-halt' : 'btn-go' }}">
                         {{ $repo->enabled ? 'Stop' : 'Start' }}
@@ -187,6 +188,9 @@
                             <td>
                                 <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a>
                                 <span class="issue-title">{{ $run->issue_title }}</span>
+                                @if ($run->status === \App\Enums\RunStatus::Failed && $run->error)
+                                    <span class="run-error" title="{{ $run->error }}">{{ $run->error }}</span>
+                                @endif
                             </td>
                             <td>{{ $run->repository->name }}</td>
                             <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->cancel_requested && $run->status->isActive() ? 'Cancelling' : $run->status->label() }}</span></td>

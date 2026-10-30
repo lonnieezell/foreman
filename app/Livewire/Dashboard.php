@@ -28,7 +28,16 @@ class Dashboard extends Component
     {
         $repo = Repository::findOrFail($id);
         $repo->update(['enabled' => ! $repo->enabled, 'last_polled_at' => null]);
-        $this->flash = $repo->enabled ? "{$repo->name} started." : "{$repo->name} stopped. Runs in progress will finish.";
+
+        if (! $repo->enabled) {
+            $this->flash = "{$repo->name} stopped. Runs in progress will finish.";
+
+            return;
+        }
+
+        // Check straight away instead of waiting for the scheduler
+        $this->checkNow($id);
+        $this->flash = $this->flash ? "{$repo->name} started and checked for ready issues." : null;
     }
 
     public function changeConcurrency(int $id, int $delta): void
