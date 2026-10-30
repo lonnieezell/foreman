@@ -63,8 +63,9 @@ class ProcessRun implements ShouldQueue
             $run->log($cancelled ? 'Cancelled.' : 'Failed: '.$e->getMessage());
 
             if (! $cancelled) {
+                $quoted = collect(explode("\n", $e->getMessage()))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
                 $github->flagForHuman($repo, $run->issue_number,
-                    "The factory run for this issue failed before finishing:\n\n> {$e->getMessage()}\n\nThe worktree was kept at `{$run->worktree_path}` for inspection.");
+                    "The factory run for this issue failed before finishing:\n\n{$quoted}\n\nThe worktree was kept at `{$run->worktree_path}` for inspection.");
             }
         } finally {
             $github->release($repo, $run->issue_number);
@@ -300,7 +301,10 @@ class ProcessRun implements ShouldQueue
             ? 'Claude stopped with an error ('.($this->result['subtype'] ?? 'unknown').').'
             : 'The agent finished without opening a PR or flagging the issue.';
 
-        throw new RuntimeException($reason);
+        // Its last message usually says why, so keep it where a human will see it
+        $last = trim($this->result['result'] ?? '');
+
+        throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
     }
 
     /** Post the agent's verdicts on the bot threads it was given, then watch the new head. */
