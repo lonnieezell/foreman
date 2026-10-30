@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Models\Run;
 use App\Services\GitHub;
+use Illuminate\Support\Facades\Artisan;
 use Livewire\Component;
 
 class RunDetail extends Component
@@ -54,9 +55,18 @@ class RunDetail extends Component
         return $this->redirectRoute('runs.show', $next, navigate: true);
     }
 
-    public function retry(GitHub $github): void
+    public function retry(GitHub $github)
     {
         $github->requeue($this->run->repository, $this->run->issue_number);
+
+        // Start it now if there's a free slot, instead of waiting for the repository's next poll
+        Artisan::call('factory:poll', ['--repo' => $this->run->repository_id, '--force' => true]);
+        $next = $this->run->repository->activeRuns()->where('issue_number', $this->run->issue_number)->latest('id')->first();
+
+        if ($next) {
+            return $this->redirectRoute('runs.show', $next, navigate: true);
+        }
+
         $this->flash = "#{$this->run->issue_number} is back in the queue. A new run will appear on the dashboard.";
     }
 
