@@ -91,7 +91,12 @@ class Dashboard extends Component
     {
         $run = Run::findOrFail($id);
         app(GitHub::class)->requeue($run->repository, $run->issue_number);
-        $this->flash = "#{$run->issue_number} is back in the queue for {$run->repository->name}.";
+
+        // Start it now if there's a free slot, instead of waiting for the repository's next poll
+        Artisan::call('factory:poll', ['--repo' => $run->repository_id, '--force' => true]);
+        $started = $run->repository->activeRuns()->where('issue_number', $run->issue_number)->exists();
+
+        $this->flash = "#{$run->issue_number} is back in the queue for {$run->repository->name}".($started ? ' and has started.' : '.');
     }
 
     public function recheck(): void
