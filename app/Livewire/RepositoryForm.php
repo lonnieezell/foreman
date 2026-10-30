@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Repository;
 use App\Services\GitHub;
 use Illuminate\Support\Facades\File;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Throwable;
 
@@ -23,6 +24,7 @@ class RepositoryForm extends Component
     public int $poll_interval_minutes = 10;
     public string $daily_budget = '';
     public string $model = 'sonnet';
+    public string $claude_profile = '';
     public int $max_turns = 40;
     public int $max_minutes = 45;
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
@@ -40,8 +42,12 @@ class RepositoryForm extends Component
                 'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees',
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
+            $this->claude_profile = (string) $repository->claude_profile;
             $this->prompt_template = (string) $repository->prompt_template;
         }
+
+        // With profiles defined there's no default option, so start on the first one
+        $this->claude_profile = $this->claude_profile ?: (string) array_key_first(config('factory.claude_profiles'));
 
         if ($this->prompt_template === '') {
             $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
@@ -92,6 +98,7 @@ class RepositoryForm extends Component
             'poll_interval_minutes' => ['required', 'integer', 'between:1,1440'],
             'daily_budget' => ['nullable', 'numeric', 'min:0'],
             'model' => ['required', 'string'],
+            'claude_profile' => [config('factory.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('factory.claude_profiles')))],
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
             'allowed_tools' => ['required', 'string'],
@@ -103,6 +110,7 @@ class RepositoryForm extends Component
         ]);
 
         $data['daily_budget'] = $data['daily_budget'] === '' ? null : $data['daily_budget'];
+        $data['claude_profile'] = $data['claude_profile'] ?: null;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
         $default = file_get_contents(resource_path('prompts/default.md'));

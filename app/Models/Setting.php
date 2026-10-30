@@ -28,6 +28,31 @@ class Setting extends Model
         return (bool) static::get('paused', false);
     }
 
+    /** Each Claude profile has its own usage limit, so running out pauses only that profile. */
+    public static function pauseProfile(string $profile, string $reason): void
+    {
+        static::put("usage_pause:{$profile}", $reason);
+    }
+
+    public static function resumeProfile(string $profile): void
+    {
+        static::whereKey("usage_pause:{$profile}")->delete();
+    }
+
+    public static function profilePaused(string $profile): bool
+    {
+        return static::get("usage_pause:{$profile}") !== null;
+    }
+
+    /** @return array<string,string> profile => reason */
+    public static function pausedProfiles(): array
+    {
+        return static::where('key', 'like', 'usage_pause:%')
+            ->pluck('value', 'key')
+            ->mapWithKeys(fn ($reason, $key) => [substr($key, strlen('usage_pause:')) => $reason])
+            ->all();
+    }
+
     public static function globalBudget(): ?float
     {
         $value = static::get('global_daily_budget');

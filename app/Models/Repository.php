@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use RuntimeException;
 
 class Repository extends Model
 {
@@ -63,6 +64,25 @@ SH;
         $slug = str_replace('/', '-', $this->github_repo);
 
         return storage_path("factory/worktrees/{$slug}/issue-{$issue}");
+    }
+
+    /** Name used for per-profile state like usage-limit pauses. */
+    public function profileName(): string
+    {
+        return $this->claude_profile ?: 'default';
+    }
+
+    /** Environment that points Claude at this repository's profile. */
+    public function claudeEnv(): array
+    {
+        if (! $this->claude_profile) {
+            return [];
+        }
+
+        $dir = config("factory.claude_profiles.{$this->claude_profile}")
+            ?? throw new RuntimeException("Claude profile “{$this->claude_profile}” isn’t in CLAUDE_PROFILES.");
+
+        return ['CLAUDE_CONFIG_DIR' => $dir];
     }
 
     public function renderPrompt(Run $run): string

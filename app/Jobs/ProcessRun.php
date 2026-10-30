@@ -103,7 +103,7 @@ class ProcessRun implements ShouldQueue
     {
         $repo = $run->repository;
         $run->moveTo(RunStatus::Working);
-        $run->log("Starting Claude ({$repo->model}, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
+        $run->log("Starting Claude ({$repo->model}, {$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
 
         $command = [
             'claude', '-p', $run->resume_session_id ? $this->resumePrompt($run) : $repo->renderPrompt($run),
@@ -120,6 +120,7 @@ class ProcessRun implements ShouldQueue
         }
 
         $process = Process::path($worktree)
+            ->env($repo->claudeEnv())
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -270,16 +271,16 @@ class ProcessRun implements ShouldQueue
 
     /**
      * On a subscription, factory runs share your usage limit with interactive sessions.
-     * When it runs out, pause instead of failing every queued issue in turn.
+     * When it runs out, pause that profile instead of failing every queued issue in turn.
      */
     private function pauseIfOutOfUsage(Run $run): void
     {
         $text = ($this->result['result'] ?? '').' '.($this->result['subtype'] ?? '');
 
         if (($this->result['is_error'] ?? false) && preg_match('/usage limit|rate limit|quota/i', $text)) {
-            Setting::put('paused', 1);
-            Setting::put('pause_reason', 'Claude reported a usage limit during run '.$run->id.'. Resume once your limit resets.');
-            $run->log('Usage limit reached. Paused the factory.');
+            $profile = $run->repository->profileName();
+            Setting::pauseProfile($profile, 'Claude reported a usage limit during run '.$run->id.'. Resume once your limit resets.');
+            $run->log("Usage limit reached. Paused the {$profile} profile.");
         }
     }
 

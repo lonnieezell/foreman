@@ -43,6 +43,10 @@ class PollRepositories extends Command
             ->get();
 
         foreach ($repos as $repo) {
+            if (Setting::profilePaused($repo->profileName())) {
+                continue;
+            }
+
             if (! $this->option('force') && ! $repo->dueForPoll()) {
                 continue;
             }

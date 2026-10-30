@@ -72,6 +72,18 @@
                     </select>
                 </div>
                 <div class="field">
+                    <label for="claude_profile">Claude profile</label>
+                    <select id="claude_profile" wire:model="claude_profile">
+                        @empty(config('factory.claude_profiles'))
+                            <option value="">Default (~/.claude)</option>
+                        @endempty
+                        @foreach (array_keys(config('factory.claude_profiles')) as $profile)
+                            <option value="{{ $profile }}">{{ $profile }}</option>
+                        @endforeach
+                    </select>
+                    @error('claude_profile') <span class="error">{{ $message }}</span> @enderror
+                </div>
+                <div class="field">
                     <label for="max_turns">Max turns per issue</label>
                     <input id="max_turns" type="number" min="1" wire:model="max_turns">
                     @error('max_turns') <span class="error">{{ $message }}</span> @enderror

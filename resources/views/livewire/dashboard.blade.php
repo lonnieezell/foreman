@@ -14,6 +14,15 @@
         </div>
     @endif
 
+    @foreach ($pausedProfiles as $profile => $reason)
+        <div class="notice notice-halt" wire:key="profile-pause-{{ $profile }}">
+            <p>
+                <strong>The {{ $profile }} Claude profile is paused.</strong> {{ $reason }}
+                <button class="btn btn-go" wire:click="resumeProfile(@js($profile))">Resume {{ $profile }}</button>
+            </p>
+        </div>
+    @endforeach
+
     <section class="overview">
         <div>
             <h1>{{ $paused ? 'Paused' : 'Running' }}</h1>
@@ -57,7 +66,7 @@
                 ->countBy(fn ($run) => $run->status->value);
             $spent = $repo->spentToday();
             $limit = $repo->daily_budget !== null ? (float) $repo->daily_budget : null;
-            $running = $repo->enabled && ! $paused;
+            $running = $repo->enabled && ! $paused && ! isset($pausedProfiles[$repo->profileName()]);
         @endphp
 
         <article @class(['line', 'is-running' => $running]) wire:key="repo-{{ $repo->id }}">
@@ -65,7 +74,7 @@
                 <div>
                     <h2 class="line-name"><a href="{{ route('repositories.edit', $repo) }}" wire:navigate>{{ $repo->name }}</a></h2>
                     <p class="line-meta">
-                        {{ $repo->github_repo }} into {{ $repo->base_branch }}, {{ $repo->model }}, checks every {{ $repo->poll_interval_minutes }} min
+                        {{ $repo->github_repo }} into {{ $repo->base_branch }}, {{ $repo->model }} on the {{ $repo->profileName() }} profile, checks every {{ $repo->poll_interval_minutes }} min
                         @if ($repo->last_polled_at)
                             (last {{ $repo->last_polled_at->diffForHumans() }})
                         @endif

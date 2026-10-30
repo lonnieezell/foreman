@@ -51,6 +51,12 @@ class Dashboard extends Component
         $this->flash = Setting::paused() ? 'Factory paused. Runs in progress will finish.' : 'Factory resumed.';
     }
 
+    public function resumeProfile(string $profile): void
+    {
+        Setting::resumeProfile($profile);
+        $this->flash = "Resumed the {$profile} profile.";
+    }
+
     public function saveGlobalBudget(): void
     {
         $this->validate(['globalBudget' => ['nullable', 'numeric', 'min:0']]);
@@ -95,6 +101,7 @@ class Dashboard extends Component
             'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
+            'pausedProfiles' => Setting::pausedProfiles(),
             'spentToday' => Setting::spentToday(),
             'budget' => Setting::globalBudget(),
             'problems' => app(Preflight::class)->problems(),
