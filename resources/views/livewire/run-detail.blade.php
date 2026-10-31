@@ -3,6 +3,15 @@
         <div class="notice"><p>{{ $flash }}</p></div>
     @endif
 
+    @if (count($attempts) > 1)
+        <nav class="attempts" aria-label="Attempts">
+            <span class="attempts-title">Attempts</span>
+            @foreach ($attempts as $attempt)
+                <a href="{{ route('runs.show', $attempt['run']) }}" wire:navigate @class(['attempt', 'status', 'tone-'.$attempt['run']->status->tone(), 'is-current' => $attempt['run']->is($run)]) @if ($attempt['run']->is($run)) aria-current="page" @endif>{{ $attempt['label'] }}</a>
+            @endforeach
+        </nav>
+    @endif
+
     <div class="run-head">
         <div>
             <p class="line-meta"><a href="{{ route('dashboard') }}" wire:navigate>{{ $run->repository->name }}</a></p>

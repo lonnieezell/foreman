@@ -58,6 +58,7 @@ class RunDetail extends Component
 
         return view('livewire.run-detail', [
             'log' => $this->run->logEntries(),
+            'attempts' => $this->run->attempts(),
         ])->title("#{$this->run->issue_number} {$this->run->repository->name}");
     }
 }

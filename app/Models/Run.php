@@ -40,6 +40,31 @@ class Run extends Model
         return $this->belongsTo(Run::class, 'previous_run_id');
     }
 
+    /**
+     * Every run for this repository and issue, oldest first, as strip entries. Review rounds show
+     * their round number; the other runs are numbered in order.
+     *
+     * @return list<array{run:Run,label:string}>
+     */
+    public function attempts(): array
+    {
+        $number = 0;
+        $attempts = [];
+
+        $runs = static::query()
+            ->where('repository_id', $this->repository_id)
+            ->where('issue_number', $this->issue_number)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($runs as $run) {
+            $name = $run->pr_round ? "Round {$run->pr_round}" : 'Run '.++$number;
+            $attempts[] = ['run' => $run, 'label' => "{$name} · {$run->status->label()}"];
+        }
+
+        return $attempts;
+    }
+
     public function scopeActive(Builder $query): void
     {
         $query->whereIn('status', RunStatus::activeValues());

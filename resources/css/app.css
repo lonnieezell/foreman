@@ -259,6 +259,11 @@
     .run-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; }
     .run-head h1 { font-size: 2rem; font-weight: 700; }
     .run-head-actions { display: flex; gap: .5rem; }
+    .attempts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+    .attempts-title { color: var(--muted); font-size: .8rem; margin-right: .25rem; }
+    .attempt { padding: .2rem .6rem; border: 1px solid var(--rule); background: var(--panel); font-size: .85rem; }
+    .attempt:hover { border-color: var(--ink); }
+    .attempt.is-current { border-color: var(--ink); box-shadow: inset 0 -2px 0 currentColor; font-weight: 600; }
     .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 1px; background: var(--rule); margin-bottom: 1.5rem; }
     .facts div { background: var(--panel); padding: .8rem 1rem; }
     .facts dt { color: var(--muted); font-size: .8rem; }
