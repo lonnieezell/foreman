@@ -21,6 +21,7 @@
                 <a href="{{ route('history') }}" wire:navigate @class(['is-current' => request()->routeIs('history')])>History</a>
                 <a href="{{ route('archive') }}" wire:navigate @class(['is-current' => request()->routeIs('archive')])>Archive</a>
                 <a href="{{ route('settings') }}" wire:navigate @class(['is-current' => request()->routeIs('settings')])>Settings</a>
+                <a href="{{ route('docs', 'getting-started') }}" wire:navigate @class(['is-current' => request()->routeIs('docs')])>Docs</a>
             </nav>
         </div>
     </header>

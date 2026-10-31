@@ -1,6 +1,9 @@
 <div>
     <div class="run-head">
-        <h1>{{ $repository ? $repository->name : 'Add repository' }}</h1>
+        <div>
+            <h1>{{ $repository ? $repository->name : 'Add repository' }}</h1>
+            <a class="doc-link" href="{{ route('docs', 'repository-settings') }}" wire:navigate>What these settings do</a>
+        </div>
         @if ($repository)
             <div class="run-head-actions">
                 @if ($repository->hasWorkInFlight())
