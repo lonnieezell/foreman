@@ -43,6 +43,13 @@
             </p>
         </div>
 
+        @if ($attention['count'])
+            <a href="#issues" class="stat" x-on:click.prevent="document.getElementById('issues').scrollIntoView({ behavior: 'smooth' })">
+                <div class="stat-value tone-attention">{{ $attention['count'] }} {{ $attention['count'] === 1 ? 'needs' : 'need' }} you</div>
+                <p class="stat-label">{{ $attention['caption'] }}</p>
+            </a>
+        @endif
+
         @foreach ($gauges as $profile => $gauge)
             <div @class(['stat', 'is-held' => $gauge['held'] ?? false]) wire:key="gauge-{{ $profile }}" aria-label="Claude usage for the {{ $profile }} profile">
                 <div class="stat-value">
@@ -203,10 +210,9 @@
     @endif
     </div>
 
-    <div>
+    <div id="issues">
     <h2 class="section-title">Issues</h2>
-    @php $needsYou = collect($sections)->where('attention', true)->sum(fn ($section) => $section['runs']->count()); @endphp
-    @unless ($needsYou)
+    @unless ($attention['count'])
         <p class="hint">Nothing needs you.</p>
     @endunless
     @foreach ($sections as $section)
