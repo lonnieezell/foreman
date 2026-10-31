@@ -112,46 +112,56 @@
     .notice p + p { margin-top: .35rem; }
     .notice code, .hint code { font-family: var(--font-mono); font-size: .85em; background: var(--floor); padding: .05rem .3rem; border-radius: 3px; }
 
-    /* Overview strip */
-    .overview { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
-    .overview h1 { font-size: 2.6rem; font-weight: 700; }
-    .overview .state { color: var(--muted); margin-top: .35rem; }
-    .overview-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.5rem; }
-    .input-compact { width: 6.5rem; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: .45rem .6rem; }
-    .spend { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
-    .spend small { font-family: var(--font-sans); font-weight: 400; font-size: .8rem; color: var(--muted); display: block; }
+    /* Stats row: a quiet strip. Values carry the weight; captions stay small and muted. */
+    .stats { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 0; background: var(--panel); padding: .6rem 1rem; margin-bottom: 1.5rem; }
+    .stat { padding-inline: 1.25rem; border-left: 1px solid var(--rule); min-width: 0; }
+    .stat:first-child { padding-left: 0; border-left: 0; }
+    .stat.is-held { box-shadow: inset 3px 0 var(--halt); }
+    .stat-value { display: flex; align-items: center; gap: .9rem; font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+    .stat-state { font-size: 1.4rem; font-weight: 700; }
+    .stat-name { font-weight: 600; }
+    .stat-flag { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+    .stat-label { color: var(--muted); font-size: .75rem; margin-top: .1rem; }
+    .stat-form { display: flex; align-items: center; gap: .25rem; }
+    .stat-form input { width: 4rem; font: inherit; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 0 .1rem; }
+    .stat-form input:focus { border-bottom-color: var(--ink); }
+    .btn-link { font: inherit; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .btn-link:hover { color: var(--ink); }
+    .stats-action { margin-left: auto; padding: .4rem .75rem; font-size: .8rem; }
 
-    /* Usage gauges: one card per Claude profile. The tick marks where runs are held. */
-    .gauges { display: flex; flex-wrap: wrap; gap: .75rem; }
-    .gauge { background: var(--panel); border-left: 4px solid var(--enamel); padding: .6rem .85rem .65rem; width: 19rem; font-size: .8rem; }
-    .gauge.is-held { border-left-color: var(--halt); }
-    .gauge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; color: var(--muted); margin-bottom: .2rem; }
-    .gauge-head strong { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
-    .gauge-row { display: grid; grid-template-columns: 2.4rem 1fr 2.6rem; align-items: center; gap: .55rem; margin-top: .35rem; }
-    .gauge-label { color: var(--muted); }
-    .gauge-bar { position: relative; height: 6px; background: var(--floor); }
+    /* Usage gauge: the tick marks where runs are held. */
+    .gauge { display: inline-flex; align-items: center; gap: .4rem; }
+    .gauge-label { font-family: var(--font-sans); font-weight: 400; font-size: .75rem; color: var(--muted); }
+    .gauge-bar { position: relative; width: 3.5rem; height: 4px; background: var(--floor); }
     .gauge-bar > span { display: block; height: 100%; background: currentColor; transition: width .6s ease; }
     .gauge-bar > i { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .5; }
-    .gauge-value { font-family: var(--font-display); font-weight: 600; font-size: .95rem; text-align: right; font-variant-numeric: tabular-nums; }
-    .gauge-note { color: var(--muted); font-size: .72rem; padding-left: 2.95rem; }
-    .gauge-foot { color: var(--muted); border-top: 1px solid var(--rule); margin-top: .5rem; padding-top: .4rem; font-variant-numeric: tabular-nums; }
 
     /* A repository = a production line */
     .line { background: var(--panel); border-top: 3px solid var(--rule); padding: 1.25rem 1.25rem 1rem; margin-bottom: 1.25rem; }
     .line.is-running { border-top-color: var(--enamel); }
-    .line-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-    .line-name { font-size: 1.6rem; font-weight: 600; }
+    .line-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+    .line-head > div:first-child { flex: 1; min-width: 0; }   /* the name and info give way, the controls never wrap below */
+    .line-name { font-size: 1.6rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .line-name a { text-decoration: none; }
-    .line-meta { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
-    .line-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    .line-meta { color: var(--muted); font-size: .85rem; margin-top: .2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .line-meta span + span::before, .runs .run-repo::before { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .6; vertical-align: middle; margin: 0 .55rem; }
+    .line-countdown { font-variant-numeric: tabular-nums; }
+    .line-countdown svg { display: inline-block; width: .9em; height: .9em; vertical-align: -.1em; margin-right: .3em; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .line-controls { display: flex; flex-shrink: 0; align-items: center; gap: .4rem; }
+    .line-controls .btn { padding: .4rem .65rem; font-size: .8rem; }
+    .line-controls .btn-icon { padding-inline: .45rem; }
+    .btn-icon svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn-settings svg { width: 1.2rem; height: 1.2rem; stroke-width: 1.75; }
+    .btn-icon.is-busy svg { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .stepper { display: inline-flex; align-items: center; border: 1px solid var(--rule); border-radius: 4px; }
-    .stepper button { width: 2rem; height: 2.1rem; cursor: pointer; background: none; border: 0; color: var(--ink); font-size: 1.05rem; }
+    .stepper button { width: 1.6rem; height: 1.75rem; cursor: pointer; background: none; border: 0; color: var(--ink); font-size: 1.05rem; }
     .stepper button:disabled { color: var(--rule); cursor: default; }
-    .stepper span { font-family: var(--font-display); font-weight: 600; font-size: 1rem; min-width: 5.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+    .stepper span { font-family: var(--font-display); font-weight: 600; font-size: .95rem; min-width: 1.4rem; text-align: center; font-variant-numeric: tabular-nums; }
 
     /* The track: four stations, then the output bin */
-    .track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(9rem, .9fr); margin-top: 1.5rem; overflow-x: auto; }
+    .track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 1.5rem; overflow-x: auto; }
     .station { position: relative; padding-top: 3.25rem; min-width: 7.5rem; }
     .station::before { /* rail */
         content: ''; position: absolute; left: 0; right: 0; top: 2.6rem; height: 4px; background: var(--rule);
@@ -175,16 +185,14 @@
     @keyframes conveyor { to { background-position: 34px 0; } }
     @media (prefers-reduced-motion: reduce) { .piece.is-moving { animation: none; } }
 
-    .bin { padding: .2rem 0 0 1rem; border-left: 1px dashed var(--rule); }
+    .bin { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1.25rem; margin-top: .9rem; padding-top: .6rem; border-top: 1px dashed var(--rule); font-size: .9rem; }
     .bin-title { font-family: var(--font-display); font-weight: 500; color: var(--muted); }
-    .bin dl { display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; margin-top: .3rem; font-size: .9rem; }
-    .bin dt { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; text-align: right; font-variant-numeric: tabular-nums; }
+    .bin dl { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; }
+    .bin dl > div { display: flex; align-items: baseline; gap: .35rem; }
+    .bin dt { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 
-    .meter { margin-top: 1.1rem; display: flex; align-items: center; gap: .9rem; font-size: .85rem; color: var(--muted); }
-    .meter-bar { flex: 1; max-width: 14rem; height: 6px; background: var(--floor); }
-    .meter-bar span { display: block; height: 100%; background: var(--enamel); }
-    .meter-bar.is-full span { background: var(--halt); }
     .line-error { color: var(--halt); font-size: .85rem; margin-top: .6rem; }
+    .line-notice { margin-top: .9rem; padding: .55rem .8rem; border-left: 3px solid var(--halt); background: var(--floor); color: var(--halt); font-size: .9rem; font-weight: 500; }
 
     /* Status text */
     .status { display: inline-flex; align-items: center; gap: .4rem; font-weight: 500; white-space: nowrap; }
@@ -197,6 +205,7 @@
 
     /* Tables */
     .section-title { font-size: 1.35rem; font-weight: 600; margin: 2.5rem 0 .75rem; }
+    .dashboard-columns > :first-child > .section-title { margin-top: 0; }   /* the stats row already spaces it */
     .table-wrap { overflow-x: auto; background: var(--panel); }
     table.runs { width: 100%; border-collapse: collapse; font-size: .9rem; }
     .runs th { text-align: left; font-weight: 500; color: var(--muted); padding: .6rem .9rem; border-bottom: 1px solid var(--rule); }
@@ -204,8 +213,16 @@
     .runs tr:last-child td { border-bottom: 0; }
     .runs .num { text-align: right; font-variant-numeric: tabular-nums; }
     .runs td a { text-decoration-color: var(--rule); text-underline-offset: 3px; }
+    .runs .run-repo { color: var(--muted); }
     .runs .issue-title { color: var(--muted); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .runs .run-error { color: var(--halt); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+
+    /* Wide screens: repositories on the left, recent runs on the right. A lone column takes the full width. */
+    @media (min-width: 96rem) {
+        .frame { max-width: 140rem; }
+        .dashboard-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+        .dashboard-columns .section-title { margin-top: 0; }
+    }
 
     .empty { background: var(--panel); padding: 2.5rem 1.5rem; }
     .empty h2 { font-size: 1.5rem; font-weight: 600; }

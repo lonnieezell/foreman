@@ -252,6 +252,16 @@ class UsageLimitsTest extends TestCase
             ->assertSee('usage unknown');   // the default profile has no snapshot yet
     }
 
+    public function test_dashboard_shows_every_configured_profile(): void
+    {
+        config(['factory.claude_profiles' => ['work' => '/home/me/.claude-work', 'spare' => '/home/me/.claude-spare']]);
+        $this->repository();
+
+        $this->get('/')
+            ->assertSee('aria-label="Claude usage for the spare profile"', false)   // no repository uses it and it spent nothing today
+            ->assertSeeInOrder(['spare', '5h', '—', 'week', '—', 'usage unknown']);
+    }
+
     public function test_gauge_marks_each_window_against_its_limit(): void
     {
         // Three days into the week: 57% elapsed + 10% margin = 67% pace
