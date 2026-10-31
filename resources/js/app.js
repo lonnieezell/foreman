@@ -37,3 +37,33 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 });
+
+// Shows the desktop notifications the dashboard's poll asks for. The tag stops two open tabs
+// from showing the same run twice. Clicking one focuses this tab and opens the run.
+window.addEventListener('foreman-notify', (event) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return;
+    }
+
+    for (const { id, title, body, url } of event.detail.notifications) {
+        const notification = new Notification(title, { body, tag: `foreman-run-${id}` });
+
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+            window.Livewire.navigate(url);
+        };
+    }
+});
+
+// The Settings toggle: asks the browser for permission when switched on, and reports a refusal
+document.addEventListener('alpine:init', () => {
+    window.Alpine.data('desktopNotifications', () => ({
+        permission: 'Notification' in window ? Notification.permission : 'unsupported',
+        async ask(on) {
+            if (on && this.permission === 'default') {
+                this.permission = await Notification.requestPermission();
+            }
+        },
+    }));
+});

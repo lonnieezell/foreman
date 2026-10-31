@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Livewire\Dashboard;
-use App\Livewire\RepositoryForm;
 use App\Livewire\RunDetail;
 use App\Models\Repository;
 use App\Services\GitHub;
@@ -105,12 +104,12 @@ class DashboardTest extends TestCase
             ->assertSee('Where the code lives');
 
         Livewire::test(Dashboard::class)
-            ->assertDontSeeLivewire(RepositoryForm::class)
+            ->assertDontSee('Where the code lives')
             ->set('adding', true)
-            ->assertSeeLivewire(RepositoryForm::class)
+            ->assertSee('Where the code lives')
             ->call('closeModal')
             ->assertSet('adding', false)
-            ->assertDontSeeLivewire(RepositoryForm::class);
+            ->assertDontSee('Where the code lives');
     }
 
     public function test_repository_settings_open_in_the_same_modal(): void
@@ -127,11 +126,11 @@ class DashboardTest extends TestCase
 
         Livewire::test(Dashboard::class)
             ->set('editing', $repo->id)
-            ->assertSeeLivewire(RepositoryForm::class)
+            ->assertSee('Remove from Foreman')
             ->assertSee('Save changes')
             ->call('closeModal')
             ->assertSet('editing', null)
-            ->assertDontSeeLivewire(RepositoryForm::class);
+            ->assertDontSee('Remove from Foreman');
     }
 
     public function test_a_running_repository_counts_down_to_its_next_check(): void

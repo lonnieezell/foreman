@@ -32,16 +32,26 @@ class Settings extends Component
     // Empty means no limit
     public string $global_daily_budget = '';
 
+    // Saved as soon as it's toggled, since the browser asks for permission at the same moment
+    public bool $desktop_notifications = false;
+
     public ?string $flash = null;
 
     public function mount(): void
     {
+        $this->desktop_notifications = Setting::desktopNotifications();
+
         foreach (self::FIELDS as $field => [$key, $scale]) {
             $value = Setting::get($key);
             $this->{$field} = $value === null ? '' : (string) round($value * $scale, 2);
         }
 
         $this->global_daily_budget = (string) (Setting::globalBudget() ?? '');
+    }
+
+    public function updatedDesktopNotifications(): void
+    {
+        Setting::put('desktop_notifications', $this->desktop_notifications ? 1 : 0);
     }
 
     public function save(): void

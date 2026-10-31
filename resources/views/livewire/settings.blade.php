@@ -21,6 +21,23 @@
         </section>
 
         <section class="fieldset">
+            <h2>Notifications</h2>
+            <div class="field" x-data="desktopNotifications">
+                <label class="check">
+                    <input type="checkbox" wire:model.live="desktop_notifications" x-on:change="ask($event.target.checked)">
+                    Desktop notifications
+                </label>
+                <span class="hint">Get a notification when an issue needs your reply, fails or is ready for review. It works while any Foreman dashboard tab is open.</span>
+                <span class="error" x-show="$wire.desktop_notifications && permission === 'denied'" x-cloak>
+                    Your browser is blocking notifications for this site. Allow them in the browser's site settings (the icon beside the address), then reload this page.
+                </span>
+                <span class="error" x-show="$wire.desktop_notifications && permission === 'unsupported'" x-cloak>
+                    This browser doesn't support desktop notifications.
+                </span>
+            </div>
+        </section>
+
+        <section class="fieldset">
             <h2>Usage holds</h2>
             <p class="hint">When to hold new runs on a Claude profile, from its /usage numbers. Leave a field empty to use the default shown.</p>
             <div class="field-row field-row-aligned">
