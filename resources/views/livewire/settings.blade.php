@@ -1,6 +1,9 @@
 <div>
     <div class="run-head">
-        <h1>Settings</h1>
+        <div>
+            <h1>Settings</h1>
+            <a class="doc-link" href="{{ route('docs', 'global-settings') }}" wire:navigate>What these settings do</a>
+        </div>
     </div>
 
     @if ($flash)

@@ -1,0 +1,132 @@
+# Repository settings
+
+Each repository has its own settings. To open them, click the gear icon on the repository's row, or click its name.
+
+## Where the code lives
+
+### Local checkout
+
+A git clone on this machine. `~/` is expanded. **Browse…** opens your system's folder picker. **Detect** reads the GitHub remote from the folder.
+
+Foreman never works in this folder directly. Each run gets its own worktree under `storage/foreman/worktrees/`.
+
+### GitHub repository
+
+The repository on GitHub, as `owner/name`. **Detect** fills it in.
+
+### Name in Foreman
+
+The name shown on the dashboard. **Detect** fills it in from the repository name if it's empty.
+
+### Branch PRs target
+
+The base branch. Default: `main`. Each run's branch starts from `origin/<base>`, and the PR targets it.
+
+## Pace and spend
+
+### Issues at a time
+
+How many runs this repository may have active at once, from 1 to 8. Default: 1. You can also change it with **−** / **+** on the dashboard.
+
+All repositories share three workers. So more than three runs at once only helps if you start more workers. See [Troubleshooting](troubleshooting.md#runs-stay-on-waiting).
+
+### Check for issues every (minutes)
+
+How often Foreman looks for ready issues, from 1 to 1440. Default: 10. Checks only call `gh`, so they cost no tokens.
+
+### Daily limit (USD)
+
+Stop starting runs for this repository once today's spend reaches this amount. Empty means no limit. When the limit is reached, the row shows "Daily limit … reached, paused until tomorrow". Runs already in progress finish.
+
+Spend is the cost Claude Code reports for each run. On a subscription it's an estimate, but it's still useful for comparing runs. There's also a limit across all repositories. See [Global settings](global-settings.md#spend).
+
+### Model
+
+Haiku, Sonnet or Opus. Default: Sonnet. Passed to `claude --model`.
+
+### Claude profile
+
+Which Claude Code login to run under. The menu lists the profiles in `CLAUDE_PROFILES`. With no profiles set up, it shows **Default (~/.claude)**. See [Usage limits and profiles](usage-limits.md#claude-profiles).
+
+### Max turns per issue
+
+The most turns Claude may take in one run, from 1 to 500. Default: 40. Passed to `claude --max-turns`. A *turn* is one round of Claude replying or using a tool. A run that runs out of turns usually ends as Failed.
+
+### Max minutes per issue
+
+A wall-clock limit for the agent, from 1 to 600. Default: 45. When it's reached, Foreman stops Claude and the run fails with "Hit the 45-minute limit." The setup script doesn't count toward it.
+
+## Labels
+
+Foreman uses three GitHub labels. It creates them when you save, if they don't exist yet.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| Ready for the agent | `ready-for-agent` | Add this to an issue to queue it. |
+| Being worked on | `agent-working` | Replaces the ready label while a run owns the issue. |
+| Needs a human | `needs-human` | Added when the agent or Foreman needs you. |
+
+The working and human labels must differ from the ready label. If the labels can't be created, the settings still save, and a warning shows at the top of the form.
+
+## How the agent works
+
+### Setup script
+
+Bash that runs in each new worktree before the agent starts. It runs with `-e`, so it stops at the first failing line, and it has a 15-minute timeout. If it fails, the run fails with the script's output.
+
+The default suits a Laravel app with npm:
+
+```bash
+cp .env.example .env
+composer install --no-interaction --quiet
+php artisan key:generate --quiet
+npm ci --silent
+npm run build --silent
+```
+
+The code icon (`< >`) next to the label copies a prompt for Claude Code. Paste it into `claude` in the project, and Claude works out a script that fits. The prompt uses what's in the form now, including unsaved edits.
+
+The setup script runs as you, with no sandbox.
+
+### Allowed tools
+
+The tools Claude may use, passed to `claude --allowedTools`. Anything not listed is refused. The default lets the agent:
+
+- read and edit files, search, and use skills and sub-agents
+- run `git`, `composer`, `php artisan`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
+- run `gh issue` and `gh pr create`
+
+The agent acts with your `gh` and git logins. This list is what keeps it in bounds, so review it before widening it.
+
+During a fix-up round, Foreman also allows `gh pr checks` and `gh run view`, so the agent can read CI results. See [PR watching](pr-watching.md).
+
+### Instructions
+
+The prompt given to the agent at the start of a run. These placeholders are replaced:
+
+| Placeholder | Replaced with |
+| --- | --- |
+| `{{issue}}` | The issue number |
+| `{{repo}}` | `owner/name` |
+| `{{branch}}` | The run's branch, like `agent/issue-42` |
+| `{{base}}` | The base branch |
+| `{{human_label}}` | The human label |
+
+The default prompt starts with `/mattpocock-skills:implement` and also uses `/simplify`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
+
+**Restore default** puts the default prompt back. If you save the default unchanged, Foreman stores it as "default". Then later improvements to Foreman's default prompt reach this repository on their own.
+
+### Watch PRs
+
+On by default. After the agent opens a PR, Foreman follows it through CI and review bots and runs fix-up rounds. Off means the run ends as **PR opened**. See [PR watching](pr-watching.md).
+
+### Remove the worktree once Foreman is done with the PR
+
+On by default. Foreman deletes the worktree when it's finished with the PR. That's when the PR is ready, handed to you, or cancelled, or straight away if Watch PRs is off. A failed run always keeps its worktree, so you can look inside it.
+
+## Archive and remove
+
+The buttons at the top of the settings:
+
+- **Archive** takes the repository off the dashboard and stops it, but keeps its settings and history. It's disabled while runs are active or PRs are being watched. Find archived repositories on the **Archive** page.
+- **Remove from Foreman** deletes the repository and its run history from Foreman. Nothing on GitHub is touched.

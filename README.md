@@ -126,143 +126,17 @@ composer run update-app
 
 It installs any new dependencies, runs new migrations and rebuilds the assets. Then stop `composer run foreman` with Ctrl+C and start it again. The queue workers keep the old code until they restart.
 
-## Configuration
+## Documentation
 
-### Repository settings
+The full docs are in [`docs/`](docs/). They're also built into the app: click **Docs** in Foreman's header.
 
-Each repository has its own settings in the dashboard. To change them, click the gear icon on the repository's row.
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| Local path | — | A local git checkout. `~/` is expanded. |
-| GitHub repo | detected | `owner/name`. |
-| Base branch | `main` | Branches are created from `origin/<base>`. |
-| Ready label | `ready-for-agent` | Issues with this label are queued. |
-| Working label | `agent-working` | Replaces the ready label while a run owns the issue. |
-| Human label | `needs-human` | Added when the agent or Foreman needs you. |
-| Concurrency | `1` | Runs at once for this repository (1–8). Can also be changed with **−** / **+** on the dashboard. |
-| Poll interval | `10` min | How often to look for ready issues. |
-| Daily budget | none | Stop starting runs once today's cost reaches this amount (USD). |
-| Model | `sonnet` | Passed to `claude --model`. |
-| Claude profile | first profile | Which entry in `CLAUDE_PROFILES` to run under. See [Claude profiles](#claude-profiles). |
-| Max turns | `40` | Passed to `claude --max-turns`. |
-| Max minutes | `45` | Wall-clock limit. The agent is stopped and the run fails when it's reached. |
-| Allowed tools | see below | Passed to `claude --allowedTools`. |
-| Setup script | see below | Bash, run in each new worktree with `-e`, with a 15-minute timeout. |
-| Prompt | `resources/prompts/default.md` | The instructions given to the agent. **Restore default** resets it. |
-| Clean up worktrees | on | Remove the worktree once a PR is opened. |
-| Watch PRs | on | Follow the PR through CI and review bots. See [PR watching](#pr-watching). |
-
-The default **allowed tools** let the agent read and edit files, use skills and sub-agents, and run `git`, `composer`, `php artisan`, `./vendor/bin/*`, `npm`/`npx`/`pnpm`/`yarn`, `gh issue`, and `gh pr create`. It can't run anything else.
-
-The default **setup script** is:
-
-```bash
-cp .env.example .env
-composer install --no-interaction --quiet
-php artisan key:generate --quiet
-npm ci --silent
-npm run build --silent
-```
-
-The **prompt** supports these placeholders:
-
-| Placeholder | Replaced with |
-| --- | --- |
-| `{{issue}}` | Issue number |
-| `{{repo}}` | `owner/name` |
-| `{{branch}}` | The run's branch, e.g. `agent/issue-42` |
-| `{{base}}` | Base branch |
-| `{{human_label}}` | The human label |
-
-A prompt left unchanged is stored as "default", so later improvements to `resources/prompts/default.md` reach that repository automatically.
-
-### Global controls
-
-These are on the dashboard rather than per repository:
-
-- **Pause** stops all new runs. Runs in progress finish, and PRs are still watched.
-- **Run anyway** appears when a profile is held for usage. It lets the next check start runs on that profile regardless of the hold.
-
-The **Settings** page, linked from the header, holds the rest:
-
-- **Daily limit** caps total spend across all repositories for the day. The dashboard shows it next to today's spend.
-- **Usage holds** and **PR watching** override the matching environment variables below. Leave a field empty to fall back to the `.env` value. Changes reach running workers before their next job, without a restart.
-
-### Environment variables
-
-Foreman-specific settings live in `.env`. Everything else is standard Laravel. The `FOREMAN_*` values are defaults that the Settings page can override.
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `CLAUDE_PROFILES` | empty | Claude Code profiles as `name:config-dir` pairs, comma-separated. |
-| `FOREMAN_USAGE_FIVE_HOUR_CEILING` | `0.80` | Hold a profile once its 5-hour window reaches this fraction. |
-| `FOREMAN_USAGE_WEEKLY_PACE_MARGIN` | `0.10` | How far ahead of the week's pace usage may run before holding. |
-| `FOREMAN_USAGE_WEEKLY_CAP` | `0.90` | Hold at this weekly fraction regardless of pace. |
-| `FOREMAN_USAGE_PROBE_MINUTES` | `15` | Refresh a profile's usage numbers if they're older than this before starting runs. |
-| `FOREMAN_PR_MAX_ROUNDS` | `2` | Fix-up rounds per PR before handing it to a human. |
-| `FOREMAN_PR_FIRST_LOOK_MINUTES` | `1` | How long to wait on a PR no review bot has posted on. |
-| `FOREMAN_PR_QUIET_MINUTES` | `5` | How long review bots must be quiet before a round starts. |
-| `FOREMAN_PR_TIMEOUT_MINUTES` | `30` | Start a round this long after a push even if checks are still pending. |
-
-### Claude profiles
-
-If you use more than one Claude Code login, for example personal and work accounts, define them as profiles:
-
-```dotenv
-CLAUDE_PROFILES="personal:~/.claude-personal,work:~/.claude-work"
-```
-
-A repository on a profile runs Claude with `CLAUDE_CONFIG_DIR` set to that folder. Usage limits, gauges and token totals are all tracked per profile. With no profiles defined, every repository uses your default `~/.claude` login.
-
----
-
-## Usage limits
-
-On a subscription, Foreman runs share your `/usage` limits with your interactive Claude sessions. Foreman reads the `rate_limit_event` messages Claude emits while it works. Before starting runs on a profile with stale numbers, it sends a one-turn Haiku probe. Using those numbers, it holds new runs on a profile when any of these is true:
-
-- the 5-hour window is at or above the ceiling (80%),
-- the weekly window is at or above the cap (90%),
-- the weekly window is ahead of pace: more than the margin (10%) above the share of the week that has passed. For example, two days into the week the pace is about 29% + 10%.
-
-A held profile shows a gauge in the warning colour and the reason on the dashboard. The repositories on it stay idle until the window resets or you click **Run anyway**. If Claude stops a run because it hit a limit, the profile is held instead of failing the rest of the queue one issue at a time.
-
----
-
-## PR watching
-
-With **Watch PRs** on, a run that opens a PR moves to **Watching PR**. The watcher only calls `gh` and costs no tokens. Once no check is pending and review bots have been quiet for `FOREMAN_PR_QUIET_MINUTES`, it decides what happens next. If no bot has ever posted on the PR, it only waits `FOREMAN_PR_FIRST_LOOK_MINUTES`:
-
-| PR state | Result |
-| --- | --- |
-| Merged, or all checks pass with no open bot threads | **PR ready** |
-| Failing checks or open bot threads | A fix-up round: the agent resumes in the same worktree to fix them |
-| Still outstanding after `FOREMAN_PR_MAX_ROUNDS` rounds | A summary comment on the PR, `needs-human` added, **Needs you** |
-| Someone else pushed to the branch | **Needs you**: Foreman leaves the PR to you |
-| Closed without merging | **Cancelled** |
-
-In a round, the agent gives a verdict for each bot thread: **fixed**, **declined** (with a reason), or **unsure**. Foreman posts the reply. It resolves the thread for fixed and declined, and leaves unsure threads open for you. The agent is never allowed to comment on, reply to or resolve threads itself.
-
----
-
-## Troubleshooting
-
-The dashboard runs preflight checks and lists any problems at the top, along with how to fix each one. Click **Check again** after fixing something.
-
-| Problem | Fix |
-| --- | --- |
-| *git / Claude Code isn't on the PATH* | Start Foreman from a terminal where `git --version` and `claude --version` work. |
-| *GitHub CLI isn't installed or isn't logged in* | Run `gh auth login`, then restart Foreman. |
-| *The scheduler isn't running* | Start everything with `composer run foreman`, not just `php artisan serve`. |
-| *Run(s) waiting over two minutes for a worker* | All workers are busy, or none are running. Add one with `php artisan queue:work --queue=runs --timeout=0`. |
-| A repository shows an error | The last `gh` call for it failed. The message is shown on its row. |
-| A run failed | Open it. The error and the agent's last message are on the run page and on the issue. **Start over** requeues the issue. |
-
-Run files are kept under `storage/foreman/`:
-
-- `logs/run-<id>.log`: the readable log shown in the UI.
-- `logs/run-<id>.jsonl`: Claude's raw `stream-json` output.
-- `worktrees/<owner>-<name>/issue-<n>/`: worktrees. A failed run keeps its worktree here so you can inspect it.
+- [Getting started](docs/getting-started.md): from an empty dashboard to your first PR.
+- [Runs and statuses](docs/runs.md): the stations, what each status means, and the buttons.
+- [Repository settings](docs/repository-settings.md): every setting for a repository, including the setup script, allowed tools and prompt.
+- [Global settings](docs/global-settings.md): pause, spend limits, notifications and environment variables.
+- [Usage limits and profiles](docs/usage-limits.md): how Foreman shares your Claude subscription and when it holds runs.
+- [PR watching](docs/pr-watching.md): how Foreman follows a PR through CI and review bots.
+- [Troubleshooting](docs/troubleshooting.md): dashboard warnings, failed runs, and where run files live.
 
 ---
 

@@ -23,6 +23,7 @@
                 @else
                     <button class="btn" wire:click="runAnyway(@js($profile))">Run anyway</button>
                 @endif
+                <a class="doc-link" href="{{ route('docs', 'usage-limits') }}#when-runs-are-held" wire:navigate>How holds work</a>
             </p>
         </div>
     @endforeach

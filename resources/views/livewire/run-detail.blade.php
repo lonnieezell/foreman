@@ -20,6 +20,11 @@
                 <span class="status tone-{{ $run->status->tone() }}">
                     {{ $run->statusLabel() }}
                 </span>
+                @if ($run->status === \App\Enums\RunStatus::NeedsHuman)
+                    <a class="doc-link" href="{{ route('docs', 'runs') }}#needs-you" wire:navigate>What does this mean?</a>
+                @elseif ($run->status === \App\Enums\RunStatus::Failed)
+                    <a class="doc-link" href="{{ route('docs', 'troubleshooting') }}#a-run-failed" wire:navigate>What does this mean?</a>
+                @endif
             </p>
         </div>
 
