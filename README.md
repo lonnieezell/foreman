@@ -151,6 +151,8 @@ The default **setup script** is:
 cp .env.example .env
 composer install --no-interaction --quiet
 php artisan key:generate --quiet
+npm ci --silent
+npm run build --silent
 ```
 
 The **prompt** supports these placeholders:

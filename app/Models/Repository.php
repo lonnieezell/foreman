@@ -15,6 +15,8 @@ class Repository extends Model
 cp .env.example .env
 composer install --no-interaction --quiet
 php artisan key:generate --quiet
+npm ci --silent
+npm run build --silent
 SH;
 
     protected $guarded = ['id'];
