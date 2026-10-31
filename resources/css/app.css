@@ -108,6 +108,7 @@
     /* Notices */
     .notice { border-left: 4px solid var(--signal); background: var(--panel); padding: .9rem 1.1rem; margin-bottom: 1.5rem; }
     .notice-halt { border-color: var(--halt); }
+    .notice-halt p { white-space: pre-line; }   /* errors can carry the agent's multi-paragraph last message */
     .notice p + p { margin-top: .35rem; }
     .notice code, .hint code { font-family: var(--font-mono); font-size: .85em; background: var(--floor); padding: .05rem .3rem; border-radius: 3px; }
 

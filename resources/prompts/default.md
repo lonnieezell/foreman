@@ -12,6 +12,11 @@ Use the project's own tools and conventions; never introduce new ones.
 If the work touches React/TypeScript, also use any relevant installed skills
 (for example the React best-practices and composition skills).
 
+If {{base}} already does what the issue asks (an earlier commit fixed it), change
+nothing. Comment on the issue with where it is done: the commits, files and tests
+that cover it, and whether those tests pass. Then add the label with
+`gh issue edit {{issue}} --add-label {{human_label}}` and stop.
+
 1. Implement the change as the implement skill describes, writing tests for each
    acceptance criterion in the framework the project already uses for that code
    (e.g. Pest or PHPUnit for PHP, Vitest or Jest with Testing Library for React).
