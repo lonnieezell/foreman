@@ -58,6 +58,76 @@ class DashboardTest extends TestCase
             ->assertSet('flash', 'app stopped. Runs in progress will finish.');
     }
 
+    public function test_a_stopped_repository_shows_only_its_heading_and_what_finished_today(): void
+    {
+        $repo = $this->repository(enabled: false);
+        Process::fake();
+
+        $this->get('/')
+            ->assertSee('owner/app')
+            ->assertDontSee('x-data="countdown"', false)
+            ->assertDontSee('Writing code')
+            ->assertDontSee('Done today')
+            ->assertDontSee('$0.00 today');
+
+        $run = $repo->runs()->create([
+            'issue_number' => 7, 'issue_title' => 'Fix', 'branch' => 'agent/issue-7', 'model' => 'sonnet',
+            'status' => RunStatus::Failed,
+        ]);
+
+        $this->get('/')->assertSee('Done today')->assertDontSee('Writing code');
+
+        $run->update(['status' => RunStatus::Working]);   // stopping lets runs in progress finish, so keep them on the line
+
+        $this->get('/')->assertSee('Writing code');
+    }
+
+    public function test_a_running_repository_counts_down_to_its_next_check(): void
+    {
+        $this->freezeTime();
+        $repo = $this->repository(enabled: true);
+        $repo->update(['last_polled_at' => now()->subMinutes(3), 'poll_interval_minutes' => 10]);
+        Process::fake();
+
+        $this->get('/')
+            ->assertSee('data-next="'.now()->addMinutes(7)->timestamp.'"', false)
+            ->assertSee('x-data="countdown"', false);
+    }
+
+    public function test_a_repository_over_its_daily_limit_shows_a_notice_instead_of_its_line(): void
+    {
+        $repo = $this->repository(enabled: true);
+        $repo->update(['daily_budget' => 5]);
+        $run = $repo->runs()->create([
+            'issue_number' => 7, 'issue_title' => 'Fix', 'branch' => 'agent/issue-7', 'model' => 'sonnet',
+            'status' => RunStatus::Failed, 'cost_usd' => 5.25,
+        ]);
+        Process::fake();
+
+        $this->get('/')
+            ->assertSee('Daily limit of $5.00 reached')
+            ->assertDontSee('Writing code')
+            ->assertDontSee('x-data="countdown"', false)
+            ->assertSee('Done today');
+
+        $run->update(['status' => RunStatus::Working]);   // runs already going still finish, so keep them on the line
+
+        $this->get('/')->assertSee('Daily limit of $5.00 reached')->assertSee('Writing code');
+    }
+
+    public function test_pausing_shows_in_the_stats_row_without_a_banner(): void
+    {
+        Process::fake();
+
+        Livewire::test(Dashboard::class)
+            ->call('togglePause')
+            ->assertSet('flash', null)
+            ->assertSee('Paused')
+            ->call('togglePause')
+            ->assertSet('flash', null)
+            ->assertSee('Running');
+    }
+
     public function test_retrying_a_run_starts_it_straight_away(): void
     {
         $repo = $this->repository(enabled: true);

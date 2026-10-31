@@ -27,10 +27,11 @@
         </div>
     @endforeach
 
-    <section class="overview">
-        <div>
-            <h1>{{ $paused ? 'Paused' : 'Running' }}</h1>
-            <p class="state">
+    {{-- Quiet stats row: each stat is a prominent value over a muted caption. --}}
+    <section class="stats">
+        <div class="stat">
+            <h1 @class(['stat-value', 'stat-state', 'tone-good' => ! $paused, 'tone-attention' => $paused])>{{ $paused ? 'Paused' : 'Running' }}</h1>
+            <p class="stat-label">
                 @php $activeCount = $repositories->sum(fn ($r) => $r->runs->count()); @endphp
                 @if ($paused)
                     {{ $pauseReason ?? 'No new issues will be picked up. Runs already in progress will finish.' }}
@@ -42,54 +43,56 @@
             </p>
         </div>
 
-        <div class="gauges" aria-label="Claude usage by profile">
-            @foreach ($gauges as $profile => $gauge)
-                <div @class(['gauge', 'is-held' => $gauge['held'] ?? false]) wire:key="gauge-{{ $profile }}">
-                    <p class="gauge-head">
-                        <strong>{{ $profile }}</strong>
-                        <span>
-                            @if ($gauge['held'] ?? false)<span class="tone-bad">Held</span> · @endif
-                            {{ $gauge ? 'as of '.$gauge['as_of'] : 'usage unknown' }}
-                        </span>
-                    </p>
+        @foreach ($gauges as $profile => $gauge)
+            <div @class(['stat', 'is-held' => $gauge['held'] ?? false]) wire:key="gauge-{{ $profile }}" aria-label="Claude usage for the {{ $profile }} profile">
+                <div class="stat-value">
+                    <strong class="stat-name">{{ $profile }}</strong>
+                    @if ($gauge['held'] ?? false)<span class="stat-flag tone-bad">Held</span>@endif
                     @foreach (['five_hour' => '5h', 'seven_day' => 'week'] as $key => $label)
                         @if ($window = $gauge[$key] ?? null)
-                            <div class="gauge-row" title="{{ $label }} {{ $window['percent'] }}%, holds at {{ $window['limit'] }}%">
+                            <span class="gauge" title="{{ $label }} {{ $window['percent'] }}%, holds at {{ $window['limit'] }}%. {{ ucfirst($window['note']) }}">
                                 <span class="gauge-label">{{ $label }}</span>
                                 <span class="gauge-bar tone-{{ $window['tone'] }}">
                                     <span style="width: {{ min(100, $window['percent']) }}%"></span>
                                     <i style="left: {{ $window['limit'] }}%"></i>
                                 </span>
-                                <span class="gauge-value tone-{{ $window['tone'] }}">{{ $window['percent'] }}%</span>
-                            </div>
-                            <p class="gauge-note">{{ $window['note'] }}</p>
+                                <span class="tone-{{ $window['tone'] }}">{{ $window['percent'] }}%</span>
+                            </span>
+                        @else
+                            <span class="gauge" title="No {{ $label }} usage reported yet">
+                                <span class="gauge-label">{{ $label }}</span>
+                                <span class="gauge-bar"></span>
+                                <span class="tone-quiet">—</span>
+                            </span>
                         @endif
                     @endforeach
-                    @if ($tokens = $tokensByProfile[$profile] ?? null)
-                        <p class="gauge-foot">{{ Number::abbreviate($tokens['in'], maxPrecision: 1) }} in / {{ Number::abbreviate($tokens['out'], maxPrecision: 1) }} out today</p>
-                    @endif
                 </div>
-            @endforeach
+                <p class="stat-label">
+                    {{ $gauge ? 'as of '.$gauge['as_of'] : 'usage unknown' }}
+                    @if ($tokens = $tokensByProfile[$profile] ?? null)
+                        · {{ Number::abbreviate($tokens['in'], maxPrecision: 1) }} in / {{ Number::abbreviate($tokens['out'], maxPrecision: 1) }} out today
+                    @endif
+                </p>
+            </div>
+        @endforeach
+
+        <div class="stat">
+            <div class="stat-value">${{ number_format($spentToday, 2) }}</div>
+            <form wire:submit="saveGlobalBudget" class="stat-label stat-form">
+                <label for="globalBudget">spent today, daily limit $</label>
+                <input id="globalBudget" type="number" step="1" min="0" placeholder="none" wire:model="globalBudget">
+                <button class="btn-link" type="submit">Save</button>
+            </form>
         </div>
 
-        <div class="overview-controls">
-            <div class="spend">
-                ${{ number_format($spentToday, 2) }}
-                <small>spent today{{ $budget !== null ? ' of $'.number_format($budget, 2) : ', no daily limit' }}</small>
-            </div>
-            <form wire:submit="saveGlobalBudget" class="field" style="gap:.2rem">
-                <label for="globalBudget" class="hint">Daily limit, all repositories</label>
-                <div class="field-inline">
-                    <input id="globalBudget" type="number" step="1" min="0" placeholder="None" wire:model="globalBudget" class="input-compact">
-                    <button class="btn" type="submit">Save</button>
-                </div>
-            </form>
-            <button wire:click="togglePause" class="btn {{ $paused ? 'btn-go' : 'btn-halt' }}">
-                {{ $paused ? 'Resume factory' : 'Pause factory' }}
-            </button>
-        </div>
+        <button wire:click="togglePause" class="btn stats-action {{ $paused ? 'btn-go' : 'btn-halt' }}">
+            {{ $paused ? 'Resume factory' : 'Pause factory' }}
+        </button>
     </section>
 
+    <div class="dashboard-columns">
+    <div>
+    <h2 class="section-title">Repositories</h2>
     @forelse ($repositories as $repo)
         @php
             $byStation = $repo->runs->groupBy(fn ($run) => $run->status->value);
@@ -98,40 +101,51 @@
                 ->whereNotIn('status', \App\Enums\RunStatus::activeValues())
                 ->get()
                 ->countBy(fn ($run) => $run->status->value);
-            $spent = $repo->spentToday();
-            $limit = $repo->daily_budget !== null ? (float) $repo->daily_budget : null;
-            $running = $repo->enabled && ! $paused && ! isset($heldProfiles[$repo->profileName()]);
+            $overBudget = $repo->enabled && $repo->budgetReachedToday();
+            $running = $repo->enabled && ! $paused && ! $overBudget && ! isset($heldProfiles[$repo->profileName()]);
         @endphp
 
         <article @class(['line', 'is-running' => $running]) wire:key="repo-{{ $repo->id }}">
             <div class="line-head">
                 <div>
                     <h2 class="line-name"><a href="{{ route('repositories.edit', $repo) }}" wire:navigate>{{ $repo->name }}</a></h2>
-                    <p class="line-meta">
-                        {{ $repo->github_repo }} into {{ $repo->base_branch }}, {{ $repo->model }} on the {{ $repo->profileName() }} profile, checks every {{ $repo->poll_interval_minutes }} min
-                        @if ($repo->last_polled_at)
-                            (last {{ $repo->last_polled_at->diffForHumans() }})
+                    {{-- data-next sits outside the ignored countdown so each re-render can move it --}}
+                    <p class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->model }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
+                        <span title="Merges into {{ $repo->base_branch }}">{{ $repo->github_repo }}</span>
+                        <span>{{ $repo->model }}</span>
+                        <span title="Claude profile">{{ $repo->profileName() }}</span>
+                        @if ($running)
+                            <span class="line-countdown" title="Next check for ready issues, every {{ $repo->poll_interval_minutes }} min" wire:ignore x-data="countdown"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.5V8l2.25 1.5" /></svg><span x-text="text"></span></span>
                         @endif
                     </p>
                 </div>
 
                 <div class="line-controls">
-                    <div class="stepper" role="group" aria-label="Issues at a time for {{ $repo->name }}">
+                    <div class="stepper" role="group" aria-label="Issues at a time for {{ $repo->name }}" title="{{ $repo->concurrency }} at a time">
                         <button wire:click="changeConcurrency({{ $repo->id }}, -1)" @disabled($repo->concurrency <= 1) aria-label="Fewer at a time">−</button>
-                        <span>{{ $repo->concurrency }} at a time</span>
+                        <span>{{ $repo->concurrency }}</span>
                         <button wire:click="changeConcurrency({{ $repo->id }}, 1)" @disabled($repo->concurrency >= 8) aria-label="More at a time">+</button>
                     </div>
                     @php $checkTargets = "checkNow({$repo->id})".($repo->enabled ? '' : ", toggleRepository({$repo->id})"); @endphp
-                    <button class="btn" wire:click="checkNow({{ $repo->id }})" wire:loading.attr="disabled" wire:target="{{ $checkTargets }}" @disabled(! $repo->enabled || $paused)>
-                        <span wire:loading.remove wire:target="{{ $checkTargets }}">Check now</span>
-                        <span wire:loading wire:target="{{ $checkTargets }}">Checking…</span>
+                    <button class="btn btn-icon" wire:click="checkNow({{ $repo->id }})" wire:loading.attr="disabled" wire:loading.class="is-busy" wire:target="{{ $checkTargets }}" @disabled(! $repo->enabled || $paused) aria-label="Check now" title="Check now">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.25 8a5.25 5.25 0 1 1-1.54-3.71" /><path d="M13.25 2.5v3h-3" /></svg>
                     </button>
                     <button wire:click="toggleRepository({{ $repo->id }})" class="btn {{ $repo->enabled ? 'btn-halt' : 'btn-go' }}">
                         {{ $repo->enabled ? 'Stop' : 'Start' }}
                     </button>
+                    <a href="{{ route('repositories.edit', $repo) }}" wire:navigate class="btn btn-quiet btn-icon btn-settings" aria-label="Settings for {{ $repo->name }}" title="Settings">
+                        {{-- Feather "settings" icon (MIT) --}}
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                    </a>
                 </div>
             </div>
 
+            @if ($overBudget)
+                <p class="line-notice">Daily limit of ${{ number_format((float) $repo->daily_budget, 2) }} reached, paused until tomorrow.</p>
+            @endif
+
+            {{-- A stopped or over-limit repository keeps its line only while runs in progress finish --}}
+            @if (($repo->enabled && ! $overBudget) || $repo->runs->isNotEmpty())
             <div class="track" aria-label="Issues currently being worked on">
                 @foreach ($stations as $station)
                     <div class="station">
@@ -149,38 +163,28 @@
                         <span class="station-name">{{ $station->label() }}</span>
                     </div>
                 @endforeach
+            </div>
+            @endif
 
-                <div class="bin">
-                    <span class="bin-title">Done today</span>
-                    @if ($finishedToday->isEmpty())
-                        <p class="hint" style="margin-top:.3rem">Nothing yet.</p>
-                    @else
-                        <dl>
-                            @foreach (['pr_ready', 'watching_pr', 'pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
-                                @if ($finishedToday->get($value))
+            @if ($repo->enabled || $finishedToday->isNotEmpty())
+            <div class="bin">
+                <span class="bin-title">Done today</span>
+                @if ($finishedToday->isEmpty())
+                    <span class="hint">Nothing yet.</span>
+                @else
+                    <dl>
+                        @foreach (['pr_ready', 'watching_pr', 'pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
+                            @if ($finishedToday->get($value))
+                                <div>
                                     <dt class="tone-{{ \App\Enums\RunStatus::from($value)->tone() }}">{{ $finishedToday->get($value) }}</dt>
                                     <dd>{{ \App\Enums\RunStatus::from($value)->label() }}</dd>
-                                @endif
-                            @endforeach
-                        </dl>
-                    @endif
-                </div>
-            </div>
-
-            <div class="meter">
-                <span>
-                    ${{ number_format($spent, 2) }} today{{ $limit !== null ? ' of $'.number_format($limit, 2) : '' }}
-                    @if ($limit !== null && $spent >= $limit)
-                        <strong class="tone-bad">limit reached, paused until tomorrow</strong>
-                    @endif
-                </span>
-                @if ($limit)
-                    <div @class(['meter-bar', 'is-full' => $spent >= $limit]) aria-hidden="true">
-                        <span style="width: {{ min(100, round($spent / $limit * 100)) }}%"></span>
-                    </div>
+                                </div>
+                            @endif
+                        @endforeach
+                    </dl>
                 @endif
-                <a href="{{ route('repositories.edit', $repo) }}" wire:navigate class="btn btn-quiet" style="margin-left:auto">Settings</a>
             </div>
+            @endif
 
             @if ($repo->last_error)
                 <p class="line-error">Last check failed: {{ Str::limit($repo->last_error, 240) }}</p>
@@ -193,15 +197,16 @@
             <a href="{{ route('repositories.create') }}" wire:navigate class="btn btn-go">Add repository</a>
         </div>
     @endforelse
+    </div>
 
     @if ($recentRuns->isNotEmpty())
+        <div>
         <h2 class="section-title">Recent runs</h2>
         <div class="table-wrap">
             <table class="runs">
                 <thead>
                     <tr>
                         <th>Issue</th>
-                        <th>Repository</th>
                         <th>Status</th>
                         <th class="num">Turns</th>
                         <th class="num">Cost</th>
@@ -214,13 +219,12 @@
                     @foreach ($recentRuns as $run)
                         <tr wire:key="run-{{ $run->id }}">
                             <td>
-                                <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a>
+                                <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
                                 <span class="issue-title">{{ $run->issue_title }}</span>
                                 @if ($run->status === \App\Enums\RunStatus::Failed && $run->error)
                                     <span class="run-error" title="{{ $run->error }}">{{ $run->error }}</span>
                                 @endif
                             </td>
-                            <td>{{ $run->repository->name }}</td>
                             <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span></td>
                             <td class="num">{{ $run->num_turns ?? '' }}</td>
                             <td class="num">{{ $run->cost_usd > 0 ? '$'.number_format($run->cost_usd, 2) : '' }}</td>
@@ -240,5 +244,7 @@
                 </tbody>
             </table>
         </div>
+        </div>
     @endif
+    </div>
 </div>

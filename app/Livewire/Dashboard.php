@@ -58,7 +58,7 @@ class Dashboard extends Component
     {
         Setting::put('paused', Setting::paused() ? 0 : 1);
         Setting::put('pause_reason', null);
-        $this->flash = Setting::paused() ? 'Factory paused. Runs in progress will finish.' : 'Factory resumed.';
+        $this->flash = null;   // the stats row already shows the new state
     }
 
     public function runAnyway(string $profile): void
@@ -120,8 +120,10 @@ class Dashboard extends Component
             'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
-            // Profiles that spent tokens today keep a gauge even when no repository uses them now
-            'gauges' => $profiles->merge(array_keys($tokens))->unique()->sort()->mapWithKeys(fn ($p) => [$p => $usage->gauge($p)])->all(),
+            // Every configured profile gets a gauge, as do any a repository uses or that spent tokens today
+            'gauges' => collect(array_keys(config('factory.claude_profiles')) ?: ['default'])
+                ->merge($profiles)->merge(array_keys($tokens))->unique()->sort()
+                ->mapWithKeys(fn ($p) => [$p => $usage->gauge($p)])->all(),
             'heldProfiles' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->holdReason($p)])->filter()->all(),
             'overrides' => $profiles->filter(fn ($p) => $usage->overridePending($p))->values()->all(),
             'spentToday' => Setting::spentToday(),
