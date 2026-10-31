@@ -129,7 +129,7 @@ class Dashboard extends Component
             ->with('repository');
 
         $runs = $latest()->latest('id')->whereNull('handled_at')
-            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, RunStatus::WatchingPr])->get();
+            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, ...RunStatus::stations(), RunStatus::WatchingPr])->get();
         $handled = $latest()
             ->where(fn ($q) => $q->whereNotNull('handled_at')->orWhere('status', RunStatus::Cancelled))
             ->orderByDesc('updated_at')->orderByDesc('id')->limit(10)->get();
@@ -138,6 +138,7 @@ class Dashboard extends Component
             ['title' => 'Needs your reply', 'statuses' => [RunStatus::NeedsHuman], 'attention' => true],
             ['title' => 'Failed', 'statuses' => [RunStatus::Failed], 'attention' => true],
             ['title' => 'Ready for review', 'statuses' => [RunStatus::PrReady, RunStatus::PrOpened], 'attention' => true],
+            ['title' => 'In progress', 'statuses' => RunStatus::stations(), 'attention' => false],
             ['title' => 'Watching PRs', 'statuses' => [RunStatus::WatchingPr], 'attention' => false],
         ]);
         $sections[] = ['title' => 'Handled', 'statuses' => [], 'runs' => $handled, 'attention' => false];
@@ -180,6 +181,28 @@ class Dashboard extends Component
         }
     }
 
+    /**
+     * Issues waiting on the operator: the cards across the attention sections, with a caption
+     * that breaks the count down by section and leaves out the empty ones.
+     *
+     * @param  list<array{title:string,runs:Collection,attention:bool}>  $sections
+     * @return array{count:int,caption:string}
+     */
+    private function attention(array $sections): array
+    {
+        $parts = [
+            'Needs your reply' => 'need reply',
+            'Failed' => 'failed',
+            'Ready for review' => 'to review',
+        ];
+        $counts = collect($sections)->where('attention', true)->mapWithKeys(fn ($s) => [$s['title'] => $s['runs']->count()]);
+
+        return [
+            'count' => $counts->sum(),
+            'caption' => collect($parts)->map(fn ($label, $title) => $counts[$title] ? "{$counts[$title]} {$label}" : null)->filter()->implode(' · '),
+        ];
+    }
+
     public function render()
     {
         $this->announceNewAttention();
@@ -190,6 +213,12 @@ class Dashboard extends Component
             ->orderBy('name')
             ->get();
 
+        $sections = $this->sections();
+        $attention = $this->attention($sections);
+
+        // Runs on every 3s poll, so a background tab's title follows the count
+        $this->js('document.title = '.json_encode($attention['count'] ? "({$attention['count']}) Foreman" : 'Foreman'));
+
         $usage = app(Usage::class);
         $profiles = $repositories->map->profileName()->unique()->sort()->values();
         $tokens = Run::tokensTodayByProfile();
@@ -198,7 +227,8 @@ class Dashboard extends Component
             'repositories' => $repositories,
             'groups' => $repositories->groupBy->profileName()->sortKeys(),
             'editingRepository' => $this->editing ? $repositories->find($this->editing) : null,
-            'sections' => $this->sections(),
+            'sections' => $sections,
+            'attention' => $attention,
             'doneToday' => Run::doneToday()->toBase()->selectRaw('repository_id, status, count(*) as total')->groupBy('repository_id', 'status')->get()
                 ->groupBy('repository_id')->map->pluck('total', 'status'),
             'paused' => Setting::paused(),

@@ -43,6 +43,13 @@
             </p>
         </div>
 
+        @if ($attention['count'])
+            <a href="#issues" class="stat" x-on:click.prevent="document.getElementById('issues').scrollIntoView({ behavior: 'smooth' })">
+                <div class="stat-value tone-attention">{{ $attention['count'] }} {{ $attention['count'] === 1 ? 'needs' : 'need' }} you</div>
+                <p class="stat-label">{{ $attention['caption'] }}</p>
+            </a>
+        @endif
+
         @foreach ($gauges as $profile => $gauge)
             <div @class(['stat', 'is-held' => $gauge['held'] ?? false]) wire:key="gauge-{{ $profile }}" aria-label="Claude usage for the {{ $profile }} profile">
                 <div class="stat-value">
@@ -203,10 +210,9 @@
     @endif
     </div>
 
-    <div>
+    <div id="issues">
     <h2 class="section-title">Issues</h2>
-    @php $needsYou = collect($sections)->where('attention', true)->sum(fn ($section) => $section['runs']->count()); @endphp
-    @unless ($needsYou)
+    @unless ($attention['count'])
         <p class="hint">Nothing needs you.</p>
     @endunless
     @foreach ($sections as $section)
@@ -217,6 +223,7 @@
                 <article class="issue-card" wire:key="issue-{{ $run->id }}">
                     <div class="issue-card-head">
                         <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
+                        <span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span>
                         <span class="issue-age">{{ ($run->finished_at ?? $run->updated_at)->diffForHumans(['short' => true]) }}</span>
                     </div>
                     <p class="issue-title">{{ $run->issue_title }}</p>
@@ -242,7 +249,6 @@
                             </div>
                             @break
                         @case(\App\Enums\RunStatus::Cancelled)
-                            <p class="issue-handled">Cancelled</p>
                             <div class="issue-actions"><button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button></div>
                             @break
                         @case(\App\Enums\RunStatus::PrReady)
