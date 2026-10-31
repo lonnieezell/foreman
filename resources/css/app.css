@@ -122,11 +122,6 @@
     .stat-name { font-weight: 600; }
     .stat-flag { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
     .stat-label { color: var(--muted); font-size: .75rem; margin-top: .1rem; }
-    .stat-form { display: flex; align-items: center; gap: .25rem; }
-    .stat-form input { width: 4rem; font: inherit; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); padding: 0 .1rem; }
-    .stat-form input:focus { border-bottom-color: var(--ink); }
-    .btn-link { font: inherit; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-    .btn-link:hover { color: var(--ink); }
     .stats-action { margin-left: auto; padding: .4rem .75rem; font-size: .8rem; }
 
     /* Usage gauge: the tick marks where runs are held. */
@@ -247,6 +242,9 @@
     }
     .field textarea { font-family: var(--font-mono); font-size: .85rem; line-height: 1.5; }
     .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1rem; }
+    /* Lines up labels, inputs, hints and errors across the row when some of them wrap */
+    .field-row-aligned .field { grid-row: span 4; grid-template-rows: subgrid; }
+    .field-row-aligned .field label { align-self: end; }
     .field-inline { display: flex; gap: .5rem; }
     .hint { color: var(--muted); font-size: .8rem; }
     .error { color: var(--halt); font-size: .8rem; }

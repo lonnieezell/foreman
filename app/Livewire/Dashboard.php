@@ -17,8 +17,6 @@ use Livewire\Component;
 #[Title('Foreman')]
 class Dashboard extends Component
 {
-    public string $globalBudget = '';
-
     public ?string $flash = null;
 
     // Opens the add repository modal; in the URL so the masthead link can open it from any page
@@ -28,11 +26,6 @@ class Dashboard extends Component
     // The repository whose settings are open in the same modal
     #[Url(as: 'edit', except: null)]
     public ?int $editing = null;
-
-    public function mount(): void
-    {
-        $this->globalBudget = (string) (Setting::globalBudget() ?? '');
-    }
 
     public function toggleRepository(int $id): void
     {
@@ -80,13 +73,6 @@ class Dashboard extends Component
     {
         app(Usage::class)->override($profile);
         $this->flash = "Next check will start runs on {$profile} regardless of usage.";
-    }
-
-    public function saveGlobalBudget(): void
-    {
-        $this->validate(['globalBudget' => ['nullable', 'numeric', 'min:0']]);
-        Setting::put('global_daily_budget', $this->globalBudget === '' ? null : $this->globalBudget);
-        $this->flash = 'Daily budget saved.';
     }
 
     public function cancelRun(int $id): void
