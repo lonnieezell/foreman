@@ -86,6 +86,16 @@ class ClaudeProfilesTest extends TestCase
         $this->assertSame('default', $this->repository()->profileName());
     }
 
+    public function test_a_profile_on_the_default_folder_uses_the_default_login(): void
+    {
+        // Setting CLAUDE_CONFIG_DIR, even to ~/.claude, makes Claude read a different Keychain login
+        config(['foreman.claude_profiles' => ['work' => getenv('HOME').'/.claude/']]);
+        $repo = $this->repository(['claude_profile' => 'work']);
+
+        $this->assertSame([], $repo->claudeEnv());
+        $this->assertSame('work', $repo->profileName());
+    }
+
     public function test_form_saves_a_known_profile_and_rejects_unknown_ones(): void
     {
         $repo = $this->repository();

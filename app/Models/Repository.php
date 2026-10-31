@@ -95,6 +95,11 @@ SH;
         $dir = config("foreman.claude_profiles.{$this->claude_profile}")
             ?? throw new RuntimeException("Claude profile “{$this->claude_profile}” isn’t in CLAUDE_PROFILES.");
 
+        // Setting CLAUDE_CONFIG_DIR at all, even to ~/.claude, makes Claude look for a separate Keychain login
+        if (rtrim($dir, '/') === rtrim((string) getenv('HOME'), '/').'/.claude') {
+            return [];
+        }
+
         return ['CLAUDE_CONFIG_DIR' => $dir];
     }
 
