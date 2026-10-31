@@ -113,17 +113,19 @@ class Dashboard extends Component
 
         $usage = app(Usage::class);
         $profiles = $repositories->map->profileName()->unique()->sort()->values();
+        $tokens = Run::tokensTodayByProfile();
 
         return view('livewire.dashboard', [
             'repositories' => $repositories,
             'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
-            'usageByProfile' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->summary($p)])->all(),
+            // Profiles that spent tokens today keep a gauge even when no repository uses them now
+            'gauges' => $profiles->merge(array_keys($tokens))->unique()->sort()->mapWithKeys(fn ($p) => [$p => $usage->gauge($p)])->all(),
             'heldProfiles' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->holdReason($p)])->filter()->all(),
             'overrides' => $profiles->filter(fn ($p) => $usage->overridePending($p))->values()->all(),
             'spentToday' => Setting::spentToday(),
-            'tokensByProfile' => Run::tokensTodayByProfile(),
+            'tokensByProfile' => $tokens,
             'budget' => Setting::globalBudget(),
             'problems' => app(Preflight::class)->problems(),
             'stations' => RunStatus::stations(),

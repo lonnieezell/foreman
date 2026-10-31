@@ -139,31 +139,54 @@ class Usage
         }
     }
 
-    /** One line for the dashboard, e.g. "5h 42% (resets 3:40pm) · week 53% of 61% pace · as of 3 minutes ago". */
-    public function summary(string $profile): string
+    /**
+     * Numbers for a profile's dashboard gauge, or null with no snapshot yet. Each window's limit is
+     * where it holds runs: the 5-hour ceiling, or the weekly pace for this point in the week.
+     *
+     * @return array{five_hour:?array{percent:int,limit:int,tone:string,note:string},seven_day:?array{percent:int,limit:int,tone:string,note:string},held:bool,as_of:string}|null
+     */
+    public function gauge(string $profile): ?array
     {
         $snapshot = $this->snapshot($profile);
         if ($snapshot === null) {
-            return 'usage unknown';
+            return null;
         }
 
-        $parts = [];
+        $window = function (string $name, callable $limit, callable $note) use ($snapshot): ?array {
+            $w = $snapshot['windows'][$name] ?? null;
 
-        if ($five = $snapshot['windows']['five_hour'] ?? null) {
-            $parts[] = $this->hasReset($five['resets_at'])
-                ? '5h reset'
-                : sprintf('5h %d%% (resets %s)', $this->percent($five['utilization']), $this->when($five['resets_at']));
-        }
+            if ($w === null) {
+                return null;
+            }
 
-        if ($week = $snapshot['windows']['seven_day'] ?? null) {
-            $parts[] = $this->hasReset($week['resets_at'])
-                ? 'week reset'
-                : sprintf('week %d%% of %d%% pace', $this->percent($week['utilization']), $this->percent($this->weeklyPace($week)));
-        }
+            $limitFraction = $limit($w);
 
-        $parts[] = 'as of '.Carbon::parse($snapshot['captured_at'])->diffForHumans();
+            if ($this->hasReset($w['resets_at'])) {
+                return ['percent' => 0, 'limit' => $this->percent($limitFraction), 'tone' => 'good', 'note' => 'reset'];
+            }
 
-        return implode(' · ', $parts);
+            return [
+                'percent' => $this->percent($w['utilization']),
+                'limit' => $this->percent($limitFraction),
+                'tone' => match (true) {
+                    $w['status'] === 'rejected' || $w['utilization'] >= $limitFraction => 'bad',
+                    $w['utilization'] >= $limitFraction - 0.1 => 'attention',
+                    default => 'good',
+                },
+                'note' => $note($w),
+            ];
+        };
+
+        return [
+            'five_hour' => $window('five_hour',
+                fn () => config('factory.usage.five_hour_ceiling'),
+                fn ($w) => 'resets '.$this->when($w['resets_at'])),
+            'seven_day' => $window('seven_day',
+                fn ($w) => $this->weeklyPace($w),
+                fn ($w) => sprintf('pace %d%% · resets %s', $this->percent($this->weeklyPace($w)), $this->when($w['resets_at'], 'D'))),
+            'held' => $this->holdReason($profile) !== null,
+            'as_of' => Carbon::parse($snapshot['captured_at'])->diffForHumans(short: true),
+        ];
     }
 
     /** How much of the week may be used by now: time elapsed plus the margin, never over the cap. */
