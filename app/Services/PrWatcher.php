@@ -113,6 +113,7 @@ class PrWatcher
             'branch' => $run->branch,
             'status' => RunStatus::Queued,
             'model' => $run->repository->model,
+            'effort' => $run->repository->effort,
             'worktree_path' => $run->worktree_path,
             'resume_session_id' => $run->session_id,
             'previous_run_id' => $run->id,
