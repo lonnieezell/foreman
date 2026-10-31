@@ -242,6 +242,9 @@
     }
     .field textarea { font-family: var(--font-mono); font-size: .85rem; line-height: 1.5; }
     .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1rem; }
+    /* Lines up labels, inputs, hints and errors across the row when some of them wrap */
+    .field-row-aligned .field { grid-row: span 4; grid-template-rows: subgrid; }
+    .field-row-aligned .field label { align-self: end; }
     .field-inline { display: flex; gap: .5rem; }
     .hint { color: var(--muted); font-size: .8rem; }
     .error { color: var(--halt); font-size: .8rem; }

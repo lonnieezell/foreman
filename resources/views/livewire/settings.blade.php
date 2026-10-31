@@ -23,7 +23,7 @@
         <section class="fieldset">
             <h2>Usage holds</h2>
             <p class="hint">When to hold new runs on a Claude profile, from its /usage numbers. Leave a field empty to use the default shown.</p>
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="five_hour_ceiling">5-hour ceiling (%)</label>
                     <input id="five_hour_ceiling" type="number" min="1" max="100" wire:model="five_hour_ceiling" placeholder="{{ $defaults['five_hour_ceiling'] }}">
@@ -54,7 +54,7 @@
         <section class="fieldset">
             <h2>PR watching</h2>
             <p class="hint">For repositories with Watch PRs on. Leave a field empty to use the default shown.</p>
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="pr_max_rounds">Fix-up rounds per PR</label>
                     <input id="pr_max_rounds" type="number" min="0" max="10" wire:model="pr_max_rounds" placeholder="{{ $defaults['pr_max_rounds'] }}">
