@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/icon-512.png" alt="Foreman logo: a figure in a yellow hard hat" width="160">
+</p>
+
 # Foreman
 
 Turn labelled GitHub issues into pull requests, using Claude Code on your own machine.
