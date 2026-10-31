@@ -234,7 +234,7 @@ class DashboardTest extends TestCase
             ->assertSet('flash', '#907 is back in the queue. A new run will appear on the dashboard.');
     }
 
-    public function test_failed_runs_show_their_error_in_recent_runs(): void
+    public function test_failed_issues_show_their_error(): void
     {
         $this->repository(enabled: false)->runs()->create([
             'issue_number' => 64, 'issue_title' => 'Fix', 'branch' => 'agent/issue-64', 'model' => 'sonnet',

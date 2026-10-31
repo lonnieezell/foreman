@@ -94,11 +94,7 @@
     @forelse ($repositories as $repo)
         @php
             $byStation = $repo->runs->groupBy(fn ($run) => $run->status->value);
-            $finishedToday = $repo->runs()
-                ->where('created_at', '>=', now()->startOfDay())
-                ->whereNotIn('status', \App\Enums\RunStatus::activeValues())
-                ->get()
-                ->countBy(fn ($run) => $run->status->value);
+            $finishedToday = $doneToday->get($repo->id, collect());
             $overBudget = $repo->enabled && $repo->budgetReachedToday();
             $running = $repo->enabled && ! $paused && ! $overBudget && ! isset($heldProfiles[$repo->profileName()]);
         @endphp
@@ -200,53 +196,49 @@
     @endif
     </div>
 
-    @if ($recentRuns->isNotEmpty())
-        <div>
-        <h2 class="section-title">Recent runs</h2>
-        <div class="table-wrap">
-            <table class="runs">
-                <thead>
-                    <tr>
-                        <th>Issue</th>
-                        <th>Status</th>
-                        <th class="num">Turns</th>
-                        <th class="num">Cost</th>
-                        <th class="num">Tokens in / out</th>
-                        <th class="num">Time</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($recentRuns as $run)
-                        <tr wire:key="run-{{ $run->id }}">
-                            <td>
-                                <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
-                                <span class="issue-title">{{ $run->issue_title }}</span>
-                                @if ($run->status === \App\Enums\RunStatus::Failed && $run->error)
-                                    <span class="run-error" title="{{ $run->error }}">{{ $run->error }}</span>
-                                @endif
-                            </td>
-                            <td><span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span></td>
-                            <td class="num">{{ $run->num_turns ?? '' }}</td>
-                            <td class="num">{{ $run->cost_usd > 0 ? '$'.number_format($run->cost_usd, 2) : '' }}</td>
-                            <td class="num">{{ $run->input_tokens !== null ? Number::abbreviate($run->inputTokens(), maxPrecision: 1).' / '.Number::abbreviate($run->output_tokens, maxPrecision: 1) : '' }}</td>
-                            <td class="num">{{ $run->duration() }}</td>
-                            <td class="num">
-                                @if ($run->pr_url)
-                                    <a href="{{ $run->pr_url }}" target="_blank" rel="noopener">PR</a>
-                                @elseif ($run->status->isActive())
-                                    <button class="btn btn-quiet" wire:click="cancelRun({{ $run->id }})" wire:confirm="Stop working on #{{ $run->issue_number }}?">Cancel</button>
-                                @elseif (in_array($run->status, [\App\Enums\RunStatus::Failed, \App\Enums\RunStatus::Cancelled, \App\Enums\RunStatus::NeedsHuman], true))
-                                    <button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-        </div>
-    @endif
+    <div>
+    <h2 class="section-title">Issues</h2>
+    @php $needsYou = collect($sections)->where('attention', true)->sum(fn ($section) => $section['runs']->count()); @endphp
+    @unless ($needsYou)
+        <p class="hint">Nothing needs you.</p>
+    @endunless
+    @foreach ($sections as $section)
+        @continue($section['runs']->isEmpty())
+        <section @class(['issue-section', 'is-muted' => ! $section['attention']]) wire:key="section-{{ Str::slug($section['title']) }}">
+            <h3 class="issue-section-title">{{ $section['title'] }} <span class="issue-count">{{ $section['runs']->count() }}</span></h3>
+            @foreach ($section['runs'] as $run)
+                <article class="issue-card" wire:key="issue-{{ $run->id }}">
+                    <div class="issue-card-head">
+                        <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
+                        <span class="issue-age">{{ ($run->finished_at ?? $run->updated_at)->diffForHumans(['short' => true]) }}</span>
+                    </div>
+                    <p class="issue-title">{{ $run->issue_title }}</p>
+                    @if ($run->error && in_array($run->status, [\App\Enums\RunStatus::Failed, \App\Enums\RunStatus::NeedsHuman], true))
+                        <p class="run-error" title="{{ $run->error }}">{{ $run->error }}</p>
+                    @endif
+                    @switch($run->status)
+                        @case(\App\Enums\RunStatus::NeedsHuman)
+                            <div class="issue-actions">
+                                @if ($run->issue_url)<a class="btn btn-quiet" href="{{ $run->issue_url }}" target="_blank" rel="noopener">Open issue</a>@endif
+                                <button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
+                            </div>
+                            @break
+                        @case(\App\Enums\RunStatus::Failed)
+                        @case(\App\Enums\RunStatus::Cancelled)
+                            <div class="issue-actions"><button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button></div>
+                            @break
+                        @case(\App\Enums\RunStatus::PrReady)
+                        @case(\App\Enums\RunStatus::PrOpened)
+                            @if ($run->pr_url)
+                                <div class="issue-actions"><a class="btn btn-quiet" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a></div>
+                            @endif
+                            @break
+                    @endswitch
+                </article>
+            @endforeach
+        </section>
+    @endforeach
+    </div>
     </div>
 
     @if ($adding || $editingRepository)

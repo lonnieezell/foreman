@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\RunStatus;
+use App\Jobs\ProcessRun;
+use App\Services\GitHub;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,6 +43,46 @@ class Run extends Model
     public function scopeActive(Builder $query): void
     {
         $query->whereIn('status', RunStatus::activeValues());
+    }
+
+    /** Only each issue's newest run: the highest id per repository and issue number. */
+    public function scopeLatestPerIssue(Builder $query): void
+    {
+        $query->whereIn('id', static::query()->selectRaw('max(id)')->groupBy('repository_id', 'issue_number'));
+    }
+
+    /** Latest runs of issues that had a run finish today, except issues that are active again. */
+    public function scopeDoneToday(Builder $query): void
+    {
+        $query->latestPerIssue()
+            ->whereNotIn('status', RunStatus::activeValues())
+            ->whereExists(fn ($q) => $q->from('runs as earlier')
+                ->whereColumn('earlier.repository_id', 'runs.repository_id')
+                ->whereColumn('earlier.issue_number', 'runs.issue_number')
+                ->whereNotIn('earlier.status', RunStatus::activeValues())
+                ->whereRaw('coalesce(earlier.finished_at, earlier.updated_at) >= ?', [now()->startOfDay()]));
+    }
+
+    /** Resume the same Claude session in the same worktree, after the human replied on the issue. */
+    public function continueAfterReply(GitHub $github): self
+    {
+        $github->reclaim($this->repository, $this->issue_number);
+
+        $next = $this->repository->runs()->create([
+            'issue_number' => $this->issue_number,
+            'issue_title' => $this->issue_title,
+            'issue_url' => $this->issue_url,
+            'branch' => $this->branch,
+            'status' => RunStatus::Queued,
+            'model' => $this->repository->model,
+            'worktree_path' => $this->worktree_path,
+            'resume_session_id' => $this->session_id,
+        ]);
+        $next->log("Continuing run {$this->id} after a human reply.");
+
+        ProcessRun::dispatch($next)->onQueue('runs');
+
+        return $next;
     }
 
     public function moveTo(RunStatus $status, array $extra = []): void
