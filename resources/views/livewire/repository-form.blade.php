@@ -25,6 +25,7 @@
                 <label for="local_path">Local checkout</label>
                 <div class="field-inline">
                     <input id="local_path" type="text" wire:model="local_path" placeholder="~/code/vault-app">
+                    <button type="button" class="btn" wire:click="browse" wire:loading.attr="disabled" wire:target="browse">Browse…</button>
                     <button type="button" class="btn" wire:click="detect">Detect</button>
                 </div>
                 <span class="hint">Runs happen in separate git worktrees, so your own checkout is never touched.</span>
