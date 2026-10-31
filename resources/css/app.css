@@ -262,6 +262,10 @@
     .run-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; }
     .run-head h1 { font-size: 2rem; font-weight: 700; }
     .run-head-actions { display: flex; gap: .5rem; }
+    .issue-section-link { display: inline-block; margin-top: .5rem; font-size: .85rem; color: var(--muted); }
+    .history-table { width: 100%; border-collapse: collapse; background: var(--panel); font-size: .875rem; font-variant-numeric: tabular-nums; }
+    .history-table th, .history-table td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid var(--rule); }
+    .history-table th { color: var(--muted); font-weight: 500; white-space: nowrap; }
     .attempts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
     .attempts-title { color: var(--muted); font-size: .8rem; margin-right: .25rem; }
     .attempt { padding: .2rem .6rem; border: 1px solid var(--rule); background: var(--panel); font-size: .85rem; }

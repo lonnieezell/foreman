@@ -2,12 +2,14 @@
 
 use App\Livewire\Archive;
 use App\Livewire\Dashboard;
+use App\Livewire\History;
 use App\Livewire\RepositoryForm;
 use App\Livewire\RunDetail;
 use App\Livewire\Settings;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Dashboard::class)->name('dashboard');
+Route::get('/history', History::class)->name('history');
 Route::get('/archive', Archive::class)->name('archive');
 Route::get('/settings', Settings::class)->name('settings');
 Route::get('/repositories/{repository}', RepositoryForm::class)->name('repositories.edit');
