@@ -236,6 +236,9 @@
                     @endswitch
                 </article>
             @endforeach
+            @if ($section['title'] === 'Handled')
+                <a href="{{ route('history') }}" wire:navigate class="issue-section-link">View all history</a>
+            @endif
         </section>
     @endforeach
     </div>
