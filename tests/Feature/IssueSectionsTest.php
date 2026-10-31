@@ -354,4 +354,71 @@ class IssueSectionsTest extends TestCase
         $this->assertNull($old->fresh()->handled_at);
         $this->assertNull($new->fresh()->handled_at);
     }
+
+    public function test_the_stat_counts_every_card_in_the_attention_sections_and_breaks_it_down(): void
+    {
+        $repo = $this->repository();
+        $this->makeRun($repo, 1, RunStatus::NeedsHuman);
+        $this->makeRun($repo, 2, RunStatus::NeedsHuman);
+        $this->makeRun($repo, 3, RunStatus::Failed);
+        $this->makeRun($repo, 4, RunStatus::PrReady);
+        $this->makeRun($repo, 5, RunStatus::PrOpened);
+        $this->makeRun($repo, 6, RunStatus::PrOpened);
+        $this->makeRun($repo, 7, RunStatus::WatchingPr);
+        $this->makeRun($repo, 8, RunStatus::Cancelled);
+
+        Livewire::test(Dashboard::class)
+            ->assertSee('6 need you')
+            ->assertSee('2 need reply · 1 failed · 3 to review')
+            ->assertSeeHtml('href="#issues"')
+            ->assertSeeHtml('id="issues"')
+            ->assertJs('document.title = "(6) Foreman"');
+    }
+
+    public function test_the_caption_leaves_out_empty_parts(): void
+    {
+        $repo = $this->repository();
+        $this->makeRun($repo, 1, RunStatus::Failed);
+
+        Livewire::test(Dashboard::class)
+            ->assertSee('1 needs you')
+            ->assertSee('1 failed')
+            ->assertDontSee('need reply')
+            ->assertDontSee('to review');
+    }
+
+    public function test_the_count_uses_each_issues_latest_run_and_skips_dismissed_and_archived(): void
+    {
+        $repo = $this->repository();
+        $this->makeRun($repo, 1, RunStatus::Failed);
+        $this->makeRun($repo, 1, RunStatus::PrReady);        // issue 1 now counts once, as ready
+        $this->makeRun($repo, 2, RunStatus::Failed, ['handled_at' => now()]);
+        $this->makeRun($this->repository('old', archived: true), 3, RunStatus::Failed);
+
+        Livewire::test(Dashboard::class)
+            ->assertSee('1 needs you')
+            ->assertSee('1 to review')
+            ->assertDontSee('1 failed');
+    }
+
+    public function test_the_stat_is_hidden_and_the_title_plain_when_nothing_needs_you(): void
+    {
+        $this->makeRun($this->repository(), 1, RunStatus::WatchingPr);
+
+        Livewire::test(Dashboard::class)
+            ->assertDontSeeHtml('href="#issues"')
+            ->assertJs('document.title = "Foreman"');
+    }
+
+    public function test_the_title_follows_the_count_on_the_next_poll(): void
+    {
+        $repo = $this->repository();
+        $run = $this->makeRun($repo, 1, RunStatus::Failed);
+
+        $component = Livewire::test(Dashboard::class)->assertJs('document.title = "(1) Foreman"');
+
+        $run->update(['handled_at' => now()]);
+
+        $component->call('$refresh')->assertJs('document.title = "Foreman"');
+    }
 }

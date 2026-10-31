@@ -142,6 +142,28 @@ class Dashboard extends Component
         return $sections;
     }
 
+    /**
+     * Issues waiting on the operator: the cards across the attention sections, with a caption
+     * that breaks the count down by section and leaves out the empty ones.
+     *
+     * @param  list<array{title:string,runs:Collection,attention:bool}>  $sections
+     * @return array{count:int,caption:string}
+     */
+    private function attention(array $sections): array
+    {
+        $parts = [
+            'Needs your reply' => 'need reply',
+            'Failed' => 'failed',
+            'Ready for review' => 'to review',
+        ];
+        $counts = collect($sections)->where('attention', true)->mapWithKeys(fn ($s) => [$s['title'] => $s['runs']->count()]);
+
+        return [
+            'count' => $counts->sum(),
+            'caption' => collect($parts)->map(fn ($label, $title) => $counts[$title] ? "{$counts[$title]} {$label}" : null)->filter()->implode(' · '),
+        ];
+    }
+
     public function render()
     {
         $repositories = Repository::query()
@@ -149,6 +171,12 @@ class Dashboard extends Component
             ->with(['runs' => fn ($q) => $q->active()->oldest()])
             ->orderBy('name')
             ->get();
+
+        $sections = $this->sections();
+        $attention = $this->attention($sections);
+
+        // Runs on every 3s poll, so a background tab's title follows the count
+        $this->js('document.title = '.json_encode($attention['count'] ? "({$attention['count']}) Foreman" : 'Foreman'));
 
         $usage = app(Usage::class);
         $profiles = $repositories->map->profileName()->unique()->sort()->values();
@@ -158,7 +186,8 @@ class Dashboard extends Component
             'repositories' => $repositories,
             'groups' => $repositories->groupBy->profileName()->sortKeys(),
             'editingRepository' => $this->editing ? $repositories->find($this->editing) : null,
-            'sections' => $this->sections(),
+            'sections' => $sections,
+            'attention' => $attention,
             'doneToday' => Run::doneToday()->toBase()->selectRaw('repository_id, status, count(*) as total')->groupBy('repository_id', 'status')->get()
                 ->groupBy('repository_id')->map->pluck('total', 'status'),
             'paused' => Setting::paused(),
