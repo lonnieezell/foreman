@@ -69,5 +69,11 @@
         <p class="hint" style="margin-bottom:.75rem">Worktree: <code>{{ $run->worktree_path }}</code></p>
     @endif
 
-    <pre class="log" x-data x-init="$el.scrollTop = $el.scrollHeight; Livewire.hook('morph.updated', ({ el }) => { if (el === $el) $el.scrollTop = $el.scrollHeight })">{{ $log ?: 'Waiting for the first log line…' }}</pre>
+    <div class="log" x-data x-init="$el.scrollTop = $el.scrollHeight; Livewire.hook('morph.updated', ({ el }) => { if ($el.contains(el)) $el.scrollTop = $el.scrollHeight })">
+        @forelse ($log as $entry)
+            <div class="log-entry log-{{ $entry['kind'] }}"><span class="log-time">{{ $entry['time'] }}</span><span class="log-text">{{ $entry['text'] }}</span>@if ($entry['more'] !== '')<span class="log-more">{{ $entry['more'] }}</span>@endif</div>
+        @empty
+            <span class="log-time">Waiting for the first log line…</span>
+        @endforelse
+    </div>
 </div>

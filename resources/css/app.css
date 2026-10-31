@@ -262,6 +262,17 @@
     .facts dd { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
     .log {
         background: #12181A; color: #D4DCD8; font: .8rem/1.6 var(--font-mono);
-        padding: 1rem 1.1rem; max-height: 70vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+        padding: 1rem 1.1rem; max-height: 70vh; overflow: auto; word-break: break-word;
     }
+    /* The log is always dark, so its colours are the dark theme's */
+    .log-entry { display: grid; grid-template-columns: 4.5rem 1fr; column-gap: .75rem; padding-block: .1rem; }
+    .log-text, .log-more { white-space: pre-wrap; }
+    .log-time { color: #5F6E70; font-variant-numeric: tabular-nums; }
+    .log-more { grid-column: 2; margin: .2rem 0 .35rem; padding-left: .75rem; border-left: 2px solid #313C3F; color: #8A9694; }
+    .log-message .log-text { font-family: var(--font-sans); color: #EEF2EF; }
+    .log-message + .log-message { margin-top: .15rem; }
+    .log-command .log-text::before { content: '$ '; color: #EDB230; }
+    .log-tool .log-text { color: #7FB5A5; }
+    .log-error .log-text { color: #E06A5A; font-weight: 600; }
+    .log-good .log-text { color: #63A894; font-weight: 600; }
 }

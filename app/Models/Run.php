@@ -102,6 +102,46 @@ class Run extends Model
         return implode("\n", array_slice($all, -$lines));
     }
 
+    /**
+     * The tail grouped into entries for display. Lines without a timestamp, like a heredoc's body,
+     * belong to the entry above them.
+     *
+     * @return list<array{time:string,kind:string,text:string,more:string}>
+     */
+    public function logEntries(): array
+    {
+        $entries = [];
+
+        foreach (explode("\n", $this->tail()) as $line) {
+            if (preg_match('/^\[(\d\d:\d\d:\d\d)\] (.*)$/', $line, $m)) {
+                $entries[] = ['time' => $m[1], 'text' => $m[2], 'more' => []];
+            } elseif ($entries) {
+                $entries[array_key_last($entries)]['more'][] = $line;
+            } elseif ($line !== '') {
+                $entries[] = ['time' => '', 'text' => $line, 'more' => []];   // the tail began mid-entry
+            }
+        }
+
+        return array_map(function (array $entry) {
+            [$kind, $text] = $this->classifyLogLine($entry['text']);
+
+            return ['time' => $entry['time'], 'kind' => $kind, 'text' => $text, 'more' => rtrim(implode("\n", $entry['more']))];
+        }, $entries);
+    }
+
+    /** @return array{string,string} kind and the text to show */
+    private function classifyLogLine(string $text): array
+    {
+        return match (true) {
+            str_starts_with($text, '$ ') => ['command', substr($text, 2)],
+            (bool) preg_match('/^(Read|Edit|Write) \//', $text) => ['tool', $this->worktree_path ? str_replace(rtrim($this->worktree_path, '/').'/', '', $text) : $text],
+            (bool) preg_match('/^\w+$/', $text) => ['tool', $text],   // tools logged by name only, like Grep
+            (bool) preg_match('/^(Failed|Marked as failed|Couldn’t|Cancelled|Usage limit)/u', $text) => ['error', $text],
+            (bool) preg_match('/^(PR opened|Pushed|Finished after)/', $text) => ['good', $text],
+            default => ['message', $text],
+        };
+    }
+
     /** New, cache-read and cache-write input together, since agent runs read mostly from cache. */
     public function inputTokens(): ?int
     {
