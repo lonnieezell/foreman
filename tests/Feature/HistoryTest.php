@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\RunStatus;
+use App\Livewire\Dashboard;
 use App\Livewire\History;
 use App\Models\Repository;
 use App\Models\Run;
@@ -127,7 +128,7 @@ class HistoryTest extends TestCase
         $repo = $this->repository();
         $this->makeRun($repo, 1, RunStatus::Cancelled);
 
-        $this->get('/')->assertSee(route('history'), false)->assertSee('View all history');
+        Livewire::test(Dashboard::class)->set('showHandled', true)->assertSee(route('history'), false)->assertSee('View all history');
         $this->get('/archive')->assertSee('>History</a>', false);
     }
 }

@@ -219,8 +219,13 @@
     @foreach ($sections as $section)
         @continue($section['runs']->isEmpty())
         <section @class(['issue-section', 'is-muted' => ! $section['attention']]) wire:key="section-{{ Str::slug($section['title']) }}">
-            <h3 class="issue-section-title">{{ $section['title'] }} <span class="issue-count">{{ $section['runs']->count() }}</span></h3>
-            @foreach ($section['runs'] as $run)
+            @php($collapsed = $section['title'] === 'Handled' && ! $showHandled)
+            @if ($section['title'] === 'Handled')
+                <h3 class="issue-section-title"><button type="button" class="issue-section-toggle" wire:click="$toggle('showHandled')" aria-expanded="{{ $showHandled ? 'true' : 'false' }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg>{{ $section['title'] }} <span class="issue-count">{{ $section['runs']->count() }}</span></button></h3>
+            @else
+                <h3 class="issue-section-title">{{ $section['title'] }} <span class="issue-count">{{ $section['runs']->count() }}</span></h3>
+            @endif
+            @foreach ($collapsed ? [] : $section['runs'] as $run)
                 <article class="issue-card" wire:key="issue-{{ $run->id }}">
                     <div class="issue-card-head">
                         <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
@@ -263,7 +268,7 @@
                     @endif
                 </article>
             @endforeach
-            @if ($section['title'] === 'Handled')
+            @if ($section['title'] === 'Handled' && ! $collapsed)
                 <a href="{{ route('history') }}" wire:navigate class="issue-section-link">View all history</a>
             @endif
         </section>
