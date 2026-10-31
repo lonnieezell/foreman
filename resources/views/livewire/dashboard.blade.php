@@ -91,7 +91,13 @@
     <div class="dashboard-columns">
     <div>
     <h2 class="section-title">Repositories</h2>
-    @forelse ($repositories as $repo)
+    @forelse ($groups as $profile => $group)
+    {{-- Labels only explain anything once there's more than one profile --}}
+    <section wire:key="profile-{{ $profile }}" @if ($groups->count() > 1) aria-label="{{ $profile }} profile" @endif>
+    @if ($groups->count() > 1)
+        <p class="profile-label">{{ $profile }}</p>
+    @endif
+    @foreach ($group as $repo)
         @php
             $byStation = $repo->runs->groupBy(fn ($run) => $run->status->value);
             $finishedToday = $doneToday->get($repo->id, collect());
@@ -107,7 +113,6 @@
                     <p class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->model }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
                         <span title="Merges into {{ $repo->base_branch }}">{{ $repo->github_repo }}</span>
                         <span>{{ $repo->model }}</span>
-                        <span title="Claude profile">{{ $repo->profileName() }}</span>
                         @if ($running)
                             <span class="line-countdown" title="Next check for ready issues, every {{ $repo->poll_interval_minutes }} min" wire:ignore x-data="countdown"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.5V8l2.25 1.5" /></svg><span x-text="text"></span></span>
                         @endif
@@ -184,6 +189,8 @@
                 <p class="line-error">Last check failed: {{ Str::limit($repo->last_error, 240) }}</p>
             @endif
         </article>
+    @endforeach
+    </section>
     @empty
         <div class="empty">
             <h2>Add your first repository</h2>

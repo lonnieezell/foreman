@@ -234,6 +234,39 @@ class DashboardTest extends TestCase
             ->assertSet('flash', '#907 is back in the queue. A new run will appear on the dashboard.');
     }
 
+    public function test_repositories_are_grouped_under_a_label_for_each_profile(): void
+    {
+        config(['foreman.claude_profiles' => ['work' => '/tmp/work', 'personal' => '/tmp/personal']]);
+        foreach ([['zeta', 'work'], ['alpha', 'work'], ['mid', 'personal']] as [$name, $profile]) {
+            $this->repository(enabled: false)->update(['name' => $name, 'github_repo' => "owner/{$name}", 'claude_profile' => $profile]);
+        }
+        Process::fake();
+
+        $this->get('/')->assertSeeInOrder([
+            '<p class="profile-label">personal</p>', 'owner/mid',
+            '<p class="profile-label">work</p>', 'owner/alpha', 'owner/zeta',
+        ], false);
+    }
+
+    public function test_one_profile_shows_no_group_label(): void
+    {
+        $this->repository(enabled: false);
+        Process::fake();
+
+        $this->get('/')->assertDontSee('class="profile-label"', false);
+    }
+
+    public function test_the_meta_line_leaves_the_profile_to_the_group_label(): void
+    {
+        $this->repository(enabled: false)->update(['claude_profile' => 'work']);
+        config(['foreman.claude_profiles' => ['work' => '/tmp/work']]);
+        Process::fake();
+
+        $this->get('/')
+            ->assertDontSee('<span title="Claude profile">', false)
+            ->assertSee('title="owner/app · sonnet · work"', false);
+    }
+
     public function test_failed_issues_show_their_error(): void
     {
         $this->repository(enabled: false)->runs()->create([

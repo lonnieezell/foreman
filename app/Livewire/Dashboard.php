@@ -138,6 +138,7 @@ class Dashboard extends Component
 
         return view('livewire.dashboard', [
             'repositories' => $repositories,
+            'groups' => $repositories->groupBy->profileName()->sortKeys(),
             'editingRepository' => $this->editing ? $repositories->find($this->editing) : null,
             'sections' => $this->sections(),
             'doneToday' => Run::doneToday()->toBase()->selectRaw('repository_id, status, count(*) as total')->groupBy('repository_id', 'status')->get()

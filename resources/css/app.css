@@ -188,6 +188,8 @@
     .bin dt { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 
     .line-error { color: var(--halt); font-size: .85rem; margin-top: .6rem; }
+    .profile-label { margin: 1.5rem 0 .5rem; color: var(--muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .section-title + section > .profile-label { margin-top: 0; }
     .line-add { display: block; width: 100%; padding: 1rem 1.25rem; margin-bottom: 1.25rem; border: 1px dashed var(--rule); background: none; color: var(--muted); font: 500 1rem var(--font-sans); text-align: center; cursor: pointer; }
     .line-add:hover { background: var(--panel); border-color: var(--muted); color: var(--ink); }
     .line-notice { margin-top: .9rem; padding: .55rem .8rem; border-left: 3px solid var(--halt); background: var(--floor); color: var(--halt); font-size: .9rem; font-weight: 500; }
