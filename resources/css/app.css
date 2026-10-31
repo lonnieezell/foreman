@@ -216,6 +216,7 @@
     .issue-card a { text-decoration-color: var(--rule); text-underline-offset: 3px; }
     .issue-card .btn { text-decoration: none; }
     .issue-card .run-repo { color: var(--muted); }
+    .issue-card-head .status { margin-left: .75rem; font-size: .85rem; }
     .issue-age { margin-left: auto; color: var(--muted); font-size: .85rem; }
     .issue-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .issue-card .run-error { color: var(--halt); font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

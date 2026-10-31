@@ -277,4 +277,22 @@ class DashboardTest extends TestCase
 
         $this->get('/')->assertSee('cp: .env.example: No such file or directory');
     }
+
+    public function test_issue_cards_show_their_status_in_its_colour(): void
+    {
+        $repo = $this->repository(enabled: false);
+        foreach ([[64, RunStatus::Failed], [65, RunStatus::NeedsHuman], [66, RunStatus::PrOpened], [67, RunStatus::WatchingPr]] as [$issue, $status]) {
+            $repo->runs()->create(['issue_number' => $issue, 'issue_title' => 'Fix', 'branch' => "agent/issue-{$issue}", 'model' => 'sonnet', 'status' => $status]);
+        }
+
+        $this->get('/')->assertSee([
+            '<span class="status tone-bad">Failed</span>',
+            '<span class="status tone-attention">Needs you</span>',
+            '<span class="status tone-good">PR opened</span>',
+            '<span class="status tone-active">Watching PR</span>',
+        ], false);
+
+        $repo->runs()->create(['issue_number' => 68, 'issue_title' => 'Fix', 'branch' => 'agent/issue-68', 'model' => 'sonnet', 'status' => RunStatus::Working]);
+        $this->get('/')->assertSee('<span class="status tone-active">Writing code</span>', false);
+    }
 }

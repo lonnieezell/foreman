@@ -98,17 +98,17 @@ class IssueSectionsTest extends TestCase
 
         $html = $this->issuesColumn();
 
-        $this->assertSeeInOrder($html, ['Needs your reply', 'Title 1', 'Which database?', 'Failed', 'Title 2', 'Setup script failed', 'Ready for review', 'Title 4', 'Title 3', 'Watching PRs', 'Title 5', 'Handled', 'Title 6']);
+        $this->assertSeeInOrder($html, ['Needs your reply', 'Title 1', 'Which database?', 'Failed', 'Title 2', 'Setup script failed', 'Ready for review', 'Title 4', 'Title 3', 'In progress', 'Title 23', 'Title 22', 'Title 21', 'Title 20', 'Watching PRs', 'Title 5', 'Handled', 'Title 6']);
 
         $this->assertStringContainsString('Title 1', Str::between($html, 'Needs your reply', 'Failed'));
         $this->assertStringContainsString('Title 2', Str::between($html, 'Failed', 'Ready for review'));
-        $this->assertStringContainsString('Title 3', Str::between($html, 'Ready for review', 'Watching PRs'));
-        $this->assertStringContainsString('Title 4', Str::between($html, 'Ready for review', 'Watching PRs'));
+        $this->assertStringContainsString('Title 3', Str::between($html, 'Ready for review', 'In progress'));
+        $this->assertStringContainsString('Title 4', Str::between($html, 'Ready for review', 'In progress'));
         $this->assertStringContainsString('Title 5', Str::between($html, 'Watching PRs', 'Handled'));
         $this->assertStringContainsString('Title 6', Str::after($html, 'Handled'));
 
         foreach ([20, 21, 22, 23] as $active) {
-            $this->assertStringNotContainsString("Title {$active}", $html);
+            $this->assertStringContainsString("Title {$active}", Str::between($html, 'In progress', 'Watching PRs'));
         }
     }
 
@@ -296,7 +296,8 @@ class IssueSectionsTest extends TestCase
         Process::fake();
 
         Livewire::test(Dashboard::class)
-            ->assertSeeHtmlInOrder(['Title 2', 'Cancelled</p>', 'Title 1', 'Dismissed</p>'])
+            ->assertSeeHtmlInOrder(['>Cancelled</span>', 'Title 2', 'Title 1', 'Dismissed</p>'])
+            ->assertDontSeeHtml('Cancelled</p>')
             ->assertSeeHtml('wire:click="restoreRun('.$failed->id.')"')
             ->assertDontSeeHtml('wire:click="restoreRun('.$cancelled->id.')"')
             ->assertDontSeeHtml('wire:click="dismissRun(');
