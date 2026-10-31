@@ -237,6 +237,7 @@
     .fieldset h2 { font-size: 1.2rem; font-weight: 600; }
     .field { display: grid; gap: .3rem; }
     .field label { font-weight: 500; font-size: .9rem; }
+    .field-label-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
     .field input[type=text], .field input[type=number], .field textarea, .field select {
         font: inherit; color: var(--ink); background: var(--floor); border: 1px solid var(--rule);
         border-radius: 4px; padding: .5rem .65rem; width: 100%;

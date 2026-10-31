@@ -131,7 +131,17 @@
             <h2>How the agent works</h2>
 
             <div class="field">
-                <label for="setup_script">Setup script</label>
+                <div class="field-label-row">
+                    <label for="setup_script">Setup script</label>
+                    <button type="button" class="btn btn-quiet btn-icon" x-data="copyFrom('setupScriptPrompt')" x-on:click="copy"
+                            aria-label="Copy a prompt for Claude Code to work out this script"
+                            title="Copy a prompt for Claude Code to work out this script. Paste it into claude in the project."
+                            x-bind:aria-label="copied ? 'Copied' : 'Copy a prompt for Claude Code to work out this script'"
+                            x-bind:title="copied ? 'Copied' : 'Copy a prompt for Claude Code to work out this script. Paste it into claude in the project.'">
+                        <svg x-show="! copied" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5" /></svg>
+                        <svg x-show="copied" style="display: none" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.25 3.25L13 5" /></svg>
+                    </button>
+                </div>
                 <textarea id="setup_script" rows="4" wire:model="setup_script"></textarea>
                 <span class="hint">Runs in each new worktree before the agent starts. It stops at the first failing line.</span>
                 @error('setup_script') <span class="error">{{ $message }}</span> @enderror

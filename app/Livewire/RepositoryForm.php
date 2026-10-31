@@ -179,6 +179,16 @@ class RepositoryForm extends Component
         $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
     }
 
+    /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */
+    public function setupScriptPrompt(): string
+    {
+        return strtr(file_get_contents(resource_path('prompts/setup-script.md')), [
+            '{{base}}' => $this->base_branch,
+            '{{allowed_tools}}' => $this->allowed_tools,
+            '{{setup_script}}' => $this->setup_script,
+        ]);
+    }
+
     private function expandedPath(): string
     {
         return str_starts_with($this->local_path, '~/')
