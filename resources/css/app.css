@@ -216,6 +216,7 @@
     .issue-age { margin-left: auto; color: var(--muted); font-size: .85rem; }
     .issue-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .issue-card .run-error { color: var(--halt); font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .issue-handled { color: var(--muted); font-size: .85rem; }
     .issue-actions { display: flex; gap: .5rem; margin-top: .5rem; }
 
     /* Wide screens: repositories on the left, issues on the right. A lone column takes the full width. */
