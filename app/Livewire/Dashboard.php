@@ -98,8 +98,24 @@ class Dashboard extends Component
         Preflight::forget();
     }
 
+    /** Mark an issue handled outside Foreman. Only its latest run can be dismissed; nothing is sent to GitHub. */
+    public function dismissRun(int $id): void
+    {
+        $run = Run::latestPerIssue()->find($id);
+
+        if ($run && in_array($run->status, [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened], true)) {
+            $run->update(['handled_at' => now()]);
+        }
+    }
+
+    public function restoreRun(int $id): void
+    {
+        Run::latestPerIssue()->whereKey($id)->update(['handled_at' => null]);
+    }
+
     /**
-     * Issues grouped by their latest run's status, attention sections first.
+     * Issues grouped by their latest run's status, attention sections first. Dismissed issues
+     * move to Handled, next to cancelled ones.
      *
      * @return list<array{title:string,statuses:list<RunStatus>,runs:Collection,attention:bool}>
      */
@@ -107,21 +123,23 @@ class Dashboard extends Component
     {
         $latest = fn () => Run::latestPerIssue()
             ->whereHas('repository', fn ($q) => $q->whereNull('archived_at'))
-            ->with('repository')
-            ->latest('id');
+            ->with('repository');
 
-        $runs = $latest()->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, RunStatus::WatchingPr])->get();
-        $handled = $latest()->where('status', RunStatus::Cancelled)->limit(10)->get();
+        $runs = $latest()->latest('id')->whereNull('handled_at')
+            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, RunStatus::WatchingPr])->get();
+        $handled = $latest()
+            ->where(fn ($q) => $q->whereNotNull('handled_at')->orWhere('status', RunStatus::Cancelled))
+            ->orderByDesc('updated_at')->orderByDesc('id')->limit(10)->get();
 
-        $all = $runs->merge($handled);
-
-        return array_map(fn (array $section) => [...$section, 'runs' => $all->whereIn('status', $section['statuses'])->values()], [
+        $sections = array_map(fn (array $section) => [...$section, 'runs' => $runs->whereIn('status', $section['statuses'])->values()], [
             ['title' => 'Needs your reply', 'statuses' => [RunStatus::NeedsHuman], 'attention' => true],
             ['title' => 'Failed', 'statuses' => [RunStatus::Failed], 'attention' => true],
             ['title' => 'Ready for review', 'statuses' => [RunStatus::PrReady, RunStatus::PrOpened], 'attention' => true],
             ['title' => 'Watching PRs', 'statuses' => [RunStatus::WatchingPr], 'attention' => false],
-            ['title' => 'Handled', 'statuses' => [RunStatus::Cancelled], 'attention' => false],
         ]);
+        $sections[] = ['title' => 'Handled', 'statuses' => [], 'runs' => $handled, 'attention' => false];
+
+        return $sections;
     }
 
     public function render()

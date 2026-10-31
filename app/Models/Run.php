@@ -25,6 +25,7 @@ class Run extends Model
             'finished_at' => 'datetime',
             'heartbeat_at' => 'datetime',
             'watch_started_at' => 'datetime',
+            'handled_at' => 'datetime',
             'pr_feedback' => 'array',
         ];
     }

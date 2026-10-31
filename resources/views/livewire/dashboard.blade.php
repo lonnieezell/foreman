@@ -223,24 +223,37 @@
                     @if ($run->error && in_array($run->status, [\App\Enums\RunStatus::Failed, \App\Enums\RunStatus::NeedsHuman], true))
                         <p class="run-error" title="{{ $run->error }}">{{ $run->error }}</p>
                     @endif
+                    @if ($run->handled_at)
+                        <p class="issue-handled">Dismissed</p>
+                        <div class="issue-actions"><button class="btn btn-quiet" wire:click="restoreRun({{ $run->id }})">Restore</button></div>
+                    @else
                     @switch($run->status)
                         @case(\App\Enums\RunStatus::NeedsHuman)
                             <div class="issue-actions">
                                 @if ($run->issue_url)<a class="btn btn-quiet" href="{{ $run->issue_url }}" target="_blank" rel="noopener">Open issue</a>@endif
                                 <button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
+                                <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
                             </div>
                             @break
                         @case(\App\Enums\RunStatus::Failed)
+                            <div class="issue-actions">
+                                <button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button>
+                                <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
+                            </div>
+                            @break
                         @case(\App\Enums\RunStatus::Cancelled)
+                            <p class="issue-handled">Cancelled</p>
                             <div class="issue-actions"><button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button></div>
                             @break
                         @case(\App\Enums\RunStatus::PrReady)
                         @case(\App\Enums\RunStatus::PrOpened)
-                            @if ($run->pr_url)
-                                <div class="issue-actions"><a class="btn btn-quiet" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a></div>
-                            @endif
+                            <div class="issue-actions">
+                                @if ($run->pr_url)<a class="btn btn-quiet" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a>@endif
+                                <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
+                            </div>
                             @break
                     @endswitch
+                    @endif
                 </article>
             @endforeach
         </section>

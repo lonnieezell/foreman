@@ -259,4 +259,99 @@ class IssueSectionsTest extends TestCase
         $this->assertSame('sess-1', $next->resume_session_id);
         Queue::assertPushedOn('runs', ProcessRun::class);
     }
+
+    public function test_dismiss_is_offered_on_attention_cards_and_moves_the_issue_to_handled(): void
+    {
+        $repo = $this->repository();
+        $runs = [
+            $this->makeRun($repo, 1, RunStatus::NeedsHuman),
+            $this->makeRun($repo, 2, RunStatus::Failed, ['error' => 'boom']),
+            $this->makeRun($repo, 3, RunStatus::PrReady, ['pr_url' => 'https://example.test/pull/3']),
+            $this->makeRun($repo, 4, RunStatus::PrOpened),
+        ];
+        $this->makeRun($repo, 5, RunStatus::WatchingPr);
+        $this->makeRun($repo, 6, RunStatus::Cancelled);
+        Process::fake();
+
+        $component = Livewire::test(Dashboard::class);
+        foreach ($runs as $run) {
+            $component->assertSeeHtml('wire:click="dismissRun('.$run->id.')"');
+        }
+        $this->assertSame(4, substr_count($component->html(), 'dismissRun('));
+
+        $component->call('dismissRun', $runs[1]->id);
+
+        $this->assertNotNull($runs[1]->fresh()->handled_at);
+        $html = Str::after($component->html(), '>Issues</h2>');
+        $this->assertStringNotContainsString('Title 2', Str::before($html, 'Handled'));
+        $this->assertStringContainsString('Title 2', Str::after($html, 'Handled'));
+        $this->assertStringNotContainsString('class="issue-section-title">Failed', $html);
+    }
+
+    public function test_handled_labels_dismissed_and_cancelled_and_offers_restore_only_for_dismissed(): void
+    {
+        $repo = $this->repository();
+        $failed = $this->makeRun($repo, 1, RunStatus::Failed, ['handled_at' => now()]);
+        $cancelled = $this->makeRun($repo, 2, RunStatus::Cancelled);
+        Process::fake();
+
+        Livewire::test(Dashboard::class)
+            ->assertSeeHtmlInOrder(['Title 2', 'Cancelled</p>', 'Title 1', 'Dismissed</p>'])
+            ->assertSeeHtml('wire:click="restoreRun('.$failed->id.')"')
+            ->assertDontSeeHtml('wire:click="restoreRun('.$cancelled->id.')"')
+            ->assertDontSeeHtml('wire:click="dismissRun(');
+    }
+
+    public function test_restore_returns_the_issue_to_its_section(): void
+    {
+        $repo = $this->repository();
+        $run = $this->makeRun($repo, 1, RunStatus::PrReady, ['pr_url' => 'https://example.test/pull/1', 'handled_at' => now()]);
+        Process::fake();
+
+        $component = Livewire::test(Dashboard::class)->assertDontSee('Ready for review')->call('restoreRun', $run->id);
+
+        $this->assertNull($run->fresh()->handled_at);
+        $component->assertSee('Ready for review')->assertSeeHtml('wire:click="dismissRun('.$run->id.')"');
+    }
+
+    public function test_dismiss_and_restore_write_nothing_to_github(): void
+    {
+        $run = $this->makeRun($this->repository(), 1, RunStatus::Failed);
+        $github = Mockery::mock(GitHub::class);
+        $github->shouldNotReceive('requeue', 'reclaim');
+        $this->app->instance(GitHub::class, $github);
+        Process::fake();
+
+        Livewire::test(Dashboard::class)->call('dismissRun', $run->id)->call('restoreRun', $run->id);
+
+        // The dashboard's own health checks run `gh auth status`; anything else would touch GitHub
+        Process::assertNotRan(fn ($process) => $process->command[0] === 'gh' && $process->command !== ['gh', 'auth', 'status']);
+    }
+
+    public function test_a_new_run_supersedes_a_dismissal(): void
+    {
+        $repo = $this->repository();
+        $this->makeRun($repo, 1, RunStatus::Failed, ['handled_at' => now()]);
+        $this->makeRun($repo, 1, RunStatus::NeedsHuman);
+        Process::fake();
+
+        $html = $this->issuesColumn();
+
+        $this->assertSame(1, substr_count($html, 'Title 1'));
+        $this->assertStringContainsString('Needs your reply', $html);
+        $this->assertStringNotContainsString('Handled', $html);
+    }
+
+    public function test_dismissing_a_stale_card_does_not_hide_a_newer_run(): void
+    {
+        $repo = $this->repository();
+        $old = $this->makeRun($repo, 1, RunStatus::Failed);
+        $new = $this->makeRun($repo, 1, RunStatus::NeedsHuman);
+        Process::fake();
+
+        Livewire::test(Dashboard::class)->call('dismissRun', $old->id);
+
+        $this->assertNull($old->fresh()->handled_at);
+        $this->assertNull($new->fresh()->handled_at);
+    }
 }
