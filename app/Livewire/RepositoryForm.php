@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Repository;
 use App\Services\GitHub;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Throwable;
@@ -52,6 +53,28 @@ class RepositoryForm extends Component
 
         if ($this->prompt_template === '') {
             $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
+        }
+    }
+
+    /**
+     * Opens the OS's folder dialog on this machine. Browser pickers can't reveal an absolute path,
+     * but Foreman runs locally, so the server can ask instead.
+     */
+    public function browse(GitHub $github): void
+    {
+        $command = match (PHP_OS_FAMILY) {
+            'Darwin' => ['osascript', '-e', 'POSIX path of (choose folder with prompt "Choose the local checkout")'],
+            'Windows' => ['powershell', '-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; if ($d.ShowDialog() -eq "OK") { $d.SelectedPath } else { exit 1 }'],
+            default => ['zenity', '--file-selection', '--directory', '--title=Choose the local checkout'],
+        };
+
+        // Waits for as long as the dialog stays open; a non-zero exit means it was cancelled
+        $result = Process::timeout(600)->run($command);
+        $path = trim($result->output());
+
+        if ($result->successful() && $path !== '') {
+            $this->local_path = $path;
+            $this->detect($github);
         }
     }
 
