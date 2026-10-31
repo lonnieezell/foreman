@@ -34,9 +34,11 @@ return [
     /*
      * Watching a PR after it opens. A round starts once no check is pending and
      * review bots have been quiet for quiet_minutes, or timeout_minutes after the push.
+     * A PR no bot has posted on is done after first_look_minutes instead.
      */
     'pr_watch' => [
         'max_rounds' => (int) env('FOREMAN_PR_MAX_ROUNDS', 2),
+        'first_look_minutes' => (int) env('FOREMAN_PR_FIRST_LOOK_MINUTES', 1),
         'quiet_minutes' => (int) env('FOREMAN_PR_QUIET_MINUTES', 5),
         'timeout_minutes' => (int) env('FOREMAN_PR_TIMEOUT_MINUTES', 30),
     ],

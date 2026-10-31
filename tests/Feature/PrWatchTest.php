@@ -161,9 +161,24 @@ class PrWatchTest extends TestCase
 
     public function test_waits_out_the_quiet_period_right_after_a_push(): void
     {
-        $this->github($this->pr());
+        // A bot reviewed before this push, so it may review again
+        $this->github($this->pr(['bot_activity_at' => now()->subMinutes(20)]));
 
         $this->assertSame(RunStatus::WatchingPr, $this->check($this->watchedRun(['watch_started_at' => now()->subMinutes(2)]))->status);
+    }
+
+    public function test_is_ready_after_a_minute_when_no_bot_has_posted(): void
+    {
+        $this->github($this->pr(['checks' => []]));
+
+        $this->assertSame(RunStatus::PrReady, $this->check($this->watchedRun(['watch_started_at' => now()->subMinute()]))->status);
+    }
+
+    public function test_waits_the_first_minute_even_without_bots(): void
+    {
+        $this->github($this->pr(['checks' => []]));
+
+        $this->assertSame(RunStatus::WatchingPr, $this->check($this->watchedRun(['watch_started_at' => now()->subSeconds(30)]))->status);
     }
 
     public function test_green_with_no_bot_threads_is_ready(): void

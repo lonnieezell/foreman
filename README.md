@@ -191,6 +191,7 @@ Foreman-specific settings live in `.env`. Everything else is standard Laravel. T
 | `FOREMAN_USAGE_WEEKLY_CAP` | `0.90` | Hold at this weekly fraction regardless of pace. |
 | `FOREMAN_USAGE_PROBE_MINUTES` | `15` | Refresh a profile's usage numbers if they're older than this before starting runs. |
 | `FOREMAN_PR_MAX_ROUNDS` | `2` | Fix-up rounds per PR before handing it to a human. |
+| `FOREMAN_PR_FIRST_LOOK_MINUTES` | `1` | How long to wait on a PR no review bot has posted on. |
 | `FOREMAN_PR_QUIET_MINUTES` | `5` | How long review bots must be quiet before a round starts. |
 | `FOREMAN_PR_TIMEOUT_MINUTES` | `30` | Start a round this long after a push even if checks are still pending. |
 
@@ -220,7 +221,7 @@ A held profile shows a gauge in the warning colour and the reason on the dashboa
 
 ## PR watching
 
-With **Watch PRs** on, a run that opens a PR moves to **Watching PR**. The watcher only calls `gh` and costs no tokens. Once no check is pending and review bots have been quiet for `FOREMAN_PR_QUIET_MINUTES`, it decides what happens next:
+With **Watch PRs** on, a run that opens a PR moves to **Watching PR**. The watcher only calls `gh` and costs no tokens. Once no check is pending and review bots have been quiet for `FOREMAN_PR_QUIET_MINUTES`, it decides what happens next. If no bot has ever posted on the PR, it only waits `FOREMAN_PR_FIRST_LOOK_MINUTES`:
 
 | PR state | Result |
 | --- | --- |

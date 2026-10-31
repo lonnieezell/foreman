@@ -80,6 +80,11 @@ class PrWatcher
             return false;
         }
 
+        // No bot has ever posted on this PR, so after a first look there is nothing to wait for
+        if (! $pr['bot_activity_at']) {
+            return $run->watch_started_at->copy()->addMinutes(config('foreman.pr_watch.first_look_minutes'))->isPast();
+        }
+
         $quietSince = $pr['bot_activity_at'] && $pr['bot_activity_at']->greaterThan($run->watch_started_at)
             ? $pr['bot_activity_at']
             : $run->watch_started_at;
