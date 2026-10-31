@@ -84,6 +84,7 @@
     .masthead { border-bottom: 1px solid var(--rule); margin-bottom: 2rem; }
     .masthead-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-block: 1rem; }
     .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 1.75rem; text-decoration: none; }
+    .wordmark-logo { display: inline-block; height: 1.25em; width: auto; vertical-align: -.25em; margin-right: .5rem; }
     .masthead-nav { display: flex; gap: 1.25rem; font-weight: 500; }
     .masthead-nav a { text-decoration: none; color: var(--muted); padding-block: .25rem; border-bottom: 2px solid transparent; }
     .masthead-nav a.is-current, .masthead-nav a:hover { color: var(--ink); border-color: var(--ink); }
