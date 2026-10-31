@@ -78,11 +78,9 @@
 
         <div class="stat">
             <div class="stat-value">${{ number_format($spentToday, 2) }}</div>
-            <form wire:submit="saveGlobalBudget" class="stat-label stat-form">
-                <label for="globalBudget">spent today, daily limit $</label>
-                <input id="globalBudget" type="number" step="1" min="0" placeholder="none" wire:model="globalBudget">
-                <button class="btn-link" type="submit">Save</button>
-            </form>
+            <p class="stat-label">
+                spent today {{ $budget === null ? '· no' : 'of $'.number_format($budget, 2) }} <a href="{{ route('settings') }}" wire:navigate>limit</a>
+            </p>
         </div>
 
         <button wire:click="togglePause" class="btn stats-action {{ $paused ? 'btn-go' : 'btn-halt' }}">

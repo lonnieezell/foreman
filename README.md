@@ -170,12 +170,16 @@ A prompt left unchanged is stored as "default", so later improvements to `resour
 These are on the dashboard rather than per repository:
 
 - **Pause** stops all new runs. Runs in progress finish, and PRs are still watched.
-- **Daily budget** caps total spend across all repositories for the day.
 - **Run anyway** appears when a profile is held for usage. It lets the next check start runs on that profile regardless of the hold.
+
+The **Settings** page, linked from the header, holds the rest:
+
+- **Daily limit** caps total spend across all repositories for the day. The dashboard shows it next to today's spend.
+- **Usage holds** and **PR watching** override the matching environment variables below. Leave a field empty to fall back to the `.env` value. Changes reach running workers before their next job, without a restart.
 
 ### Environment variables
 
-Foreman-specific settings live in `.env`. Everything else is standard Laravel.
+Foreman-specific settings live in `.env`. Everything else is standard Laravel. The `FOREMAN_*` values are defaults that the Settings page can override.
 
 | Variable | Default | Description |
 | --- | --- | --- |
