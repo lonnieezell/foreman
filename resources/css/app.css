@@ -121,6 +121,21 @@
     .spend { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
     .spend small { font-family: var(--font-sans); font-weight: 400; font-size: .8rem; color: var(--muted); display: block; }
 
+    /* Usage gauges: one card per Claude profile. The tick marks where runs are held. */
+    .gauges { display: flex; flex-wrap: wrap; gap: .75rem; }
+    .gauge { background: var(--panel); border-left: 4px solid var(--enamel); padding: .6rem .85rem .65rem; width: 19rem; font-size: .8rem; }
+    .gauge.is-held { border-left-color: var(--halt); }
+    .gauge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; color: var(--muted); margin-bottom: .2rem; }
+    .gauge-head strong { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
+    .gauge-row { display: grid; grid-template-columns: 2.4rem 1fr 2.6rem; align-items: center; gap: .55rem; margin-top: .35rem; }
+    .gauge-label { color: var(--muted); }
+    .gauge-bar { position: relative; height: 6px; background: var(--floor); }
+    .gauge-bar > span { display: block; height: 100%; background: currentColor; transition: width .6s ease; }
+    .gauge-bar > i { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .5; }
+    .gauge-value { font-family: var(--font-display); font-weight: 600; font-size: .95rem; text-align: right; font-variant-numeric: tabular-nums; }
+    .gauge-note { color: var(--muted); font-size: .72rem; padding-left: 2.95rem; }
+    .gauge-foot { color: var(--muted); border-top: 1px solid var(--rule); margin-top: .5rem; padding-top: .4rem; font-variant-numeric: tabular-nums; }
+
     /* A repository = a production line */
     .line { background: var(--panel); border-top: 3px solid var(--rule); padding: 1.25rem 1.25rem 1rem; margin-bottom: 1.25rem; }
     .line.is-running { border-top-color: var(--enamel); }

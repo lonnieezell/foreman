@@ -245,10 +245,45 @@ class UsageLimitsTest extends TestCase
         app(Usage::class)->record('work', $this->limits(0.85, 0.53));
 
         $this->get('/')
-            ->assertSee('5h 85%')
-            ->assertSee('week 53%')
+            ->assertSeeInOrder(['work', 'Held', '5h', '85%', 'week', '53%'])
+            ->assertSee('style="width: 85%"', false)
             ->assertSee('Holding new runs on the work profile.')
             ->assertSee('Run anyway')
             ->assertSee('usage unknown');   // the default profile has no snapshot yet
+    }
+
+    public function test_gauge_marks_each_window_against_its_limit(): void
+    {
+        // Three days into the week: 57% elapsed + 10% margin = 67% pace
+        app(Usage::class)->record('work', $this->limits(0.42, 0.62, weekResetsIn: 3 * 86400));
+
+        $gauge = app(Usage::class)->gauge('work');
+
+        $this->assertSame(['percent' => 42, 'limit' => 80, 'tone' => 'good'], array_intersect_key($gauge['five_hour'], array_flip(['percent', 'limit', 'tone'])));
+        $this->assertSame(['percent' => 62, 'limit' => 67, 'tone' => 'attention'], array_intersect_key($gauge['seven_day'], array_flip(['percent', 'limit', 'tone'])));
+        $this->assertStringContainsString('pace 67%', $gauge['seven_day']['note']);
+        $this->assertFalse($gauge['held']);
+    }
+
+    public function test_gauge_shows_a_window_over_its_limit_as_held(): void
+    {
+        app(Usage::class)->record('work', $this->limits(0.86, 0.1));
+
+        $gauge = app(Usage::class)->gauge('work');
+
+        $this->assertSame('bad', $gauge['five_hour']['tone']);
+        $this->assertTrue($gauge['held']);
+        $this->assertNull(app(Usage::class)->gauge('default'));
+    }
+
+    public function test_gauge_shows_a_reset_window_as_empty(): void
+    {
+        app(Usage::class)->record('work', $this->limits(0.95, 0.1));
+        $this->travel(61)->minutes();
+
+        $gauge = app(Usage::class)->gauge('work');
+
+        $this->assertSame(0, $gauge['five_hour']['percent']);
+        $this->assertSame('reset', $gauge['five_hour']['note']);
     }
 }

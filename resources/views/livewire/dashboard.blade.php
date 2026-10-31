@@ -40,8 +40,35 @@
                     Nothing on the line. Label an issue “ready-for-agent” to start one.
                 @endif
             </p>
-            @foreach ($usageByProfile as $profile => $summary)
-                <p class="hint" wire:key="usage-{{ $profile }}"><strong>{{ $profile }}</strong> · {{ $summary }}</p>
+        </div>
+
+        <div class="gauges" aria-label="Claude usage by profile">
+            @foreach ($gauges as $profile => $gauge)
+                <div @class(['gauge', 'is-held' => $gauge['held'] ?? false]) wire:key="gauge-{{ $profile }}">
+                    <p class="gauge-head">
+                        <strong>{{ $profile }}</strong>
+                        <span>
+                            @if ($gauge['held'] ?? false)<span class="tone-bad">Held</span> · @endif
+                            {{ $gauge ? 'as of '.$gauge['as_of'] : 'usage unknown' }}
+                        </span>
+                    </p>
+                    @foreach (['five_hour' => '5h', 'seven_day' => 'week'] as $key => $label)
+                        @if ($window = $gauge[$key] ?? null)
+                            <div class="gauge-row" title="{{ $label }} {{ $window['percent'] }}%, holds at {{ $window['limit'] }}%">
+                                <span class="gauge-label">{{ $label }}</span>
+                                <span class="gauge-bar tone-{{ $window['tone'] }}">
+                                    <span style="width: {{ min(100, $window['percent']) }}%"></span>
+                                    <i style="left: {{ $window['limit'] }}%"></i>
+                                </span>
+                                <span class="gauge-value tone-{{ $window['tone'] }}">{{ $window['percent'] }}%</span>
+                            </div>
+                            <p class="gauge-note">{{ $window['note'] }}</p>
+                        @endif
+                    @endforeach
+                    @if ($tokens = $tokensByProfile[$profile] ?? null)
+                        <p class="gauge-foot">{{ Number::abbreviate($tokens['in'], maxPrecision: 1) }} in / {{ Number::abbreviate($tokens['out'], maxPrecision: 1) }} out today</p>
+                    @endif
+                </div>
             @endforeach
         </div>
 
@@ -50,12 +77,6 @@
                 ${{ number_format($spentToday, 2) }}
                 <small>spent today{{ $budget !== null ? ' of $'.number_format($budget, 2) : ', no daily limit' }}</small>
             </div>
-            @foreach ($tokensByProfile as $profile => $tokens)
-                <div class="spend" wire:key="tokens-{{ $profile }}">
-                    {{ Number::abbreviate($tokens['in'], maxPrecision: 1) }} / {{ Number::abbreviate($tokens['out'], maxPrecision: 1) }}
-                    <small>{{ $profile }} tokens in / out today</small>
-                </div>
-            @endforeach
             <form wire:submit="saveGlobalBudget" class="field" style="gap:.2rem">
                 <label for="globalBudget" class="hint">Daily limit, all repositories</label>
                 <div class="field-inline">

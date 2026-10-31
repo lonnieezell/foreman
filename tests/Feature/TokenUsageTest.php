@@ -96,8 +96,8 @@ class TokenUsageTest extends TestCase
         ], Run::tokensTodayByProfile());
 
         $this->get('/')
-            ->assertSee('work tokens in / out today')
-            ->assertSee('3K / 4K')
+            ->assertSee('3K in / 4K out today')
+            ->assertSee('1K in / 700 out today')   // personal: no repository uses it, but it spent tokens today
             ->assertSee('Tokens in / out')
             ->assertSee('1.5K / 2K');   // a single work run in the recent runs table
     }
