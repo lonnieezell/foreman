@@ -16,16 +16,22 @@ class GitHub
     /** @return list<array{number:int,title:string,url:string}> */
     public function readyIssues(Repository $repo, int $limit): array
     {
-        $output = $this->gh($repo, [
-            'issue', 'list',
-            '--label', $repo->ready_label,
-            '--state', 'open',
-            '--limit', (string) $limit,
-            '--json', 'number,title,url',
-        ]);
+        [$owner, $name] = explode('/', $repo->github_repo, 2);
 
-        // Oldest first, so the queue behaves like a queue
-        return array_reverse(json_decode($output, true) ?? []);
+        // Oldest first, so the queue behaves like a queue. blockedBy counts only open blockers.
+        $output = $this->api($repo, ['graphql',
+            '-f', 'query=query($owner: String!, $name: String!, $label: String!) { repository(owner: $owner, name: $name) {
+                issues(labels: [$label], states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
+                    nodes { number title url issueDependenciesSummary { blockedBy } }
+                } } }',
+            '-F', "owner={$owner}", '-F', "name={$name}", '-f', "label={$repo->ready_label}"]);
+
+        return collect(json_decode($output, true)['data']['repository']['issues']['nodes'] ?? [])
+            ->filter(fn (array $issue) => ($issue['issueDependenciesSummary']['blockedBy'] ?? 0) === 0)
+            ->take($limit)
+            ->map(fn (array $issue) => ['number' => $issue['number'], 'title' => $issue['title'], 'url' => $issue['url']])
+            ->values()
+            ->all();
     }
 
     /** Swap ready → working so the next poll can't pick it up twice. */
