@@ -2,6 +2,8 @@
   <img src="public/icon-512.png" alt="Foreman logo: a figure in a yellow hard hat" width="160">
 </p>
 
+<div align="center">
+
 # Foreman
 
 Turn labelled GitHub issues into pull requests, using Claude Code on your own machine.
@@ -10,6 +12,8 @@ Turn labelled GitHub issues into pull requests, using Claude Code on your own ma
 ![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
 ![Livewire 4](https://img.shields.io/badge/Livewire-4-FB70A9?logo=livewire&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
+</div>
 
 Label an issue `ready-for-agent` and Foreman picks it up. It runs Claude Code headlessly in an isolated git worktree and opens a PR. It then stays with that PR until CI is green and the review bots have been answered. If the agent gets stuck, it hands the issue back to you with an explanation.
 
