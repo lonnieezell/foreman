@@ -31,7 +31,7 @@
                 @error('local_path') <span class="error">{{ $message }}</span> @enderror
             </div>
 
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="github_repo">GitHub repository</label>
                     <input id="github_repo" type="text" wire:model="github_repo" placeholder="owner/name">
@@ -52,7 +52,7 @@
 
         <section class="fieldset">
             <h2>Pace and spend</h2>
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="concurrency">Issues at a time</label>
                     <input id="concurrency" type="number" min="1" max="8" wire:model="concurrency">
@@ -69,7 +69,7 @@
                     @error('daily_budget') <span class="error">{{ $message }}</span> @enderror
                 </div>
             </div>
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="model">Model</label>
                     <select id="model" wire:model="model">
@@ -107,7 +107,7 @@
         <section class="fieldset">
             <h2>Labels</h2>
             <p class="hint">These are created on GitHub when you save. Add the first one to an issue to send it to Foreman.</p>
-            <div class="field-row">
+            <div class="field-row field-row-aligned">
                 <div class="field">
                     <label for="ready_label">Ready for the agent</label>
                     <input id="ready_label" type="text" wire:model="ready_label">
