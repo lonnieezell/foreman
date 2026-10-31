@@ -210,6 +210,10 @@
     .issue-section { margin-bottom: 1.25rem; }
     .issue-section.is-muted { opacity: .7; }
     .issue-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
+    .issue-section-toggle { all: unset; cursor: pointer; }
+    .issue-section-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+    .issue-section-toggle svg { display: inline-block; width: .9em; height: .9em; vertical-align: -.1em; margin-right: .3em; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+    .issue-section-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
     .issue-count { color: var(--muted); font-weight: 400; }
     .issue-card { border: 1px solid var(--rule); border-radius: 6px; padding: .6rem .9rem; margin-bottom: .5rem; font-size: .9rem; }
     .issue-card-head { display: flex; align-items: baseline; }

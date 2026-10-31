@@ -96,7 +96,7 @@ class IssueSectionsTest extends TestCase
         }
         Process::fake();
 
-        $html = $this->issuesColumn();
+        $html = Str::after(Livewire::test(Dashboard::class)->set('showHandled', true)->html(), '>Issues</h2>');
 
         $this->assertSeeInOrder($html, ['Needs your reply', 'Title 1', 'Which database?', 'Failed', 'Title 2', 'Setup script failed', 'Ready for review', 'Title 4', 'Title 3', 'In progress', 'Title 23', 'Title 22', 'Title 21', 'Title 20', 'Watching PRs', 'Title 5', 'Handled', 'Title 6']);
 
@@ -122,7 +122,7 @@ class IssueSectionsTest extends TestCase
         $this->makeRun($repo, 6, RunStatus::Cancelled);
         Process::fake();
 
-        Livewire::test(Dashboard::class)
+        Livewire::test(Dashboard::class)->set('showHandled', true)
             ->assertSeeHtml('href="https://example.test/issues/1"')
             ->assertSeeHtml('wire:click="continueRun('.Run::where('issue_number', 1)->value('id').')"')
             ->assertSeeHtml('wire:click="retryRun('.Run::where('issue_number', 2)->value('id').')"')
@@ -168,7 +168,7 @@ class IssueSectionsTest extends TestCase
         }
         Process::fake();
 
-        $this->get('/')
+        Livewire::test(Dashboard::class)->set('showHandled', true)
             ->assertSee('Title 12')
             ->assertSee('Title 3')
             ->assertDontSee('Title 2<', false)
@@ -279,13 +279,31 @@ class IssueSectionsTest extends TestCase
         }
         $this->assertSame(4, substr_count($component->html(), 'dismissRun('));
 
-        $component->call('dismissRun', $runs[1]->id);
+        $component->call('dismissRun', $runs[1]->id)->set('showHandled', true);
 
         $this->assertNotNull($runs[1]->fresh()->handled_at);
         $html = Str::after($component->html(), '>Issues</h2>');
         $this->assertStringNotContainsString('Title 2', Str::before($html, 'Handled'));
         $this->assertStringContainsString('Title 2', Str::after($html, 'Handled'));
         $this->assertStringNotContainsString('class="issue-section-title">Failed', $html);
+    }
+
+    public function test_handled_starts_collapsed_and_toggles_open(): void
+    {
+        $this->makeRun($this->repository(), 1, RunStatus::Cancelled);
+        Process::fake();
+
+        Livewire::test(Dashboard::class)
+            ->assertSeeHtml('aria-expanded="false"')
+            ->assertSee('Handled')
+            ->assertDontSee('Title 1')
+            ->assertDontSee('View all history')
+            ->toggle('showHandled')
+            ->assertSeeHtml('aria-expanded="true"')
+            ->assertSee('Title 1')
+            ->assertSee('View all history')
+            ->toggle('showHandled')
+            ->assertDontSee('Title 1');
     }
 
     public function test_handled_labels_dismissed_and_cancelled_and_offers_restore_only_for_dismissed(): void
@@ -295,7 +313,7 @@ class IssueSectionsTest extends TestCase
         $cancelled = $this->makeRun($repo, 2, RunStatus::Cancelled);
         Process::fake();
 
-        Livewire::test(Dashboard::class)
+        Livewire::test(Dashboard::class)->set('showHandled', true)
             ->assertSeeHtmlInOrder(['>Cancelled</span>', 'Title 2', 'Title 1', 'Dismissed</p>'])
             ->assertDontSeeHtml('Cancelled</p>')
             ->assertSeeHtml('wire:click="restoreRun('.$failed->id.')"')

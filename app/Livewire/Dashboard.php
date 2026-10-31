@@ -28,6 +28,9 @@ class Dashboard extends Component
     #[Url(as: 'edit', except: null)]
     public ?int $editing = null;
 
+    // The Handled section starts collapsed
+    public bool $showHandled = false;
+
     // Ids of the attention runs this tab has already seen; null until the first render
     public ?array $seenAttention = null;
 
