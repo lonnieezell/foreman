@@ -77,7 +77,7 @@ This walks you from a fresh clone to your first agent-opened PR.
 **1. Install Foreman.**
 
 ```bash
-git clone https://github.com/<owner>/foreman.git
+git clone https://github.com/lonnieezell/foreman.git
 cd foreman
 composer run setup
 ```
