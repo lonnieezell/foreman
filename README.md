@@ -116,6 +116,16 @@ Click **Start** on the repository's row. Foreman checks for ready issues straigh
 
 ---
 
+## Updating
+
+After you pull new changes, run:
+
+```bash
+composer run update-app
+```
+
+It installs any new dependencies, runs new migrations and rebuilds the assets. Then stop `composer run foreman` with Ctrl+C and start it again. The queue workers keep the old code until they restart.
+
 ## Configuration
 
 ### Repository settings
