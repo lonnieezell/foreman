@@ -26,10 +26,13 @@ class ProcessRun implements ShouldQueue
         .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
 
     public int $tries = 1;
+
     public int $timeout = 0;   // we enforce max_minutes ourselves so we can clean up
 
     private string $buffer = '';
+
     private ?array $result = null;
+
     private bool $limitReported = false;
 
     public function __construct(public Run $run) {}
