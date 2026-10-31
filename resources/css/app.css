@@ -140,7 +140,7 @@
     .line-name { font-size: 1.6rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .line-name a { text-decoration: none; }
     .line-meta { color: var(--muted); font-size: .85rem; margin-top: .2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .line-meta span + span::before, .runs .run-repo::before { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .6; vertical-align: middle; margin: 0 .55rem; }
+    .line-meta span + span::before, .issue-card .run-repo::before { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .6; vertical-align: middle; margin: 0 .55rem; }
     .line-countdown { font-variant-numeric: tabular-nums; }
     .line-countdown svg { display: inline-block; width: .9em; height: .9em; vertical-align: -.1em; margin-right: .3em; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     .line-controls { display: flex; flex-shrink: 0; align-items: center; gap: .4rem; }
@@ -204,18 +204,21 @@
     /* Tables */
     .section-title { font-size: 1.35rem; font-weight: 600; margin: 2.5rem 0 .75rem; }
     .dashboard-columns > :first-child > .section-title { margin-top: 0; }   /* the stats row already spaces it */
-    .table-wrap { overflow-x: auto; background: var(--panel); }
-    table.runs { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    .runs th { text-align: left; font-weight: 500; color: var(--muted); padding: .6rem .9rem; border-bottom: 1px solid var(--rule); }
-    .runs td { padding: .6rem .9rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
-    .runs tr:last-child td { border-bottom: 0; }
-    .runs .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .runs td a { text-decoration-color: var(--rule); text-underline-offset: 3px; }
-    .runs .run-repo { color: var(--muted); }
-    .runs .issue-title { color: var(--muted); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .runs .run-error { color: var(--halt); display: block; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+    .issue-section { margin-bottom: 1.25rem; }
+    .issue-section.is-muted { opacity: .7; }
+    .issue-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
+    .issue-count { color: var(--muted); font-weight: 400; }
+    .issue-card { border: 1px solid var(--rule); border-radius: 6px; padding: .6rem .9rem; margin-bottom: .5rem; font-size: .9rem; }
+    .issue-card-head { display: flex; align-items: baseline; }
+    .issue-card a { text-decoration-color: var(--rule); text-underline-offset: 3px; }
+    .issue-card .btn { text-decoration: none; }
+    .issue-card .run-repo { color: var(--muted); }
+    .issue-age { margin-left: auto; color: var(--muted); font-size: .85rem; }
+    .issue-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .issue-card .run-error { color: var(--halt); font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .issue-actions { display: flex; gap: .5rem; margin-top: .5rem; }
 
-    /* Wide screens: repositories on the left, recent runs on the right. A lone column takes the full width. */
+    /* Wide screens: repositories on the left, issues on the right. A lone column takes the full width. */
     @media (min-width: 96rem) {
         .frame { max-width: 140rem; }
         .dashboard-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }

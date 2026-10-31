@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Services\GitHub;
 use App\Services\Preflight;
 use App\Services\Usage;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -75,19 +76,6 @@ class Dashboard extends Component
         $this->flash = "Next check will start runs on {$profile} regardless of usage.";
     }
 
-    public function cancelRun(int $id): void
-    {
-        $run = Run::findOrFail($id);
-
-        if ($run->status === RunStatus::Queued) {
-            // Nobody has picked it up yet, so cancel it directly
-            $run->moveTo(RunStatus::Cancelled, ['finished_at' => now()]);
-            app(GitHub::class)->release($run->repository, $run->issue_number);
-        } else {
-            $run->update(['cancel_requested' => true]);
-        }
-    }
-
     public function retryRun(int $id): void
     {
         $run = Run::findOrFail($id);
@@ -100,9 +88,40 @@ class Dashboard extends Component
         $this->flash = "#{$run->issue_number} is back in the queue for {$run->repository->name}".($started ? ' and has started.' : '.');
     }
 
+    public function continueRun(int $id)
+    {
+        return $this->redirectRoute('runs.show', Run::findOrFail($id)->continueAfterReply(app(GitHub::class)), navigate: true);
+    }
+
     public function recheck(): void
     {
         Preflight::forget();
+    }
+
+    /**
+     * Issues grouped by their latest run's status, attention sections first.
+     *
+     * @return list<array{title:string,statuses:list<RunStatus>,runs:Collection,attention:bool}>
+     */
+    private function sections(): array
+    {
+        $latest = fn () => Run::latestPerIssue()
+            ->whereHas('repository', fn ($q) => $q->whereNull('archived_at'))
+            ->with('repository')
+            ->latest('id');
+
+        $runs = $latest()->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, RunStatus::WatchingPr])->get();
+        $handled = $latest()->where('status', RunStatus::Cancelled)->limit(10)->get();
+
+        $all = $runs->merge($handled);
+
+        return array_map(fn (array $section) => [...$section, 'runs' => $all->whereIn('status', $section['statuses'])->values()], [
+            ['title' => 'Needs your reply', 'statuses' => [RunStatus::NeedsHuman], 'attention' => true],
+            ['title' => 'Failed', 'statuses' => [RunStatus::Failed], 'attention' => true],
+            ['title' => 'Ready for review', 'statuses' => [RunStatus::PrReady, RunStatus::PrOpened], 'attention' => true],
+            ['title' => 'Watching PRs', 'statuses' => [RunStatus::WatchingPr], 'attention' => false],
+            ['title' => 'Handled', 'statuses' => [RunStatus::Cancelled], 'attention' => false],
+        ]);
     }
 
     public function render()
@@ -120,7 +139,9 @@ class Dashboard extends Component
         return view('livewire.dashboard', [
             'repositories' => $repositories,
             'editingRepository' => $this->editing ? $repositories->find($this->editing) : null,
-            'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
+            'sections' => $this->sections(),
+            'doneToday' => Run::doneToday()->toBase()->selectRaw('repository_id, status, count(*) as total')->groupBy('repository_id', 'status')->get()
+                ->groupBy('repository_id')->map->pluck('total', 'status'),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
             // Every configured profile gets a gauge, as do any a repository uses or that spent tokens today

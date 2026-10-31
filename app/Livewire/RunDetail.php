@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\Enums\RunStatus;
-use App\Jobs\ProcessRun;
 use App\Models\Run;
 use App\Services\GitHub;
 use Illuminate\Support\Facades\Artisan;
@@ -35,24 +34,7 @@ class RunDetail extends Component
     /** Resume the same Claude session in the same worktree, after the human replied on the issue. */
     public function continueRun(GitHub $github)
     {
-        $previous = $this->run;
-        $github->reclaim($previous->repository, $previous->issue_number);
-
-        $next = $previous->repository->runs()->create([
-            'issue_number' => $previous->issue_number,
-            'issue_title' => $previous->issue_title,
-            'issue_url' => $previous->issue_url,
-            'branch' => $previous->branch,
-            'status' => RunStatus::Queued,
-            'model' => $previous->repository->model,
-            'worktree_path' => $previous->worktree_path,
-            'resume_session_id' => $previous->session_id,
-        ]);
-        $next->log("Continuing run {$previous->id} after a human reply.");
-
-        ProcessRun::dispatch($next)->onQueue('runs');
-
-        return $this->redirectRoute('runs.show', $next, navigate: true);
+        return $this->redirectRoute('runs.show', $this->run->continueAfterReply($github), navigate: true);
     }
 
     public function retry(GitHub $github)
