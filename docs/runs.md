@@ -33,7 +33,14 @@ Claude Code is running in the worktree with the repository's instructions.
 
 ### Running checks
 
-The agent has started running tests or static analysis. Foreman moves the run here when the agent runs a command containing `pest`, `phpunit`, `phpstan`, `pint` or `artisan test`. If your project uses other tools, the run can finish without ever showing this station. That's harmless.
+The agent has started running tests or static analysis. Foreman moves the run here when the agent runs one of these:
+
+- **PHP:** `pest`, `phpunit`, `phpstan`, `pint` or `artisan test`
+- **JavaScript/TypeScript:** `vitest`, `jest`, `playwright`, `eslint`, `prettier`, `biome` or `tsc`
+- **Rust:** `cargo test`, `cargo nextest`, `cargo clippy`, `cargo fmt`, `cargo check` or `rustfmt`
+- **Project scripts:** `npm`, `pnpm`, `yarn`, `bun` or `composer` running a `test`, `lint`, `typecheck`, `type-check`, `check` or `format` script, such as `npm run lint` or `composer test`
+
+If your project uses other tools or script names, the run can finish without ever showing this station. That's harmless.
 
 ## How a run ends
 
