@@ -223,6 +223,7 @@
                 <article class="issue-card" wire:key="issue-{{ $run->id }}">
                     <div class="issue-card-head">
                         <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
+                        <span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span>
                         <span class="issue-age">{{ ($run->finished_at ?? $run->updated_at)->diffForHumans(['short' => true]) }}</span>
                     </div>
                     <p class="issue-title">{{ $run->issue_title }}</p>
@@ -248,7 +249,6 @@
                             </div>
                             @break
                         @case(\App\Enums\RunStatus::Cancelled)
-                            <p class="issue-handled">Cancelled</p>
                             <div class="issue-actions"><button class="btn btn-quiet" wire:click="retryRun({{ $run->id }})">Retry</button></div>
                             @break
                         @case(\App\Enums\RunStatus::PrReady)

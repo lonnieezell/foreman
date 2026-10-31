@@ -126,7 +126,7 @@ class Dashboard extends Component
             ->with('repository');
 
         $runs = $latest()->latest('id')->whereNull('handled_at')
-            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, RunStatus::WatchingPr])->get();
+            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, ...RunStatus::stations(), RunStatus::WatchingPr])->get();
         $handled = $latest()
             ->where(fn ($q) => $q->whereNotNull('handled_at')->orWhere('status', RunStatus::Cancelled))
             ->orderByDesc('updated_at')->orderByDesc('id')->limit(10)->get();
@@ -135,6 +135,7 @@ class Dashboard extends Component
             ['title' => 'Needs your reply', 'statuses' => [RunStatus::NeedsHuman], 'attention' => true],
             ['title' => 'Failed', 'statuses' => [RunStatus::Failed], 'attention' => true],
             ['title' => 'Ready for review', 'statuses' => [RunStatus::PrReady, RunStatus::PrOpened], 'attention' => true],
+            ['title' => 'In progress', 'statuses' => RunStatus::stations(), 'attention' => false],
             ['title' => 'Watching PRs', 'statuses' => [RunStatus::WatchingPr], 'attention' => false],
         ]);
         $sections[] = ['title' => 'Handled', 'statuses' => [], 'runs' => $handled, 'attention' => false];
