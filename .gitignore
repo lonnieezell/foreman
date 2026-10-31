@@ -19,7 +19,7 @@
 /public/hot
 /public/storage
 /storage/*.key
-/storage/factory
+/storage/foreman
 /storage/pail
 /vendor
 _ide_helper.php

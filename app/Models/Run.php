@@ -60,7 +60,7 @@ class Run extends Model
 
         $label = $this->status === RunStatus::PrOpened ? 'Fixes pushed' : $this->status->label();
 
-        return "{$label} · round {$this->pr_round}/".config('factory.pr_watch.max_rounds');
+        return "{$label} · round {$this->pr_round}/".config('foreman.pr_watch.max_rounds');
     }
 
     public function removeWorktree(): void
@@ -76,13 +76,13 @@ class Run extends Model
     /** Human-readable log the UI tails. */
     public function logPath(): string
     {
-        return storage_path("factory/logs/run-{$this->id}.log");
+        return storage_path("foreman/logs/run-{$this->id}.log");
     }
 
     /** Raw stream-json output from Claude, kept for debugging. */
     public function rawLogPath(): string
     {
-        return storage_path("factory/logs/run-{$this->id}.jsonl");
+        return storage_path("foreman/logs/run-{$this->id}.jsonl");
     }
 
     public function log(string $line): void

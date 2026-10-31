@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Checks that everything the factory depends on is actually there,
+ * Checks that everything Foreman depends on is actually there,
  * so problems show up in the UI instead of as silently stuck runs.
  */
 class Preflight
@@ -20,25 +20,25 @@ class Preflight
         $problems = [];
 
         // Tool checks are slow-ish, so cache them for a few minutes.
-        $tools = Cache::remember('factory.preflight.tools', 300, fn () => [
+        $tools = Cache::remember('foreman.preflight.tools', 300, fn () => [
             'gh' => Process::run(['gh', 'auth', 'status'])->successful(),
             'claude' => Process::run(['claude', '--version'])->successful(),
             'git' => Process::run(['git', '--version'])->successful(),
         ]);
 
         if (! $tools['git']) {
-            $problems[] = ['problem' => 'git isn’t on the PATH of the process running the factory.', 'fix' => 'Start the factory from a terminal where `git --version` works.'];
+            $problems[] = ['problem' => 'git isn’t on the PATH of the process running Foreman.', 'fix' => 'Start Foreman from a terminal where `git --version` works.'];
         }
         if (! $tools['gh']) {
-            $problems[] = ['problem' => 'GitHub CLI isn’t installed or isn’t logged in.', 'fix' => 'Run `gh auth login`, then restart the factory.'];
+            $problems[] = ['problem' => 'GitHub CLI isn’t installed or isn’t logged in.', 'fix' => 'Run `gh auth login`, then restart Foreman.'];
         }
         if (! $tools['claude']) {
-            $problems[] = ['problem' => 'Claude Code isn’t on the PATH.', 'fix' => 'Start the factory from a terminal where `claude --version` works.'];
+            $problems[] = ['problem' => 'Claude Code isn’t on the PATH.', 'fix' => 'Start Foreman from a terminal where `claude --version` works.'];
         }
 
         $lastPoll = Setting::get('last_poll_heartbeat');
         if ($lastPoll === null || Carbon::parse($lastPoll)->lt(now()->subMinutes(3))) {
-            $problems[] = ['problem' => 'The scheduler isn’t running, so no repositories are being checked.', 'fix' => 'Start everything with `composer run factory`.'];
+            $problems[] = ['problem' => 'The scheduler isn’t running, so no repositories are being checked.', 'fix' => 'Start everything with `composer run foreman`.'];
         }
 
         $stuckJobs = DB::table('jobs')
@@ -56,6 +56,6 @@ class Preflight
 
     public static function forget(): void
     {
-        Cache::forget('factory.preflight.tools');
+        Cache::forget('foreman.preflight.tools');
     }
 }

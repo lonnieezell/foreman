@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Everything the factory needs from GitHub, via the gh CLI you're already
+ * Everything Foreman needs from GitHub, via the gh CLI you're already
  * logged into. No tokens to configure.
  */
 class GitHub

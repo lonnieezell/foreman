@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Setting extends Model
 {
-    protected $table = 'factory_settings';
+    protected $table = 'foreman_settings';
     protected $primaryKey = 'key';
     public $incrementing = false;
     protected $keyType = 'string';

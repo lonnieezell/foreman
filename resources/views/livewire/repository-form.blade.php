@@ -8,7 +8,7 @@
                 @else
                     <button class="btn" wire:click="archive" title="Stop it and hide it from the dashboard, keeping its settings">Archive</button>
                 @endif
-                <button class="btn btn-halt" wire:click="delete" wire:confirm="Remove {{ $repository->name }} and its run history from the factory? Nothing on GitHub is touched.">Remove from factory</button>
+                <button class="btn btn-halt" wire:click="delete" wire:confirm="Remove {{ $repository->name }} and its run history from Foreman? Nothing on GitHub is touched.">Remove from Foreman</button>
             </div>
         @endif
     </div>
@@ -38,7 +38,7 @@
                     @error('github_repo') <span class="error">{{ $message }}</span> @enderror
                 </div>
                 <div class="field">
-                    <label for="name">Name in the factory</label>
+                    <label for="name">Name in Foreman</label>
                     <input id="name" type="text" wire:model="name">
                     @error('name') <span class="error">{{ $message }}</span> @enderror
                 </div>
@@ -81,10 +81,10 @@
                 <div class="field">
                     <label for="claude_profile">Claude profile</label>
                     <select id="claude_profile" wire:model="claude_profile">
-                        @empty(config('factory.claude_profiles'))
+                        @empty(config('foreman.claude_profiles'))
                             <option value="">Default (~/.claude)</option>
                         @endempty
-                        @foreach (array_keys(config('factory.claude_profiles')) as $profile)
+                        @foreach (array_keys(config('foreman.claude_profiles')) as $profile)
                             <option value="{{ $profile }}">{{ $profile }}</option>
                         @endforeach
                     </select>
@@ -106,7 +106,7 @@
 
         <section class="fieldset">
             <h2>Labels</h2>
-            <p class="hint">These are created on GitHub when you save. Add the first one to an issue to send it to the factory.</p>
+            <p class="hint">These are created on GitHub when you save. Add the first one to an issue to send it to Foreman.</p>
             <div class="field-row">
                 <div class="field">
                     <label for="ready_label">Ready for the agent</label>
@@ -155,12 +155,12 @@
 
             <label class="check">
                 <input type="checkbox" wire:model="watch_prs">
-                Watch PRs for failing checks and review-bot comments, and fix them (up to {{ config('factory.pr_watch.max_rounds') }} rounds)
+                Watch PRs for failing checks and review-bot comments, and fix them (up to {{ config('foreman.pr_watch.max_rounds') }} rounds)
             </label>
 
             <label class="check">
                 <input type="checkbox" wire:model="cleanup_worktrees">
-                Remove the worktree once the factory is done with the PR
+                Remove the worktree once Foreman is done with the PR
             </label>
         </section>
 

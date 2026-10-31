@@ -49,7 +49,7 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
         ],
-        "factory": [
+        "foreman": [
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently --names web,scheduler,w1,w2,w3 -c \"#2C6A5C,#C98A00,#59676B,#59676B,#59676B\" \"php artisan serve --port=8787\" \"php artisan schedule:work\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\""
         ],

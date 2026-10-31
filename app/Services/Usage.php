@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Process;
 use Throwable;
 
 /**
- * On a subscription, factory runs share each profile's /usage limits with interactive sessions.
+ * On a subscription, Foreman runs share each profile's /usage limits with interactive sessions.
  * Claude reports those limits in stream-json as rate_limit_event, so we keep the latest per
  * profile and hold new runs when the numbers say there isn't room for them.
  */
@@ -59,7 +59,7 @@ class Usage
             return null;
         }
 
-        $config = config('factory.usage');
+        $config = config('foreman.usage');
         $five = $this->liveWindow($snapshot, 'five_hour');
         $week = $this->liveWindow($snapshot, 'seven_day');
 
@@ -96,7 +96,7 @@ class Usage
         }
 
         $snapshot = $this->snapshot($profile);
-        if ($snapshot === null || Carbon::parse($snapshot['captured_at'])->lt(now()->subMinutes(config('factory.usage.probe_minutes')))) {
+        if ($snapshot === null || Carbon::parse($snapshot['captured_at'])->lt(now()->subMinutes(config('foreman.usage.probe_minutes')))) {
             $this->probe($repo);
         }
 
@@ -114,12 +114,12 @@ class Usage
         return Setting::get("usage_override:{$profile}") !== null;
     }
 
-    /** Ask Claude for fresh numbers with the cheapest call we can make. Never blocks the factory. */
+    /** Ask Claude for fresh numbers with the cheapest call we can make. Never blocks Foreman. */
     public function probe(Repository $repo): void
     {
         try {
             // Outside the project, so no CLAUDE.md or project settings get loaded
-            $dir = sys_get_temp_dir().'/factory-usage-probe';
+            $dir = sys_get_temp_dir().'/foreman-usage-probe';
             File::ensureDirectoryExists($dir);
 
             $output = Process::path($dir)->env($repo->claudeEnv())->timeout(60)->run([
@@ -179,7 +179,7 @@ class Usage
 
         return [
             'five_hour' => $window('five_hour',
-                fn () => config('factory.usage.five_hour_ceiling'),
+                fn () => config('foreman.usage.five_hour_ceiling'),
                 fn ($w) => 'resets '.$this->when($w['resets_at'])),
             'seven_day' => $window('seven_day',
                 fn ($w) => $this->weeklyPace($w),
@@ -193,7 +193,7 @@ class Usage
     private function weeklyPace(array $week): float
     {
         $elapsed = $week['resets_at'] === null ? 1 : 1 - ($week['resets_at'] - now()->timestamp) / self::WEEK;
-        $config = config('factory.usage');
+        $config = config('foreman.usage');
 
         return min($config['weekly_cap'], max(0, $elapsed) + $config['weekly_pace_margin']);
     }

@@ -36,7 +36,7 @@ class PrWatchTest extends TestCase
         parent::setUp();
 
         $this->freezeTime();
-        $this->worktree = sys_get_temp_dir().'/factory-pr-watch-'.uniqid();
+        $this->worktree = sys_get_temp_dir().'/foreman-pr-watch-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
     }
 
@@ -228,7 +228,7 @@ class PrWatchTest extends TestCase
         $this->assertSame(RunStatus::NeedsHuman, $this->check($this->watchedRun())->status);
     }
 
-    public function test_a_paused_factory_holds_the_round_but_keeps_watching(): void
+    public function test_a_paused_foreman_holds_the_round_but_keeps_watching(): void
     {
         Setting::put('paused', 1);
         $this->github($this->pr(['threads' => [$this->thread('T1')]]));
@@ -244,7 +244,7 @@ class PrWatchTest extends TestCase
         $this->github($this->pr());
         Process::fake();
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
 
         $this->assertSame(RunStatus::PrReady, $run->fresh()->status);
     }
@@ -314,8 +314,8 @@ class PrWatchTest extends TestCase
         // T4 has no verdict: nothing posted, left open
 
         $this->process($run, $github, function () {
-            File::ensureDirectoryExists($this->worktree.'/.factory');
-            File::put($this->worktree.'/.factory/review.json', json_encode([
+            File::ensureDirectoryExists($this->worktree.'/.foreman');
+            File::put($this->worktree.'/.foreman/review.json', json_encode([
                 ['thread_id' => 'T1', 'verdict' => 'fixed', 'reply' => 'Added the null check.'],
                 ['thread_id' => 'T2', 'verdict' => 'declined', 'reply' => 'Guarded on line 2.'],
                 ['thread_id' => 'T3', 'verdict' => 'unsure', 'reply' => 'Which format?'],
@@ -326,7 +326,7 @@ class PrWatchTest extends TestCase
 
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('ddddddd4444', $run->head_sha);
-        $this->assertStringContainsString(".factory/\n", File::get($this->worktree.'/exclude'));
+        $this->assertStringContainsString(".foreman/\n", File::get($this->worktree.'/exclude'));
         Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude'
             && str_contains($p->command[2], 'round 1 of 2')
             && str_contains($p->command[2], '### T1')
@@ -340,14 +340,14 @@ class PrWatchTest extends TestCase
             'status' => RunStatus::Queued, 'pr_round' => 1, 'resume_session_id' => 'sess-1',
             'pr_feedback' => ['checks' => [], 'threads' => [$this->thread('T1')]],
         ]);
-        File::ensureDirectoryExists($this->worktree.'/.factory');
+        File::ensureDirectoryExists($this->worktree.'/.foreman');
         $github = Mockery::mock(GitHub::class);
         $github->allows('release');
         $github->allows('pullRequest')->andReturn($this->pr());   // head unchanged
         $github->expects('replyToThread')->never();
         $github->expects('resolveThread')->never();
 
-        $this->process($run, $github, fn () => File::put($this->worktree.'/.factory/review.json',
+        $this->process($run, $github, fn () => File::put($this->worktree.'/.foreman/review.json',
             json_encode([['thread_id' => 'T1', 'verdict' => 'fixed', 'reply' => 'Done.']])));
 
         $this->assertSame(RunStatus::WatchingPr, $run->fresh()->status);

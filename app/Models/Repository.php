@@ -74,7 +74,7 @@ SH;
     {
         $slug = str_replace('/', '-', $this->github_repo);
 
-        return storage_path("factory/worktrees/{$slug}/issue-{$issue}");
+        return storage_path("foreman/worktrees/{$slug}/issue-{$issue}");
     }
 
     /** Name used for per-profile state like usage-limit pauses. */
@@ -90,7 +90,7 @@ SH;
             return [];
         }
 
-        $dir = config("factory.claude_profiles.{$this->claude_profile}")
+        $dir = config("foreman.claude_profiles.{$this->claude_profile}")
             ?? throw new RuntimeException("Claude profile “{$this->claude_profile}” isn’t in CLAUDE_PROFILES.");
 
         return ['CLAUDE_CONFIG_DIR' => $dir];

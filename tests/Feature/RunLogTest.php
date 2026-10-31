@@ -20,7 +20,7 @@ class RunLogTest extends TestCase
         parent::setUp();
 
         // Run ids restart in the test database, so keep log files away from the real ones
-        $this->storage = sys_get_temp_dir().'/factory-tests-'.getmypid();
+        $this->storage = sys_get_temp_dir().'/foreman-tests-'.getmypid();
         $this->app->useStoragePath($this->storage);
     }
 

@@ -26,7 +26,7 @@ class UsageLimitsTest extends TestCase
     {
         parent::setUp();
 
-        config(['factory.claude_profiles' => ['work' => '/home/me/.claude-work']]);
+        config(['foreman.claude_profiles' => ['work' => '/home/me/.claude-work']]);
         $this->freezeTime();
     }
 
@@ -157,7 +157,7 @@ class UsageLimitsTest extends TestCase
 
     public function test_thresholds_come_from_config(): void
     {
-        config(['factory.usage.five_hour_ceiling' => 0.5]);
+        config(['foreman.usage.five_hour_ceiling' => 0.5]);
 
         $this->assertNotNull($this->holdReason($this->limits(0.6, 0.1)));
     }
@@ -168,7 +168,7 @@ class UsageLimitsTest extends TestCase
         $this->github(claims: 1);
         $this->fakeProbe($this->limits(0.1, 0.1));
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
 
         Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'claude'
             && in_array('haiku', $process->command, true)
@@ -184,7 +184,7 @@ class UsageLimitsTest extends TestCase
         app(Usage::class)->record('work', $this->limits(0.1, 0.1));
         $this->travel(14)->minutes();
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
 
         Process::assertNothingRan();
     }
@@ -197,7 +197,7 @@ class UsageLimitsTest extends TestCase
         $this->app->instance(GitHub::class, $github);
         Process::fake();
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
 
         Process::assertNothingRan();
     }
@@ -208,16 +208,16 @@ class UsageLimitsTest extends TestCase
         $this->github(claims: 0);
         $this->fakeProbe($this->limits(0.85, 0.1));
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
     }
 
-    public function test_a_failed_probe_does_not_stop_the_factory(): void
+    public function test_a_failed_probe_does_not_stop_foreman(): void
     {
         $this->repository();
         $this->github(claims: 1);
         Process::fake(['*' => Process::result('', 'boom', 1)]);
 
-        $this->artisan('factory:poll')->assertSuccessful();
+        $this->artisan('foreman:poll')->assertSuccessful();
     }
 
     public function test_run_anyway_lets_one_poll_through(): void
@@ -231,8 +231,8 @@ class UsageLimitsTest extends TestCase
             ->call('runAnyway', 'work')
             ->assertSet('flash', 'Next check will start runs on work regardless of usage.');
 
-        $this->artisan('factory:poll', ['--force' => true])->assertSuccessful();
-        $this->artisan('factory:poll', ['--force' => true])->assertSuccessful();   // held again: no second claim
+        $this->artisan('foreman:poll', ['--force' => true])->assertSuccessful();
+        $this->artisan('foreman:poll', ['--force' => true])->assertSuccessful();   // held again: no second claim
 
         // The dashboard runs its own preflight processes, so only look for a probe
         Process::assertDidntRun(fn (PendingProcess $process) => in_array('haiku', $process->command, true));
@@ -254,7 +254,7 @@ class UsageLimitsTest extends TestCase
 
     public function test_dashboard_shows_every_configured_profile(): void
     {
-        config(['factory.claude_profiles' => ['work' => '/home/me/.claude-work', 'spare' => '/home/me/.claude-spare']]);
+        config(['foreman.claude_profiles' => ['work' => '/home/me/.claude-work', 'spare' => '/home/me/.claude-spare']]);
         $this->repository();
 
         $this->get('/')

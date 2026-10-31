@@ -25,10 +25,10 @@ return [
      * of how much of the week has gone, or at the cap whatever the pace.
      */
     'usage' => [
-        'five_hour_ceiling' => (float) env('FACTORY_USAGE_FIVE_HOUR_CEILING', 0.80),
-        'weekly_pace_margin' => (float) env('FACTORY_USAGE_WEEKLY_PACE_MARGIN', 0.10),
-        'weekly_cap' => (float) env('FACTORY_USAGE_WEEKLY_CAP', 0.90),
-        'probe_minutes' => (int) env('FACTORY_USAGE_PROBE_MINUTES', 15),
+        'five_hour_ceiling' => (float) env('FOREMAN_USAGE_FIVE_HOUR_CEILING', 0.80),
+        'weekly_pace_margin' => (float) env('FOREMAN_USAGE_WEEKLY_PACE_MARGIN', 0.10),
+        'weekly_cap' => (float) env('FOREMAN_USAGE_WEEKLY_CAP', 0.90),
+        'probe_minutes' => (int) env('FOREMAN_USAGE_PROBE_MINUTES', 15),
     ],
 
     /*
@@ -36,8 +36,8 @@ return [
      * review bots have been quiet for quiet_minutes, or timeout_minutes after the push.
      */
     'pr_watch' => [
-        'max_rounds' => (int) env('FACTORY_PR_MAX_ROUNDS', 2),
-        'quiet_minutes' => (int) env('FACTORY_PR_QUIET_MINUTES', 5),
-        'timeout_minutes' => (int) env('FACTORY_PR_TIMEOUT_MINUTES', 30),
+        'max_rounds' => (int) env('FOREMAN_PR_MAX_ROUNDS', 2),
+        'quiet_minutes' => (int) env('FOREMAN_PR_QUIET_MINUTES', 5),
+        'timeout_minutes' => (int) env('FOREMAN_PR_TIMEOUT_MINUTES', 30),
     ],
 ];

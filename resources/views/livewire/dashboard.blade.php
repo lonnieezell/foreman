@@ -86,7 +86,7 @@
         </div>
 
         <button wire:click="togglePause" class="btn stats-action {{ $paused ? 'btn-go' : 'btn-halt' }}">
-            {{ $paused ? 'Resume factory' : 'Pause factory' }}
+            {{ $paused ? 'Resume Foreman' : 'Pause Foreman' }}
         </button>
     </section>
 
@@ -193,7 +193,7 @@
     @empty
         <div class="empty">
             <h2>Add your first repository</h2>
-            <p>Point the factory at a local checkout. It will watch that repository for issues labelled “ready-for-agent” and work through them one at a time until you raise the limit.</p>
+            <p>Point Foreman at a local checkout. It will watch that repository for issues labelled “ready-for-agent” and work through them one at a time until you raise the limit.</p>
             <button type="button" wire:click="$set('adding', true)" class="btn btn-go">Add repository</button>
         </div>
     @endforelse

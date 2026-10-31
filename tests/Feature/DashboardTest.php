@@ -120,10 +120,10 @@ class DashboardTest extends TestCase
 
         $this->get('/')
             ->assertSee('wire:click="$set(\'editing\', '.$repo->id.')"', false)
-            ->assertDontSee('Remove from factory')
+            ->assertDontSee('Remove from Foreman')
             ->assertDontSee('>Add repository</a>', false);   // the masthead no longer links to it
 
-        $this->get('/?edit='.$repo->id)->assertSee('class="modal"', false)->assertSee('Remove from factory');
+        $this->get('/?edit='.$repo->id)->assertSee('class="modal"', false)->assertSee('Remove from Foreman');
 
         Livewire::test(Dashboard::class)
             ->set('editing', $repo->id)

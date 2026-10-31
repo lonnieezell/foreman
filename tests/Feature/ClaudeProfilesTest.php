@@ -23,7 +23,7 @@ class ClaudeProfilesTest extends TestCase
     {
         parent::setUp();
 
-        config(['factory.claude_profiles' => ['work' => '/home/me/.claude-work']]);
+        config(['foreman.claude_profiles' => ['work' => '/home/me/.claude-work']]);
     }
 
     private function repository(array $attributes = []): Repository
@@ -44,7 +44,7 @@ class ClaudeProfilesTest extends TestCase
         // env() reads $_SERVER first, so this overrides whatever the local .env sets
         $original = $_SERVER['CLAUDE_PROFILES'] ?? null;
         $_SERVER['CLAUDE_PROFILES'] = 'personal:~/.claude-personal, work:/opt/claude-work,broken';
-        $config = require config_path('factory.php');
+        $config = require config_path('foreman.php');
         $_SERVER['CLAUDE_PROFILES'] = $original;
 
         $this->assertSame([
@@ -109,7 +109,7 @@ class ClaudeProfilesTest extends TestCase
 
     public function test_form_offers_the_default_login_when_no_profiles_are_defined(): void
     {
-        config(['factory.claude_profiles' => []]);
+        config(['foreman.claude_profiles' => []]);
 
         Livewire::test(RepositoryForm::class)
             ->assertSet('claude_profile', '')

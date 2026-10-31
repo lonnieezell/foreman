@@ -14,7 +14,7 @@ use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-#[Title('Factory')]
+#[Title('Foreman')]
 class Dashboard extends Component
 {
     public string $globalBudget = '';
@@ -64,7 +64,7 @@ class Dashboard extends Component
 
     public function checkNow(int $id): void
     {
-        Artisan::call('factory:poll', ['--repo' => $id, '--force' => true]);
+        Artisan::call('foreman:poll', ['--repo' => $id, '--force' => true]);
         $repo = Repository::findOrFail($id);
         $this->flash = $repo->last_error ? null : "Checked {$repo->name} for ready issues.";
     }
@@ -108,7 +108,7 @@ class Dashboard extends Component
         app(GitHub::class)->requeue($run->repository, $run->issue_number);
 
         // Start it now if there's a free slot, instead of waiting for the repository's next poll
-        Artisan::call('factory:poll', ['--repo' => $run->repository_id, '--force' => true]);
+        Artisan::call('foreman:poll', ['--repo' => $run->repository_id, '--force' => true]);
         $started = $run->repository->activeRuns()->where('issue_number', $run->issue_number)->exists();
 
         $this->flash = "#{$run->issue_number} is back in the queue for {$run->repository->name}".($started ? ' and has started.' : '.');
@@ -138,7 +138,7 @@ class Dashboard extends Component
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),
             // Every configured profile gets a gauge, as do any a repository uses or that spent tokens today
-            'gauges' => collect(array_keys(config('factory.claude_profiles')) ?: ['default'])
+            'gauges' => collect(array_keys(config('foreman.claude_profiles')) ?: ['default'])
                 ->merge($profiles)->merge(array_keys($tokens))->unique()->sort()
                 ->mapWithKeys(fn ($p) => [$p => $usage->gauge($p)])->all(),
             'heldProfiles' => $profiles->mapWithKeys(fn ($p) => [$p => $usage->holdReason($p)])->filter()->all(),

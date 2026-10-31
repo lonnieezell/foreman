@@ -48,7 +48,7 @@ class RepositoryForm extends Component
         }
 
         // With profiles defined there's no default option, so start on the first one
-        $this->claude_profile = $this->claude_profile ?: (string) array_key_first(config('factory.claude_profiles'));
+        $this->claude_profile = $this->claude_profile ?: (string) array_key_first(config('foreman.claude_profiles'));
 
         if ($this->prompt_template === '') {
             $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
@@ -99,7 +99,7 @@ class RepositoryForm extends Component
             'poll_interval_minutes' => ['required', 'integer', 'between:1,1440'],
             'daily_budget' => ['nullable', 'numeric', 'min:0'],
             'model' => ['required', 'string'],
-            'claude_profile' => [config('factory.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('factory.claude_profiles')))],
+            'claude_profile' => [config('foreman.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('foreman.claude_profiles')))],
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
             'allowed_tools' => ['required', 'string'],

@@ -15,7 +15,7 @@ use Throwable;
 
 class PollRepositories extends Command
 {
-    protected $signature = 'factory:poll
+    protected $signature = 'foreman:poll
         {--repo= : Only check this repository id}
         {--force : Ignore the poll interval}';
 
@@ -31,7 +31,7 @@ class PollRepositories extends Command
         $this->watchPullRequests($watcher);
 
         if (Setting::paused()) {
-            $this->line('Factory is paused.');
+            $this->line('Foreman is paused.');
 
             return self::SUCCESS;
         }

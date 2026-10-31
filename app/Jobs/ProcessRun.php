@@ -18,7 +18,7 @@ class ProcessRun implements ShouldQueue
     use Queueable;
 
     /** Where a review round writes its verdicts, relative to the worktree. */
-    public const REVIEW_FILE = '.factory/review.json';
+    public const REVIEW_FILE = '.foreman/review.json';
 
     public int $tries = 1;
     public int $timeout = 0;   // we enforce max_minutes ourselves so we can clean up
@@ -65,7 +65,7 @@ class ProcessRun implements ShouldQueue
             if (! $cancelled) {
                 $quoted = collect(explode("\n", $e->getMessage()))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
                 $github->flagForHuman($repo, $run->issue_number,
-                    "The factory run for this issue failed before finishing:\n\n{$quoted}\n\nThe worktree was kept at `{$run->worktree_path}` for inspection.");
+                    "The Foreman run for this issue failed before finishing:\n\n{$quoted}\n\nThe worktree was kept at `{$run->worktree_path}` for inspection.");
             }
         } finally {
             $github->release($repo, $run->issue_number);
@@ -130,7 +130,7 @@ class ProcessRun implements ShouldQueue
             'claude', '-p', $prompt,
             '--model', $repo->model,
             '--max-turns', (string) $repo->max_turns,
-            // Rounds read CI results; GitHub writes stay with the factory
+            // Rounds read CI results; GitHub writes stay with Foreman
             '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
             '--output-format', 'stream-json',
             '--verbose',
@@ -376,9 +376,9 @@ class ProcessRun implements ShouldQueue
 
         $exclude = str_starts_with($exclude, '/') ? $exclude : "{$worktree}/{$exclude}";
 
-        if (! str_contains((string) @file_get_contents($exclude), "\n.factory/\n")) {
+        if (! str_contains((string) @file_get_contents($exclude), "\n.foreman/\n")) {
             File::ensureDirectoryExists(dirname($exclude));
-            File::append($exclude, "\n.factory/\n");
+            File::append($exclude, "\n.foreman/\n");
         }
     }
 
@@ -397,7 +397,7 @@ class ProcessRun implements ShouldQueue
             '{{branch}}' => $run->branch,
             '{{pr}}' => $run->pr_url,
             '{{round}}' => (string) $run->pr_round,
-            '{{max_rounds}}' => (string) config('factory.pr_watch.max_rounds'),
+            '{{max_rounds}}' => (string) config('foreman.pr_watch.max_rounds'),
             '{{review_file}}' => self::REVIEW_FILE,
             '{{checks}}' => $checks,
             '{{threads}}' => $threads,

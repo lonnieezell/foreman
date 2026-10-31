@@ -52,7 +52,7 @@ class PrWatcher
             return;
         }
 
-        $maxRounds = config('factory.pr_watch.max_rounds');
+        $maxRounds = config('foreman.pr_watch.max_rounds');
 
         if ($run->pr_round >= $maxRounds) {
             $this->github->commentOnPullRequest($repo, $run->pr_url, $this->summary($checks, $threads, $maxRounds));
@@ -72,7 +72,7 @@ class PrWatcher
     /** Nothing pending and the bots quiet for a while, or the timeout has passed. */
     private function settled(Run $run, array $pr): bool
     {
-        if ($run->watch_started_at->addMinutes(config('factory.pr_watch.timeout_minutes'))->isPast()) {
+        if ($run->watch_started_at->addMinutes(config('foreman.pr_watch.timeout_minutes'))->isPast()) {
             return true;
         }
 
@@ -84,7 +84,7 @@ class PrWatcher
             ? $pr['bot_activity_at']
             : $run->watch_started_at;
 
-        return $quietSince->copy()->addMinutes(config('factory.pr_watch.quiet_minutes'))->isPast();
+        return $quietSince->copy()->addMinutes(config('foreman.pr_watch.quiet_minutes'))->isPast();
     }
 
     /** Rounds spend tokens, so they wait on the same things new issues do. */
@@ -133,7 +133,7 @@ class PrWatcher
 
     private function summary(array $checks, array $threads, int $maxRounds): string
     {
-        $lines = ["The factory made {$maxRounds} rounds of fixes on this PR and these are still outstanding:", ''];
+        $lines = ["Foreman made {$maxRounds} rounds of fixes on this PR and these are still outstanding:", ''];
 
         foreach ($checks as $check) {
             $lines[] = "- Check **{$check['name']}** is ".($check['state'] === 'failed' ? 'failing' : 'still running').($check['url'] ? " ([details]({$check['url']}))" : '');

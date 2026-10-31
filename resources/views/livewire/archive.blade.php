@@ -16,7 +16,7 @@
 
                 <div class="line-controls">
                     <button wire:click="restore({{ $repo->id }})" class="btn">Restore</button>
-                    <button wire:click="remove({{ $repo->id }})" wire:confirm="Remove {{ $repo->name }} and its run history from the factory? Nothing on GitHub is touched." class="btn btn-halt">Remove</button>
+                    <button wire:click="remove({{ $repo->id }})" wire:confirm="Remove {{ $repo->name }} and its run history from Foreman? Nothing on GitHub is touched." class="btn btn-halt">Remove</button>
                 </div>
             </div>
         </article>

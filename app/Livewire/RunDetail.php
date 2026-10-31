@@ -60,7 +60,7 @@ class RunDetail extends Component
         $github->requeue($this->run->repository, $this->run->issue_number);
 
         // Start it now if there's a free slot, instead of waiting for the repository's next poll
-        Artisan::call('factory:poll', ['--repo' => $this->run->repository_id, '--force' => true]);
+        Artisan::call('foreman:poll', ['--repo' => $this->run->repository_id, '--force' => true]);
         $next = $this->run->repository->activeRuns()->where('issue_number', $this->run->issue_number)->latest('id')->first();
 
         if ($next) {
