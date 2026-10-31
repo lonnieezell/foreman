@@ -49,6 +49,13 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
         ],
+        "update-app": [
+            "composer install",
+            "@php artisan migrate --force",
+            "npm ci --ignore-scripts",
+            "npm run build",
+            "@php -r \"echo PHP_EOL.'Done. Restart composer run foreman so the queue workers load the new code.'.PHP_EOL;\""
+        ],
         "foreman": [
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently --names web,scheduler,w1,w2,w3 -c \"#2C6A5C,#C98A00,#59676B,#59676B,#59676B\" \"php artisan serve --port=8787\" \"php artisan schedule:work\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\" \"php artisan queue:work --queue=runs --timeout=0 --tries=1\""
