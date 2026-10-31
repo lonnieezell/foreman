@@ -51,6 +51,11 @@ class Setting extends Model
         return (bool) static::get('paused', false);
     }
 
+    public static function desktopNotifications(): bool
+    {
+        return (bool) static::get('desktop_notifications', false);
+    }
+
     public static function globalBudget(): ?float
     {
         $value = static::get('global_daily_budget');

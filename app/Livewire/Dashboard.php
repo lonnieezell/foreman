@@ -28,6 +28,9 @@ class Dashboard extends Component
     #[Url(as: 'edit', except: null)]
     public ?int $editing = null;
 
+    // Ids of the attention runs this tab has already seen; null until the first render
+    public ?array $seenAttention = null;
+
     public function toggleRepository(int $id): void
     {
         $repo = Repository::findOrFail($id);
@@ -142,8 +145,45 @@ class Dashboard extends Component
         return $sections;
     }
 
+    /**
+     * Tells the browser about runs that reached an attention section since the last render. Each
+     * run id is announced once, so a retry that fails again (a new run) announces again. The first
+     * render only records what is already waiting. Dismissed and archived issues are recorded but
+     * never announced, so restoring them later doesn't announce either.
+     */
+    private function announceNewAttention(): void
+    {
+        $runs = Run::latestPerIssue()
+            ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened])
+            ->with('repository')
+            ->get();
+
+        $new = $this->seenAttention === null ? collect() : $runs->whereNotIn('id', $this->seenAttention);
+        $this->seenAttention = $runs->pluck('id')->all();
+
+        $notifications = $new
+            ->filter(fn (Run $run) => ! $run->handled_at && ! $run->repository->archived_at)
+            ->map(fn (Run $run) => [
+                'id' => $run->id,
+                'title' => "#{$run->issue_number} {$run->repository->name} ".match ($run->status) {
+                    RunStatus::NeedsHuman => 'needs your reply',
+                    RunStatus::Failed => 'failed',
+                    default => 'is ready for review',
+                },
+                'body' => $run->error ?: (string) $run->issue_title,
+                'url' => route('runs.show', $run),
+            ])
+            ->values()->all();
+
+        if ($notifications && Setting::desktopNotifications()) {
+            $this->dispatch('foreman-notify', notifications: $notifications);
+        }
+    }
+
     public function render()
     {
+        $this->announceNewAttention();
+
         $repositories = Repository::query()
             ->whereNull('archived_at')
             ->with(['runs' => fn ($q) => $q->active()->oldest()])
