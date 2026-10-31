@@ -2,7 +2,14 @@
     <div class="run-head">
         <h1>{{ $repository ? $repository->name : 'Add repository' }}</h1>
         @if ($repository)
-            <button class="btn btn-halt" wire:click="delete" wire:confirm="Remove {{ $repository->name }} and its run history from the factory? Nothing on GitHub is touched.">Remove from factory</button>
+            <div class="run-head-actions">
+                @if ($repository->hasWorkInFlight())
+                    <button class="btn" disabled title="Finish or cancel its runs and watched PRs first">Archive</button>
+                @else
+                    <button class="btn" wire:click="archive" title="Stop it and hide it from the dashboard, keeping its settings">Archive</button>
+                @endif
+                <button class="btn btn-halt" wire:click="delete" wire:confirm="Remove {{ $repository->name }} and its run history from the factory? Nothing on GitHub is touched.">Remove from factory</button>
+            </div>
         @endif
     </div>
 

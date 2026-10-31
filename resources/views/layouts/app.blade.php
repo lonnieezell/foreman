@@ -13,9 +13,7 @@
         <div class="frame masthead-inner">
             <a href="{{ route('dashboard') }}" wire:navigate class="wordmark">Factory</a>
             <nav class="masthead-nav">
-                <a href="{{ route('dashboard') }}" wire:navigate @class(['is-current' => request()->routeIs('dashboard')])>Lines</a>
-                <a href="{{ route('repositories.create') }}" wire:navigate @class(['is-current' => request()->routeIs('repositories.create')])>Add repository</a>
-            </nav>
+                <a href="{{ route('archive') }}" wire:navigate @class(['is-current' => request()->routeIs('archive')])>Archive</a>            </nav>
         </div>
     </header>
 

@@ -133,10 +133,10 @@
                     <button wire:click="toggleRepository({{ $repo->id }})" class="btn {{ $repo->enabled ? 'btn-halt' : 'btn-go' }}">
                         {{ $repo->enabled ? 'Stop' : 'Start' }}
                     </button>
-                    <a href="{{ route('repositories.edit', $repo) }}" wire:navigate class="btn btn-quiet btn-icon btn-settings" aria-label="Settings for {{ $repo->name }}" title="Settings">
+                    <button type="button" wire:click="$set('editing', {{ $repo->id }})" class="btn btn-quiet btn-icon btn-settings" aria-label="Settings for {{ $repo->name }}" title="Settings">
                         {{-- Feather "settings" icon (MIT) --}}
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-                    </a>
+                    </button>
                 </div>
             </div>
 
@@ -194,9 +194,12 @@
         <div class="empty">
             <h2>Add your first repository</h2>
             <p>Point the factory at a local checkout. It will watch that repository for issues labelled “ready-for-agent” and work through them one at a time until you raise the limit.</p>
-            <a href="{{ route('repositories.create') }}" wire:navigate class="btn btn-go">Add repository</a>
+            <button type="button" wire:click="$set('adding', true)" class="btn btn-go">Add repository</button>
         </div>
     @endforelse
+    @if ($repositories->isNotEmpty())
+        <button type="button" wire:click="$set('adding', true)" class="line-add">+ Add Repository</button>
+    @endif
     </div>
 
     @if ($recentRuns->isNotEmpty())
@@ -247,4 +250,15 @@
         </div>
     @endif
     </div>
+
+    @if ($adding || $editingRepository)
+        <div class="modal-backdrop" wire:key="repository-modal" x-on:keydown.escape.window="$wire.closeModal()">
+            <div class="modal" role="dialog" aria-modal="true" aria-label="{{ $editingRepository ? "{$editingRepository->name} settings" : 'Add repository' }}">
+                <button type="button" class="btn btn-quiet btn-icon modal-close" wire:click="closeModal" aria-label="Close" title="Close">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+                </button>
+                <livewire:repository-form :repository="$editingRepository" :key="'repository-form-'.($editingRepository?->id ?? 'new')" />
+            </div>
+        </div>
+    @endif
 </div>

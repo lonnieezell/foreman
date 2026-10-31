@@ -139,6 +139,18 @@ class RepositoryForm extends Component
         return $this->redirectRoute('dashboard', navigate: true);
     }
 
+    public function archive()
+    {
+        if (! $this->repository || $this->repository->hasWorkInFlight()) {
+            return;
+        }
+
+        // Stopped as well, so it can't be polled and comes back stopped when restored
+        $this->repository->update(['archived_at' => now(), 'enabled' => false]);
+
+        return $this->redirectRoute('dashboard', navigate: true);
+    }
+
     public function resetPrompt(): void
     {
         $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));

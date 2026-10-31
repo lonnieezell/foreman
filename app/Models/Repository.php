@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RunStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
@@ -26,7 +27,16 @@ SH;
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
             'last_polled_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
+    }
+
+    /** Runs in progress or PRs still being watched, which keep it from being archived. */
+    public function hasWorkInFlight(): bool
+    {
+        return $this->runs()
+            ->whereIn('status', [...RunStatus::activeValues(), RunStatus::WatchingPr->value])
+            ->exists();
     }
 
     public function runs(): HasMany

@@ -11,6 +11,7 @@ use App\Services\Preflight;
 use App\Services\Usage;
 use Illuminate\Support\Facades\Artisan;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Title('Factory')]
@@ -19,6 +20,14 @@ class Dashboard extends Component
     public string $globalBudget = '';
 
     public ?string $flash = null;
+
+    // Opens the add repository modal; in the URL so the masthead link can open it from any page
+    #[Url(as: 'add', except: false)]
+    public bool $adding = false;
+
+    // The repository whose settings are open in the same modal
+    #[Url(as: 'edit', except: null)]
+    public ?int $editing = null;
 
     public function mount(): void
     {
@@ -39,6 +48,12 @@ class Dashboard extends Component
         // Check straight away instead of waiting for the scheduler
         $this->checkNow($id);
         $this->flash = $this->flash ? "{$repo->name} started and checked for ready issues." : null;
+    }
+
+    public function closeModal(): void
+    {
+        $this->adding = false;
+        $this->editing = null;
     }
 
     public function changeConcurrency(int $id, int $delta): void
@@ -107,6 +122,7 @@ class Dashboard extends Component
     public function render()
     {
         $repositories = Repository::query()
+            ->whereNull('archived_at')
             ->with(['runs' => fn ($q) => $q->active()->oldest()])
             ->orderBy('name')
             ->get();
@@ -117,6 +133,7 @@ class Dashboard extends Component
 
         return view('livewire.dashboard', [
             'repositories' => $repositories,
+            'editingRepository' => $this->editing ? $repositories->find($this->editing) : null,
             'recentRuns' => Run::with('repository')->latest()->limit(25)->get(),
             'paused' => Setting::paused(),
             'pauseReason' => Setting::get('pause_reason'),

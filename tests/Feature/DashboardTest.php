@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Livewire\Dashboard;
+use App\Livewire\RepositoryForm;
 use App\Livewire\RunDetail;
 use App\Models\Repository;
 use App\Services\GitHub;
@@ -80,6 +81,57 @@ class DashboardTest extends TestCase
         $run->update(['status' => RunStatus::Working]);   // stopping lets runs in progress finish, so keep them on the line
 
         $this->get('/')->assertSee('Writing code');
+    }
+
+    public function test_the_repository_list_ends_with_a_row_for_adding_another(): void
+    {
+        Process::fake();
+
+        $this->get('/')->assertDontSee('class="line-add"', false);
+
+        $this->repository(enabled: false);
+
+        $this->get('/')->assertSee('<button type="button" wire:click="$set(\'adding\', true)" class="line-add">+ Add Repository</button>', false);
+    }
+
+    public function test_adding_a_repository_opens_the_form_in_a_modal(): void
+    {
+        Process::fake();
+
+        $this->get('/')->assertDontSee('Where the code lives');
+        $this->get('/?add=1')
+            ->assertSee('class="modal"', false)
+            ->assertSee('wire:click="closeModal" aria-label="Close"', false)
+            ->assertSee('Where the code lives');
+
+        Livewire::test(Dashboard::class)
+            ->assertDontSeeLivewire(RepositoryForm::class)
+            ->set('adding', true)
+            ->assertSeeLivewire(RepositoryForm::class)
+            ->call('closeModal')
+            ->assertSet('adding', false)
+            ->assertDontSeeLivewire(RepositoryForm::class);
+    }
+
+    public function test_repository_settings_open_in_the_same_modal(): void
+    {
+        $repo = $this->repository(enabled: false);
+        Process::fake();
+
+        $this->get('/')
+            ->assertSee('wire:click="$set(\'editing\', '.$repo->id.')"', false)
+            ->assertDontSee('Remove from factory')
+            ->assertDontSee('>Add repository</a>', false);   // the masthead no longer links to it
+
+        $this->get('/?edit='.$repo->id)->assertSee('class="modal"', false)->assertSee('Remove from factory');
+
+        Livewire::test(Dashboard::class)
+            ->set('editing', $repo->id)
+            ->assertSeeLivewire(RepositoryForm::class)
+            ->assertSee('Save changes')
+            ->call('closeModal')
+            ->assertSet('editing', null)
+            ->assertDontSeeLivewire(RepositoryForm::class);
     }
 
     public function test_a_running_repository_counts_down_to_its_next_check(): void
