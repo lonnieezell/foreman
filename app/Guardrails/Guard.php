@@ -126,7 +126,7 @@ class Guard
     }
 
     /** @param list<string> $patterns */
-    private function matchesAny(array $patterns, string $path, bool $anywhere): bool
+    public static function matchesAny(array $patterns, string $path, bool $anywhere): bool
     {
         foreach ($patterns as $pattern) {
             $pattern = trim($pattern);
@@ -137,7 +137,7 @@ class Guard
 
             $pattern = str_ends_with($pattern, '/') ? "{$pattern}**" : $pattern;
 
-            if (preg_match(($anywhere ? '#(?:^|/)' : '#^').$this->globToRegex(ltrim($pattern, '/')).'$#', $path)) {
+            if (preg_match(($anywhere ? '#(?:^|/)' : '#^').self::globToRegex(ltrim($pattern, '/')).'$#', $path)) {
                 return true;
             }
         }
@@ -145,7 +145,7 @@ class Guard
         return false;
     }
 
-    private function globToRegex(string $glob): string
+    private static function globToRegex(string $glob): string
     {
         return strtr(preg_quote($glob, '#'), ['\*\*/' => '(?:.*/)?', '\*\*' => '.*', '\*' => '[^/]*', '\?' => '[^/]']);
     }

@@ -45,7 +45,7 @@ If your project uses other tools or script names, the run can finish without eve
 
 ### Reviewing
 
-The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script and the integrity check itself, then checks the size of the change. Every run that ends in a PR passes through this station. If all three pass, Foreman pushes and opens the PR with a footer that lists the checks. If not, the run ends as **Needs you**. See [Foreman's gate](guardrails.md#foremans-gate).
+The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script and the integrity check itself, then checks the size of the change. Every run that ends in a PR passes through this station. If all three pass, Foreman sets the [risk tier](guardrails.md#risk-tiers) and resumes the agent for a review pass, still on this station. Then it runs the three checks again. If they pass, Foreman pushes and opens the PR with a footer that lists the checks. If not, the run ends as **Needs you**. See [Foreman's gate](guardrails.md#foremans-gate).
 
 ## How a run ends
 
