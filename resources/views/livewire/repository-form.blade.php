@@ -77,10 +77,21 @@
                 <div class="field">
                     <label for="model">Model</label>
                     <select id="model" wire:model="model">
-                        <option value="haiku">Haiku</option>
-                        <option value="sonnet">Sonnet</option>
-                        <option value="opus">Opus</option>
+                        @foreach (App\Models\Repository::MODELS as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
                     </select>
+                    @error('model') <span class="error">{{ $message }}</span> @enderror
+                </div>
+                <div class="field">
+                    <label for="effort">Effort</label>
+                    <select id="effort" wire:model="effort">
+                        <option value="">Default</option>
+                        @foreach (App\Models\Repository::EFFORTS as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error('effort') <span class="error">{{ $message }}</span> @enderror
                 </div>
                 <div class="field">
                     <label for="claude_profile">Claude profile</label>

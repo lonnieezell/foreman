@@ -19,6 +19,12 @@ npm ci --silent
 npm run build --silent
 SH;
 
+    /** Model aliases the CLI accepts, for the settings form and the dashboard popover. */
+    public const MODELS = ['haiku' => 'Haiku', 'sonnet' => 'Sonnet', 'opus' => 'Opus', 'fable' => 'Fable'];
+
+    /** Effort levels for `--effort`. No effort at all (null) is the "Default" choice. */
+    public const EFFORTS = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'xhigh' => 'XHigh', 'max' => 'Max'];
+
     protected $guarded = ['id'];
 
     protected function casts(): array
@@ -77,6 +83,12 @@ SH;
         $slug = str_replace('/', '-', $this->github_repo);
 
         return storage_path("foreman/worktrees/{$slug}/issue-{$issue}");
+    }
+
+    /** Model and effort as the dashboard shows them: "sonnet", or "sonnet high" when effort is set. */
+    public function modelLabel(): string
+    {
+        return trim("{$this->model} {$this->effort}");
     }
 
     /** Name used for per-profile state like usage-limit pauses. */
