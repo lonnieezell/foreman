@@ -237,6 +237,43 @@ class UsageLimitsTest extends TestCase
         Process::assertDidntRun(fn (PendingProcess $process) => in_array('haiku', $process->command, true));
     }
 
+    public function test_run_anyway_covers_a_due_round_and_a_ready_issue_in_the_same_poll(): void
+    {
+        config(['foreman.pr_watch.max_rounds' => 3]);
+        $watched = $this->repository(['name' => 'watched', 'github_repo' => 'owner/watched']);
+        $this->repository(['name' => 'intake', 'github_repo' => 'owner/intake']);
+
+        $run = $watched->runs()->create([
+            'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
+            'branch' => 'agent/issue-7', 'model' => 'sonnet',
+            'status' => RunStatus::WatchingPr, 'pr_url' => 'https://github.com/owner/watched/pull/12', 'head_sha' => 'aaaaaaa1111',
+            'session_id' => 'sess-1', 'worktree_path' => sys_get_temp_dir(),
+            'watch_started_at' => now()->subMinutes(10), 'finished_at' => now()->subMinutes(10),
+        ]);
+
+        Queue::fake();
+        Process::fake();
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+        $github->allows('pullRequest')->andReturn([
+            'state' => 'OPEN', 'head_sha' => 'aaaaaaa1111',
+            'checks' => [['name' => 'tests', 'state' => 'failed', 'url' => null]],
+            'threads' => [], 'bot_activity_at' => null,
+        ]);
+        $github->allows('readyIssues')->andReturnUsing(fn (Repository $repo) => $repo->name === 'intake'
+            ? [['number' => 1, 'title' => 'Fix', 'url' => 'https://example.test/1']]
+            : []);
+        $github->expects('claim')->once();
+        $this->app->instance(GitHub::class, $github);
+
+        app(Usage::class)->record('work', $this->limits(0.85, 0.1));
+        app(Usage::class)->override('work');
+
+        $this->artisan('foreman:poll', ['--force' => true])->assertSuccessful();
+
+        $this->assertSame(1, $run->repository->runs()->where('issue_number', 7)->where('id', '!=', $run->id)->count(), 'the fix-up round started');
+        $this->assertSame(1, Repository::where('name', 'intake')->first()->runs()->count(), 'the ready issue started');
+    }
+
     public function test_dashboard_shows_usage_and_holds(): void
     {
         $this->repository();
