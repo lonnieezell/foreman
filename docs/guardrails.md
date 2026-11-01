@@ -78,7 +78,7 @@ Both cases started the same way: untrusted text reached an agent that could run 
 - The agent still writes the PR's title and body, and the comment on the issue. Foreman posts them as written.
 - Code the agent commits is still pushed. A bad change can reach a PR, which is why the other guardrails and your review still matter.
 - Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
-- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
+- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands. See [Known gaps](#known-gaps).
 - The agent can still reach the network through allowed tools such as `npm` and `composer`.
 
 ### Rounds and resumes follow the same rules
@@ -380,3 +380,21 @@ A deep review on every change costs time and money for little gain. A typo fix i
 - Each pass gets the repository's full turn and time limits again. Only the spend cap is shared across the run.
 - `/security-review` diffs against `origin/HEAD`. When the repository has no `origin/HEAD`, Foreman points it at the base branch first, with `git remote set-head`. When `origin/HEAD` points at some other branch, Foreman leaves it alone and tells the agent which base to review against.
 - Fix-up rounds on an open PR don't get a review pass.
+
+## Known gaps
+
+Foreman doesn't sandbox the agent. A *sandbox* is a limit the operating system puts on a command. It controls which files the command can write and which hosts it can call. The guardrails above check the agent's work. They don't stop the code that allowed tools run, as [Foreman pushes, not the agent](#foreman-pushes-not-the-agent) explains.
+
+### The setup script and the checks run unsandboxed
+
+The [setup script](repository-settings.md#setup-script) and the [verify script](repository-settings.md#verify-script) run as you. That includes your keychain, the macOS store that holds the `gh` and git passwords. Foreman's gate and the [definition-of-done](#definition-of-done) hook run the verify script and the integrity check. So code the agent wrote, such as a new test, runs with your access whenever the checks run.
+
+### Claude Code's sandbox was tested and left off
+
+Claude Code has its own sandbox. Foreman tested it in a short experiment on Claude Code 2.1.316 on macOS. The experiment used headless runs, which are `claude -p` runs with no one at the keyboard, the same way Foreman starts the agent. [Issue #29](https://github.com/lonnieezell/foreman/issues/29) has the commands and results.
+
+- **It works in headless runs.** The sandbox settings in the `--settings` file took effect. The sandbox blocked a host that wasn't on the allowlist, which is the list of hosts a command may call. It also stopped a write to the home folder. The agent asked to run a command outside the sandbox, and the sandbox refused.
+- **It doesn't protect your credentials.** A sandboxed command could still run `gh auth token` and `git credential fill`, or read the `gh` token from the keychain. The allowlist must include `github.com` for git dependencies, so a script could still send the token there.
+- **It covers only the agent's shell tool.** The setup script and Foreman's gate run outside Claude, so the sandbox never applies to them. The experiment didn't test whether it covers hooks, such as the definition-of-done hook.
+
+Foreman has no sandbox setting for now. A worktree's git data and the package caches sit outside the worktree. Turning the sandbox on would probably break commits and slow down or break installs, though the experiment didn't test either one.
