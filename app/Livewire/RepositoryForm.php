@@ -191,6 +191,17 @@ class RepositoryForm extends Component
         $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
     }
 
+    public function resetAllowedTools(): void
+    {
+        $this->allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
+    }
+
+    /** True when the tool list in the form still has entries from the old default. */
+    public function getHasLegacyAllowedToolsProperty(): bool
+    {
+        return (new Repository(['allowed_tools' => $this->allowed_tools]))->hasLegacyAllowedTools();
+    }
+
     /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */
     public function setupScriptPrompt(): string
     {

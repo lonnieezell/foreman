@@ -52,8 +52,6 @@ class TokenUsageTest extends TestCase
             ],
         ]))]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
         File::delete([$run->logPath(), $run->rawLogPath()]);

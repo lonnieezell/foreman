@@ -45,18 +45,25 @@ If your project uses other tools or script names, the run can finish without eve
 
 ## How a run ends
 
-When the agent exits, Foreman checks GitHub. It doesn't trust what the agent says it did.
+The agent finishes by writing a result file in its worktree, `.foreman/result.json`. Foreman reads it and does everything on GitHub itself. The agent can't push, open PRs or use `gh`. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent).
 
-- The issue has the human label (`needs-human`): the run ends as **Needs you**.
-- There's a PR on the branch and **Watch PRs** is on: the run moves to **Watching PR**.
-- There's a PR and Watch PRs is off: the run ends as **PR opened**.
-- Neither: the run **Failed**. The agent's last message goes on the run page and in a comment on the issue.
+The file says one of three things:
+
+| Outcome | What the file holds | What Foreman does | The run ends as |
+| --- | --- | --- | --- |
+| `pr` | A title and a body | Pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body if the agent left it out. | **Watching PR**, or **PR opened** if Watch PRs is off |
+| `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
+| `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
+
+A missing file, or one that isn't valid JSON or lacks a field its outcome needs, fails the run. The agent's last message goes on the run page and in a comment on the issue.
+
+The reason on a `needs_human` result shows in the run log. One reason is `test_looks_wrong`. It gives the agent an honest way out when a test seems wrong, instead of changing or skipping the test to get green.
 
 ## The statuses
 
 ### PR opened
 
-The agent opened a PR, and the repository doesn't watch PRs. Review the PR yourself.
+Foreman opened a PR from the agent's work, and the repository doesn't watch PRs. Review the PR yourself.
 
 You'll also see this on a run that handed its PR to a fix-up round. On a round, it reads **Fixes pushed · round 1/2**.
 
@@ -70,9 +77,11 @@ The PR was merged, or all its checks pass and no review-bot threads are open. Re
 
 ### Needs you
 
-Foreman stopped and wants a human. There are three ways to get here:
+Foreman stopped and wants a human. There are five ways to get here:
 
-- **The agent asked for help.** It added the human label and commented on the issue. This happens when the spec is unclear or contradicts the code, when checks still fail after three attempts, or when the issue was already done on the base branch. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
+- **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when the spec is unclear or contradicts the code, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
+- **The agent thinks a test is wrong.** The reason is `test_looks_wrong`. The agent was told not to change, delete or skip the test, so it stopped and explained which test and why. Decide whether the test or the code is wrong, then reply on the issue.
+- **The issue was already done.** The result file said `already_done`. The comment says where the work is and whether its tests pass.
 - **Fix-up rounds ran out.** The PR still has failing checks or open bot threads after the last round. Foreman left a summary comment on the PR. The PR is yours from here.
 - **Someone else pushed to the PR's branch.** Foreman stops watching so it doesn't fight you over the branch.
 

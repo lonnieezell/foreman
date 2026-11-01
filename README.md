@@ -144,7 +144,7 @@ The full docs are in [`docs/`](docs/). They're also built into the app: click **
 ## Security notes
 
 - **There is no login.** The dashboard is meant for `localhost` only. Don't expose it to a network.
-- **The agent acts as you.** It uses your `gh` and git credentials, so it can push branches and open PRs anywhere your account can. The **allowed tools** list is what keeps it in bounds, so review it before widening it.
+- **The agent no longer acts with your push and `gh` rights.** It commits in its worktree and writes a result file. Foreman reads that file, then pushes the branch and opens the PR itself. The agent's environment has no push URL, no git credential helper and no GitHub tokens, and the default **allowed tools** list has no `gh` and no `git push`. Review the list before widening it. See [Guardrails](docs/guardrails.md#foreman-pushes-not-the-agent).
 - **Setup scripts run unsandboxed.** They run as your user in each worktree.
 
 ---

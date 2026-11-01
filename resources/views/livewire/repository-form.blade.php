@@ -170,6 +170,12 @@
                 <label for="allowed_tools">Allowed tools</label>
                 <textarea id="allowed_tools" rows="3" wire:model="allowed_tools"></textarea>
                 <span class="hint">Passed to <code>--allowedTools</code>. Anything not listed is refused.</span>
+                @if ($this->hasLegacyAllowedTools)
+                    <span class="hint" role="alert">
+                        This list still lets the agent push or use <code>gh</code>. Foreman now does that itself, so the agent no longer needs it.
+                        <button type="button" class="btn btn-quiet" style="padding:0" wire:click="resetAllowedTools">Restore default</button>
+                    </span>
+                @endif
                 @error('allowed_tools') <span class="error">{{ $message }}</span> @enderror
             </div>
 
