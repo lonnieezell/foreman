@@ -2,7 +2,7 @@
 
 The rules Foreman loads for each language, or *stack*. [Guardrails](guardrails.md) explains how each rule is used.
 
-Foreman finds a repository's stacks from marker files anywhere in the worktree. A Tauri app's `src-tauri/Cargo.toml` counts, so it is a Rust project nested in a TypeScript one. The folders `vendor`, `node_modules`, `target`, `venv` and `__pycache__`, and any folder starting with a dot, are skipped.
+Foreman finds a repository's stacks from marker files anywhere in the worktree. A Tauri app's `src-tauri/Cargo.toml` counts, so it is a Rust project nested in a TypeScript one. The folders `vendor`, `node_modules`, `target`, `venv` and `__pycache__`, and any folder starting with a dot, are skipped. So are files that git ignores, such as build output or other projects checked out inside the repo.
 
 A repository can have several stacks. Its rules are the union of each stack's rules.
 
