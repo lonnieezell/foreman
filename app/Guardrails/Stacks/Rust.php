@@ -68,6 +68,31 @@ class Rust extends Stack
         return $commands;
     }
 
+    public function ciSteps(): array
+    {
+        [$tool, $name, $command] = $this->has($this->ciDir(), 'deny.toml')
+            ? ['cargo-deny', 'Cargo deny', 'cargo deny check']
+            : ['cargo-audit', 'Cargo audit', 'cargo audit'];
+
+        return [
+            'setup' => [
+                ['name' => 'Set up Rust', 'uses' => 'dtolnay/rust-toolchain@stable', 'with' => ['components' => 'rustfmt, clippy']],
+            ],
+            'lint' => [
+                ['name' => 'Format check', 'run' => 'cargo fmt --check'],
+                ['name' => 'Clippy', 'run' => 'cargo clippy --all-targets -- -D warnings'],
+            ],
+            'test' => [
+                ['name' => 'Tests', 'run' => 'cargo test'],
+            ],
+            'audit' => [
+                ['name' => "Install {$tool}", 'uses' => 'taiki-e/install-action@v2', 'with' => ['tool' => $tool]],
+                ['name' => $name, 'run' => $command],
+                ...$this->codeqlOrSemgrep('rust', 'p/default'),
+            ],
+        ];
+    }
+
     public function tier3Paths(): array
     {
         return ['src-tauri/tauri.conf.json', 'src-tauri/capabilities/**', '**/auth*'];

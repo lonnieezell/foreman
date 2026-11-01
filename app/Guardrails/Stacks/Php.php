@@ -99,6 +99,44 @@ class Php extends Stack
         return $commands;
     }
 
+    public function ciSteps(): array
+    {
+        $dir = $this->ciDir();
+        $requires = $this->requires($dir);
+        $laravel = $this->framework() === self::LARAVEL;
+        $lint = [];
+
+        if (isset($requires['laravel/pint'])) {
+            $lint[] = ['name' => 'Formatter check', 'run' => 'vendor/bin/pint --test'];
+        } elseif (isset($requires['friendsofphp/php-cs-fixer'])) {
+            $lint[] = ['name' => 'Formatter check', 'run' => 'vendor/bin/php-cs-fixer fix --dry-run --diff'];
+        }
+        if (isset($requires['rector/rector'])) {
+            $lint[] = ['name' => 'Rector dry run', 'run' => 'vendor/bin/rector process --dry-run'];
+        }
+        if (isset($requires['phpstan/phpstan'])) {
+            $lint[] = ['name' => 'PHPStan', 'run' => 'vendor/bin/phpstan analyse'];
+        }
+
+        return [
+            'setup' => [
+                ['name' => 'Install dependencies', 'run' => 'composer install --no-interaction --prefer-dist'],
+                // Laravel tests that touch encryption, sessions or cookies need an app key
+                ...($laravel && $this->has($dir, '.env.example')
+                    ? [['name' => 'Prepare Laravel environment', 'run' => "cp .env.example .env\nphp artisan key:generate"]]
+                    : []),
+            ],
+            'lint' => $lint,
+            'test' => [
+                ['name' => 'Tests', 'run' => isset($requires['pestphp/pest']) ? 'vendor/bin/pest' : 'vendor/bin/phpunit'],
+            ],
+            'audit' => [
+                ['name' => 'Composer audit', 'run' => 'composer audit'],
+                $this->semgrep($laravel ? ['p/php', 'p/laravel'] : ['p/php']),
+            ],
+        ];
+    }
+
     public function tier3Paths(): array
     {
         $paths = match ($this->framework()) {

@@ -48,6 +48,23 @@ abstract class Stack
      */
     abstract public function verifyCommands(string $base): array;
 
+    /**
+     * The GitHub Actions steps for the CI kit, as arrays with `name` plus `run` or `uses`.
+     * The groups run in the order setup, lint, test, audit, with the integrity check between lint and test.
+     *
+     * @return array{setup: list<array>, lint: list<array>, test: list<array>, audit: list<array>}
+     */
+    abstract public function ciSteps(): array;
+
+    /** The folder the CI job runs in: the shallowest folder holding the stack. */
+    public function ciDir(): string
+    {
+        $dirs = $this->dirs;
+        usort($dirs, fn (string $a, string $b) => [substr_count($a, '/'), $a] <=> [substr_count($b, '/'), $b]);
+
+        return $dirs[0];
+    }
+
     /** Changes here are high risk (tier 3). */
     abstract public function tier3Paths(): array;
 
@@ -59,6 +76,34 @@ abstract class Stack
         'protectedConfig', 'lockFiles', 'testFiles', 'testMarkers', 'assertionMarkers',
         'skipMarkers', 'tier3Paths', 'riskyCode',
     ];
+
+    /**
+     * CodeQL for public repos. Private repos need GitHub Advanced Security for it, so they run Semgrep instead.
+     * A private repo that has Advanced Security can delete the two `if` lines.
+     *
+     * @return list<array>
+     */
+    protected function codeqlOrSemgrep(string $language, string ...$semgrepConfigs): array
+    {
+        return [
+            ['name' => 'CodeQL init', 'if' => '${{ !github.event.repository.private }}', 'uses' => 'github/codeql-action/init@v3', 'with' => ['languages' => $language]],
+            ['name' => 'CodeQL analyze', 'if' => '${{ !github.event.repository.private }}', 'uses' => 'github/codeql-action/analyze@v3'],
+            $this->semgrep($semgrepConfigs, '${{ github.event.repository.private }}'),
+        ];
+    }
+
+    /** @param list<string> $configs */
+    protected function semgrep(array $configs, ?string $if = null): array
+    {
+        $flags = implode(' ', array_map(fn (string $config) => "--config {$config}", $configs));
+
+        return array_filter([
+            'name' => 'Semgrep',
+            'if' => $if,
+            // pipx, because ubuntu-latest's system Python refuses a plain pip install (PEP 668)
+            'run' => "pipx run semgrep scan {$flags} --error",
+        ]);
+    }
 
     protected function path(string $dir, string $file): string
     {
