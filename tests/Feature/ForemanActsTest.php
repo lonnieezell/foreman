@@ -220,7 +220,7 @@ class ForemanActsTest extends TestCase
         $this->assertTrue($agent->failed());
         $this->assertSame('', trim($git($origin, ['branch', '--list'])->output()));
 
-        $this->assertTrue($git($clone, ['push', 'origin', 'HEAD:main'])->successful());
+        $this->assertTrue($git($clone, ['push', 'origin', 'HEAD:main'], ['GIT_CONFIG_COUNT' => false])->successful());
         $this->assertStringContainsString('main', $git($origin, ['branch', '--list'])->output());
     }
 
