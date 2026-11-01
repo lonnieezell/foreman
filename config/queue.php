@@ -40,7 +40,8 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Longer than any run (up to three agent sessions of 600 minutes), or a second worker reserves a run still in progress
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 172800),
             'after_commit' => false,
         ],
 
