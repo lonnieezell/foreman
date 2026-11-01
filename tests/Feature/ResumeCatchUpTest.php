@@ -58,9 +58,9 @@ class ResumeCatchUpTest extends TestCase
      * Runs the job with git answering as given: `status` is the porcelain output, `merge` and `fetch` the exit codes.
      * With `mergeThrows`, the merge throws, as a timeout does.
      */
-    private function process(Run $run, string $status = '', int $merge = 0, int $fetch = 0, bool $mergeThrows = false): Run
+    private function process(Run $run, string $status = '', int $merge = 0, int $fetch = 0, bool $mergeThrows = false, string $incoming = '', string $comments = ''): Run
     {
-        Process::fake(function (PendingProcess $process) use ($status, $merge, $fetch, $mergeThrows) {
+        Process::fake(function (PendingProcess $process) use ($status, $merge, $fetch, $mergeThrows, $incoming) {
             $this->ran[] = $process->command;
             $abort = $process->command === ['git', 'merge', '--abort'];
 
@@ -70,15 +70,27 @@ class ResumeCatchUpTest extends TestCase
 
             return match (array_slice($process->command, 0, 2)) {
                 ['git', 'status'] => Process::result($status),
+                ['git', 'log'] => Process::result($incoming),
                 ['git', 'fetch'] => Process::result('', $fetch ? 'fatal: unable to access origin' : '', $fetch),
                 ['git', 'merge'] => Process::result('', $abort ? '' : 'CONFLICT (content): Merge conflict in app/A.php', $abort ? 0 : $merge),
                 default => Process::result(json_encode(['type' => 'result', 'num_turns' => 1])),
             };
         });
 
-        (new ProcessRun($run))->handle(Mockery::mock(GitHub::class)->shouldIgnoreMissing());
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+        $github->allows('trustedComments')->andReturn($comments);
+
+        (new ProcessRun($run))->handle($github);
 
         return $run->fresh();
+    }
+
+    /** The prompt the agent was started with. */
+    private function prompt(): string
+    {
+        $claude = $this->ran[$this->claudePosition()];
+
+        return $claude[array_search('-p', $claude, true) + 1];
     }
 
     /** Where the first command equal to `$match`, or passing it, ran by position. Null when none ran. */
@@ -172,6 +184,56 @@ class ResumeCatchUpTest extends TestCase
         $this->assertNotNull($setup);
         $this->assertLessThan($setup, $merge, 'dependencies the base adds get installed');
         $this->assertCount(1, array_filter($this->ran, fn ($c) => array_slice($c, 0, 2) === ['git', 'fetch']));
+    }
+
+    public function test_the_resume_prompt_says_the_result_file_was_cleared(): void
+    {
+        $this->process($this->makeRun(), comments: "owner wrote:\nGo ahead.");
+
+        $this->assertStringContainsString(ProcessRun::RESULT_FILE.' was cleared', $this->prompt());
+    }
+
+    public function test_the_resume_prompt_lists_the_commits_merged_from_base(): void
+    {
+        $this->process($this->makeRun(), incoming: "fix(tests): clear inherited agent git config\nfeat(#9): add a thing\n");
+
+        $prompt = $this->prompt();
+
+        $this->assertStringContainsString('merged origin/develop into your branch', $prompt);
+        $this->assertStringContainsString('fix(tests): clear inherited agent git config', $prompt);
+        $this->assertStringContainsString('feat(#9): add a thing', $prompt);
+        $this->assertStringContainsString('run your checks again', $prompt);
+    }
+
+    public function test_the_resume_prompt_lists_no_commits_when_the_merge_failed(): void
+    {
+        $this->process($this->makeRun(), merge: 1, incoming: "feat(#9): add a thing\n");
+
+        $this->assertStringNotContainsString('feat(#9): add a thing', $this->prompt());
+        $this->assertStringNotContainsString('into your branch', $this->prompt());
+    }
+
+    public function test_the_resume_prompt_lists_no_commits_when_base_had_nothing_new(): void
+    {
+        $this->process($this->makeRun());
+
+        $this->assertStringNotContainsString('into your branch', $this->prompt());
+    }
+
+    public function test_a_resume_without_new_comments_says_it_was_continued_by_hand(): void
+    {
+        $this->process($this->makeRun());
+
+        $this->assertStringNotContainsString('A human has replied', $this->prompt());
+        $this->assertStringContainsString('continued this run by hand', $this->prompt());
+    }
+
+    public function test_a_resume_with_new_comments_shows_them(): void
+    {
+        $this->process($this->makeRun(), comments: "owner wrote:\nGo ahead.");
+
+        $this->assertStringContainsString('A human has replied on issue #7', $this->prompt());
+        $this->assertStringContainsString('Go ahead.', $this->prompt());
     }
 
     public function test_a_first_run_does_not_merge(): void

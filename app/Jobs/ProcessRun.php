@@ -57,6 +57,9 @@ class ProcessRun implements ShouldQueue
 
     private bool $allowLockFiles = false;
 
+    /** @var list<string> Subjects of the commits the base merge brought into a continuing run's branch. */
+    private array $mergedFromBase = [];
+
     public function __construct(public Run $run) {}
 
     public function handle(GitHub $github): void
@@ -165,12 +168,17 @@ class ProcessRun implements ShouldQueue
         }
 
         $run->log("Merging {$base} into {$run->branch}");
+        $incoming = Process::path($worktree)->run(['git', 'log', '--format=%s', "HEAD..{$base}"]);
 
         try {
             // Well under the 5-minute heartbeat limit, so a slow merge can't get the run reaped
             $merge = Process::path($worktree)->timeout(120)->run(['git', 'merge', '--no-edit', $base]);
 
             if ($merge->successful()) {
+                if ($incoming->successful()) {
+                    $this->mergedFromBase = array_slice(array_values(array_filter(explode("\n", trim($incoming->output())))), 0, 20);
+                }
+
                 return;
             }
             $why = trim($merge->errorOutput()."\n".$merge->output());
@@ -942,12 +950,22 @@ class ProcessRun implements ShouldQueue
 
     private function resumePrompt(Run $run, GitHub $github): string
     {
-        $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at)
-            ?: 'No new comments from people with write access.';
+        $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at);
 
-        return "A human has replied on issue #{$run->issue_number}. The new comments are below. "
-            .IssueSanitiser::TEXT_NOTE
-            ."\n\n{$comments}\n\nContinue from where you stopped, following the same instructions as before.";
+        $prompt = $comments
+            ? "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}"
+            : "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.";
+
+        if ($this->mergedFromBase) {
+            $commits = collect($this->mergedFromBase)->map(fn ($s) => "- {$s}")->implode("\n");
+            $prompt .= "\n\nBefore this run, Foreman merged origin/{$run->repository->base_branch} into your branch. It brought in these commits:\n\n"
+                .IssueSanitiser::wrapText($commits)
+                ."\n\nThey may change what you found before, so run your checks again.";
+        }
+
+        return $prompt."\n\n".IssueSanitiser::TEXT_NOTE
+            ."\n\nYour last ".self::RESULT_FILE.' was cleared. Write it again before you stop, even if your answer is the same.'
+            ."\n\nContinue from where you stopped, following the same instructions as before.";
     }
 
     /**

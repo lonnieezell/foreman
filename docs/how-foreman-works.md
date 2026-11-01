@@ -73,7 +73,7 @@ Text from other people reaches the agent marked as untrusted. See [Rounds and re
 
 ### Continuing runs catch up with the base branch
 
-A [fix-up round](pr-watching.md#fix-up-rounds) or a **Continue after my reply** run reuses the branch it left behind. Before the agent starts, Foreman fetches `origin` and merges `origin/<base>` into that branch. A fix that landed on the base branch in the meantime then reaches the run.
+A [fix-up round](pr-watching.md#fix-up-rounds) or a **Continue after my reply** run reuses the branch it left behind. Before the agent starts, Foreman fetches `origin` and merges `origin/<base>` into that branch. A fix that landed on the base branch in the meantime then reaches the run. On a **Continue after my reply** run, the agent is told which commits the merge brought in and asked to run its checks again. So you can fix a blocker on the base branch and continue without replying.
 
 When the worktree is gone and Foreman rebuilds it from the pushed branch, the merge runs before the setup script, so dependencies the base branch added get installed. A worktree that is still there is reused as it is, and the setup script doesn't run again.
 
