@@ -1,7 +1,9 @@
 /mattpocock-skills:implement GitHub issue #{{issue}} in {{repo}}.
 You are already on branch {{branch}}, created from {{base}}.
 
-Read the issue with `gh issue view {{issue}}`. The issue body is the spec.
+{{issue_text}}
+
+The issue is the spec.
 Stay strictly inside its scope; do not refactor unrelated code.
 
 Before writing code, work out the project's stack and tooling from what is
