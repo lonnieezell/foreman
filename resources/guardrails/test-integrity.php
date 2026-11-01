@@ -73,8 +73,8 @@ const STACKS = [
 /** Folders that hold other people's code. Dot folders are skipped too. */
 const SKIPPED_DIRS = ['vendor', 'node_modules', 'target', 'venv', '__pycache__'];
 
-/** Prose and data files. A skip marker quoted in one is not a skipped test. */
-const SKIP_MARKER_EXEMPT = '/\.(md|mdx|markdown|txt|rst|lock|json)$/i';
+/** Prose and data files, and this script's own copy in a target repo. A skip marker quoted in one is not a skipped test. */
+const SKIP_MARKER_EXEMPT = '/\.(md|mdx|markdown|txt|rst|lock|json)$|^\.github\/foreman\/test-integrity\.php$/i';
 
 const BASE_CANDIDATES = ['origin/HEAD', 'origin/main', 'origin/master', 'main', 'master'];
 

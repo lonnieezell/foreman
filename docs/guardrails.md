@@ -21,7 +21,9 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
 | Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). | Built |
 | Risk tiers and review | Rates the change from its diff, then has the agent review it as deeply as the tier calls for. The gate runs again afterwards. See [Risk tiers](#risk-tiers). | Built |
-| Everything after that | Other hooks and a CI kit for your repository. | Not built yet |
+| Scope judge | A separate Haiku call with no tools reads only the issue and the diff, and vetoes changes that go beyond the issue or weaken tests. See [Scope judge](#scope-judge). | Built |
+| CI kit | A command that writes a CI workflow into your repository, with a job per stack. See [Setting up CI in your repo](#setting-up-ci-in-your-repo). | Built |
+| Everything after that | Other hooks. | Not built yet |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
@@ -314,7 +316,7 @@ When the agent says it is done with a `pr` result, Foreman doesn't push yet. The
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
 3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
 
-If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then it runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result and the size. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then the [scope judge](#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
 
 ### The size limit
 
@@ -381,6 +383,108 @@ A deep review on every change costs time and money for little gain. A typo fix i
 - Each pass gets the repository's full turn and time limits again. Only the spend cap is shared across the run.
 - `/security-review` diffs against `origin/HEAD`. When the repository has no `origin/HEAD`, Foreman points it at the base branch first, with `git remote set-head`. When `origin/HEAD` points at some other branch, Foreman leaves it alone and tells the agent which base to review against.
 - Fix-up rounds on an open PR don't get a review pass.
+
+## Scope judge
+
+After the review pass, and before [Foreman's gate](#foremans-gate) runs the second time, one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with three fields:
+
+- `in_scope`: whether the change sticks to what the issue asks for. Unrelated features, refactors the issue didn't mention, and leaving out most of the work all count against it.
+- `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine.
+- `reason`: one or two sentences on why.
+
+### How it works
+
+Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in an empty folder outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
+
+What happens next depends on the verdict:
+
+- **Pass.** The change is in scope and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
+- **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
+- **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, nothing is pushed. The run goes to **Needs you**, and the comment quotes what went wrong each time. Foreman never treats a missing verdict as a pass.
+
+The run log shows each question to the judge and its verdict.
+
+### Why it is a separate model call
+
+The agent can't judge its own scope fairly. It has spent the whole run building a story about why each edit was needed. A review inside the same session reads that story too, and tends to agree with it. Scope creep and weakened tests are exactly the mistakes that come with a good-sounding reason.
+
+The judge never sees that story. It gets no session, no tools and no access to the worktree, so it can't read the agent's notes or commit messages beyond the diff. It sees what a human reviewer would see first: what was asked, and what changed. The agent also can't reach the judge. Foreman makes the call in its own process, after the agent has stopped. Haiku keeps the check cheap and fast. The question is narrow, and the call is small.
+
+### What it doesn't do
+
+- It is an AI opinion, not a rule. It can pass a change that drifts, or veto one that is fine. [Test integrity](#test-integrity) is still the mechanical check for weakened tests.
+- It only sees the diff and the issue. A change that matches the issue's words but misses its intent can pass.
+- A very large diff makes the judge's job harder. The [size limit](#the-size-limit) keeps the diff in check.
+- A global `CLAUDE.md` in the repository's Claude profile may still load. Leaving out settings doesn't cover memory files. Project files don't load, because the judge runs outside the repository.
+- The judge runs before the second gate, so a veto doesn't waste a full gate run. The corrected change still goes through the gate before the push, but it doesn't get a second review pass. The risk tier stays as it was set before the correction.
+- It only judges the first PR of a run. Fix-up rounds on an open PR don't get a judge.
+- The judge's cost isn't added to the run's cost or counted against the spend cap. A Haiku call on a diff under the size limit costs a few cents at most.
+
+## Setting up CI in your repo
+
+The guardrails above run on your machine, while the agent works. CI is the second line. It runs the same kind of checks on every pull request, whoever wrote it. Foreman can write that CI setup into your repository for you.
+
+### How to run it
+
+From Foreman's folder, point the command at the local checkout of the repository. A path inside the checkout works too. The files always go at the repository's root, because GitHub only reads workflows there.
+
+```bash
+php artisan foreman:install-ci ../path/to/your-repo
+```
+
+It finds the stacks with the same marker files as [Stack rules](#stack-rules). Then it does four things:
+
+1. Creates a new branch, `foreman/ci-kit`, from whatever is checked out. Check out your default branch first, or the CI PR carries that branch's commits too. Use `--branch=name` to pick another name.
+2. Writes `.github/workflows/foreman-ci.yml`.
+3. Copies the [test-integrity script](#test-integrity) to `.github/foreman/test-integrity.php`.
+4. Commits both files to that branch.
+
+**It never pushes.** Review the commit, then push the branch and open the PR yourself. The command stops with an error, and changes nothing, if the path is not a git checkout, if no stack is found, or if `foreman-ci.yml` already exists. If the commit itself fails, for example because a pre-commit hook rejects it, the command removes the files and the branch, and switches back.
+
+### What each job checks
+
+The workflow has one job per stack it found. The steps run top to bottom. A step that fails stops its job.
+
+| Stack | Steps, in order |
+| --- | --- |
+| PHP | Formatter check (Pint or PHP CS Fixer), Rector dry run (only if the repo has Rector), PHPStan (only if present), integrity, tests (Pest or PHPUnit), `composer audit`, Semgrep with the PHP rules. Laravel repos also get the Laravel rules. A Laravel app with a `.env.example` gets a copy of it as `.env` and a fresh app key before the checks run. |
+| TypeScript/React | Lint (if there is a `lint` script), typecheck, integrity, tests, the package manager's `audit`, CodeQL. |
+| Rust | `cargo fmt --check`, `cargo clippy -D warnings`, integrity, tests, `cargo deny check` (if there is a `deny.toml`) or `cargo audit`, CodeQL. |
+| Python | `ruff format --check`, `ruff check`, mypy or pyright (if configured), integrity, pytest, `pip-audit`, CodeQL. With uv or Poetry, the job adds ruff, pytest and the type checkers to the environment, in case the project doesn't list them. |
+
+Each job also runs a copy of the test-integrity script. The script needs PHP, so every job, whatever its stack, installs a pinned PHP version (8.3). A runner image update can't change it. The check compares the pull request with its base branch, so the jobs fetch the full git history. The job runs the base branch's copy of the script, not the pull request's. So a pull request can't weaken the check that judges it. Only the pull request that first adds the script uses its own copy.
+
+CodeQL on a private repository needs GitHub Advanced Security. The workflow runs CodeQL only on public repos. On a private repo it runs Semgrep instead, with rules for the stack. If your private repo has Advanced Security, delete the `if` lines on the CodeQL and Semgrep steps. The workflow file says so too.
+
+Each job caches its dependencies between runs, so only the first run downloads everything:
+
+- **PHP:** `ramsey/composer-install` runs `composer install` and caches the downloads.
+- **TypeScript:** `actions/setup-node` caches by the lock file. Bun has no built-in cache, so Bun jobs install from scratch. A repo with no lock file gets no cache.
+- **Rust:** `Swatinem/rust-cache` caches the cargo registry and the build output.
+- **Python:** `actions/setup-python` caches pip by `requirements.txt`, or by `pyproject.toml` when there is none. uv uses its own cache. Poetry gets an `actions/cache` step keyed on `poetry.lock`.
+
+A stack in a sub-folder, such as a Tauri app's `src-tauri`, runs in that folder. If a stack sits in several folders, only the shallowest one gets checks.
+
+### Why the order fails fast
+
+The steps go from cheapest and most likely to fail to the most expensive. A formatting slip fails in seconds. Static analysis takes longer. Tests take longer still. Audits and code scanning go last, because they need the network or a long scan. If the cheap step fails, you get the answer in under a minute, and you don't spend runner time on the slow steps. The integrity check sits before the tests on purpose. It reads the diff in a second, and it tells you that a test was deleted or skipped before you wait on a test run that might pass because of it.
+
+### Make the checks required
+
+Writing the workflow is not enough. **Without branch protection, nothing stops a merge.** A red check is only a warning. Anyone with write access can merge past it, and so can an agent or a hurried reviewer. Make each check required:
+
+1. In GitHub, open the repository's **Settings**, then **Branches**.
+2. Add a branch protection rule, or a ruleset, for your default branch.
+3. Turn on **Require status checks to pass before merging**.
+4. Search for each job by name (`php`, `typescript`, `rust`, `python`) and add it. A job appears in the search only after it has run once, so push the branch and let the workflow run first.
+5. Turn on **Require branches to be up to date before merging**, so the checks run against the latest base.
+
+### What it doesn't do
+
+- It does not push, open the PR or change branch protection. Those are yours to do.
+- It does not read your CI secrets or tune the tools. A repo with its own Rector, PHPStan or ESLint rules keeps them.
+- It only adds a step when it can see the tool in the repo. A tool that is installed some other way is skipped.
+- It can't confirm the workflow passes on your repo. Read the first run, and expect to adjust install steps for unusual setups.
 
 ## Known gaps
 

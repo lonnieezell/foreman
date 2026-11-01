@@ -65,6 +65,10 @@ class ForemanGateTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($gate, $run, &$statusWhileGating) {
             $command = $process->command;
 
+            if (self::isScopeJudge($process)) {
+                return Process::result(self::SCOPE_JUDGE_PASS);
+            }
+
             if ($command[0] === 'claude') {
                 File::ensureDirectoryExists("{$this->worktree}/.foreman");
                 File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
@@ -191,7 +195,8 @@ class ForemanGateTest extends TestCase
 
         Process::assertRan(fn (PendingProcess $p) => collect($p->command)->contains(
             "Closes #7\n\nDone.\n\n---\n**Foreman's gate**, run by Foreman outside the agent before the push:\n\n"
-            ."- Verify script: passed (`composer test`)\n- Test integrity: passed\n- Size: 4 changed lines (limit 1000)"
+            ."- Verify script: passed (`composer test`)\n- Test integrity: passed\n- Size: 4 changed lines (limit 1000)\n"
+            .'- Scope judge: passed. Stays within the issue.'
         ));
     }
 }

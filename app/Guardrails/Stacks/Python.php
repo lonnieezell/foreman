@@ -69,22 +69,68 @@ class Python extends Stack
             // Explicit files skip ruff's excludes unless `--force-exclude` is set
             $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff format --check --force-exclude"));
             $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff check --force-exclude"));
-            $steps = [];
-
-            if ($this->configures($dir, 'mypy', ['mypy.ini'])) {
-                $steps[] = 'mypy .';
-            }
-            if ($this->configures($dir, 'pyright', ['pyrightconfig.json'])) {
-                $steps[] = 'pyright';
-            }
-            $steps[] = 'pytest';
-
-            foreach ($steps as $step) {
+            foreach ([...array_values($this->typeCheckers($dir)), 'pytest'] as $step) {
                 $commands[] = $this->inDir($dir, $run.$step);
             }
         }
 
         return $commands;
+    }
+
+    public function ciSteps(): array
+    {
+        $dir = $this->ciDir();
+        $uv = $this->has($dir, 'uv.lock');
+        $poetry = $this->has($dir, 'poetry.lock');
+        $types = $this->typeCheckers($dir);
+        // The project may not list these tools itself, so each install path brings them
+        $tools = ['ruff', 'pytest', ...array_keys($types), 'pip-audit'];
+        $run = fn (string $tool, string $command) => match (true) {
+            $uv => "uv run --with {$tool} {$command}",
+            $poetry => "poetry run {$command}",
+            default => $command,
+        };
+
+        // setup-python fails when caching is on and it finds no requirements file
+        $requirements = collect(['requirements.txt', 'pyproject.toml'])->first(fn (string $file) => $this->has($dir, $file));
+        $pipCache = $uv || $poetry || $requirements === null ? [] : ['cache' => 'pip', 'cache-dependency-path' => $this->ciPath($requirements)];
+
+        $install = match (true) {
+            $uv => 'uv sync',
+            $poetry => 'pipx install poetry && poetry install && poetry run pip install '.implode(' ', $tools),
+            default => 'pip install '.implode(' ', [$this->has($dir, 'requirements.txt') ? '-r requirements.txt' : '-e .', ...$tools]),
+        };
+
+        return [
+            'setup' => [
+                ['name' => 'Set up Python', 'uses' => 'actions/setup-python@v5', 'with' => ['python-version' => '3.12', ...$pipCache]],
+                ...($uv ? [['name' => 'Set up uv', 'uses' => 'astral-sh/setup-uv@v5', 'with' => ['enable-cache' => true]]] : []),
+                // setup-python's own Poetry cache needs Poetry installed first, and it is installed below
+                ...($poetry ? [['name' => 'Cache Poetry', 'uses' => 'actions/cache@v4', 'with' => ['path' => '~/.cache/pypoetry', 'key' => "poetry-\${{ runner.os }}-\${{ hashFiles('{$this->ciPath('poetry.lock')}') }}"]]] : []),
+                ['name' => 'Install dependencies', 'run' => $install],
+            ],
+            'lint' => [
+                ['name' => 'Ruff format check', 'run' => $run('ruff', 'ruff format --check')],
+                ['name' => 'Ruff check', 'run' => $run('ruff', 'ruff check')],
+                ...array_map(fn (string $tool, string $command) => ['name' => ucfirst($tool), 'run' => $run($tool, $command)], array_keys($types), $types),
+            ],
+            'test' => [
+                ['name' => 'Tests', 'run' => $run('pytest', 'pytest')],
+            ],
+            'audit' => [
+                ['name' => 'Dependency audit', 'run' => $run('pip-audit', 'pip-audit')],
+                ...$this->codeqlOrSemgrep('python', 'p/python'),
+            ],
+        ];
+    }
+
+    /** @return array<string, string> The type checkers a folder configures, as tool => command. */
+    private function typeCheckers(string $dir): array
+    {
+        return array_filter([
+            'mypy' => $this->configures($dir, 'mypy', ['mypy.ini']) ? 'mypy .' : null,
+            'pyright' => $this->configures($dir, 'pyright', ['pyrightconfig.json']) ? 'pyright' : null,
+        ]);
     }
 
     public function tier3Paths(): array

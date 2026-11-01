@@ -82,6 +82,10 @@ class ReviewPassTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($diff, $answers) {
             $command = $this->commands[] = $process->command;
 
+            if (self::isScopeJudge($process)) {
+                return Process::result(self::SCOPE_JUDGE_PASS);
+            }
+
             if ($command[0] === 'claude') {
                 $prompt = $command[2] ?? '';
                 $pass = match (true) {

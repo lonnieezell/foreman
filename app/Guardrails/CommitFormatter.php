@@ -2,6 +2,7 @@
 
 namespace App\Guardrails;
 
+use App\Support\ForemanEnv;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
@@ -31,7 +32,7 @@ class CommitFormatter
                 continue;
             }
 
-            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree);
+            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree, ForemanEnv::removed());
             $process->setTimeout(120);
             $process->run();
 
