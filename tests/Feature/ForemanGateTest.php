@@ -65,7 +65,7 @@ class ForemanGateTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($gate, $run, &$statusWhileGating) {
             $command = $process->command;
 
-            if (in_array('--json-schema', $command, true)) {
+            if (self::isScopeJudge($process)) {
                 return Process::result(self::SCOPE_JUDGE_PASS);
             }
 

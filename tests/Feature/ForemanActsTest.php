@@ -58,7 +58,7 @@ class ForemanActsTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($result, $lastMessage) {
             $command = $process->command;
 
-            if (in_array('--json-schema', $command, true)) {
+            if (self::isScopeJudge($process)) {
                 return Process::result(self::SCOPE_JUDGE_PASS);
             }
 

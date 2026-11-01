@@ -432,52 +432,43 @@ class ProcessRun implements ShouldQueue
         }
 
         $this->reviewPass($run, $github);
-        $result = $this->prResult($run, $github);
-        $footer = $result === null ? null : $this->review($run, $github);
+        $issue = $github->sanitisedIssue($repo, $run->issue_number);
 
-        if ($footer === null) {
-            return;
-        }
-
-        $verdict = $this->judge($run, $github);
-        $passed = 'passed';
-
-        if ($verdict === null) {
-            return;
-        }
-
-        if (! self::judgePasses($verdict)) {
-            $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
-            $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
-                '{{base}}' => "origin/{$repo->base_branch}",
-                '{{verdict}}' => self::describeVerdict($verdict),
-            ]));
-
+        // The judge goes before the second gate, so a veto doesn't throw a gate run away
+        foreach ([false, true] as $corrected) {
             $result = $this->prResult($run, $github);
-            $footer = $result === null ? null : $this->review($run, $github);
-
-            if ($footer === null) {
-                return;
-            }
-
-            $verdict = $this->judge($run, $github);
+            $verdict = $result === null ? null : $this->judge($run, $github, $issue);
 
             if ($verdict === null) {
                 return;
             }
 
-            if (! self::judgePasses($verdict)) {
-                $github->flagForHuman($repo, $run->issue_number,
-                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n> ".self::describeVerdict($verdict));
-                $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
-                $run->log("Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.");
+            if (self::judgePasses($verdict)) {
+                break;
+            }
+
+            if ($corrected) {
+                $this->handToHuman($run, $github,
+                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(self::describeVerdict($verdict)),
+                    "Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.");
 
                 return;
             }
 
-            $passed = 'passed after one correction round';
+            $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
+            $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
+                '{{base}}' => "origin/{$repo->base_branch}",
+                '{{verdict}}' => self::describeVerdict($verdict),
+            ]));
         }
 
+        $footer = $this->review($run, $github);
+
+        if ($footer === null) {
+            return;
+        }
+
+        $passed = $corrected ? 'passed after one correction round' : 'passed';
         $run->log("Scope judge {$passed}: {$verdict['reason']}");
         $footer .= "\n- Scope judge: {$passed}. {$verdict['reason']}";
 
@@ -582,7 +573,7 @@ class ProcessRun implements ShouldQueue
      *
      * @return array{in_scope:bool,weakens_tests:bool,reason:string}|null
      */
-    private function judge(Run $run, GitHub $github): ?array
+    private function judge(Run $run, GitHub $github, string $issue): ?array
     {
         $repo = $run->repository;
         $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--no-color', '--no-ext-diff', "origin/{$repo->base_branch}...HEAD"]);
@@ -593,7 +584,7 @@ class ProcessRun implements ShouldQueue
 
         $prompt = strtr(file_get_contents(resource_path('prompts/scope-judge.md')), [
             '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
-            '{{issue}}' => $github->sanitisedIssue($repo, $run->issue_number),
+            '{{issue}}' => $issue,
             '{{diff}}' => IssueSanitiser::wrapText($diff->output(), clean: false),
         ]);
 
@@ -618,8 +609,6 @@ class ProcessRun implements ShouldQueue
 
                 if (is_array($verdict) && is_bool($verdict['in_scope'] ?? null) && is_bool($verdict['weakens_tests'] ?? null)
                     && is_string($verdict['reason'] ?? null) && trim($verdict['reason']) !== '') {
-                    $run->update(['heartbeat_at' => now()]);
-
                     // Model output shaped by untrusted text, bound for a markdown list and a quote
                     return ['reason' => (string) str($verdict['reason'])->squish()->limit(500)] + $verdict;
                 }
@@ -629,20 +618,33 @@ class ProcessRun implements ShouldQueue
                     : 'an answer without in_scope, weakens_tests and reason: '.str(trim($process->output()))->limit(500);
             } catch (Throwable $e) {
                 $problem = $e->getMessage();
+            } finally {
+                $run->update(['heartbeat_at' => now()]);
             }
 
-            $run->update(['heartbeat_at' => now()]);
             $run->log("Scope judge gave no usable answer ({$problem}).");
             $problems[] = "Try {$attempt}: {$problem}";
         }
 
-        $quoted = collect(explode("\n", implode("\n\n", $problems)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
-        $github->flagForHuman($repo, $run->issue_number,
-            "Foreman's scope judge gave no usable answer twice, so nothing was pushed. The branch is still in the worktree.\n\n{$quoted}");
-        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
-        $run->log('Scope judge failed twice. Flagged the issue for a human.');
+        $this->handToHuman($run, $github,
+            "Foreman's scope judge gave no usable answer twice, so nothing was pushed. The branch is still in the worktree.\n\n".self::quote(...$problems),
+            'Scope judge failed twice. Flagged the issue for a human.');
 
         return null;
+    }
+
+    /** Flag the issue for a human with `$comment`, and end the run as Needs you. */
+    private function handToHuman(Run $run, GitHub $github, string $comment, string $log): void
+    {
+        $github->flagForHuman($run->repository, $run->issue_number, $comment);
+        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+        $run->log($log);
+    }
+
+    /** The parts as one markdown block quote, a blank quoted line between them. */
+    private static function quote(string ...$parts): string
+    {
+        return collect(explode("\n", implode("\n\n", $parts)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
     }
 
     private static function judgePasses(array $verdict): bool
@@ -695,11 +697,9 @@ class ProcessRun implements ShouldQueue
         }
 
         if ($failures) {
-            $quoted = collect(explode("\n", implode("\n\n", $failures)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
-            $github->flagForHuman($repo, $run->issue_number,
-                "Foreman's gate stopped this run before pushing. Nothing was pushed, and the branch is still in the worktree.\n\n{$quoted}");
-            $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
-            $run->log("Foreman's gate failed. Flagged the issue for a human.");
+            $this->handToHuman($run, $github,
+                "Foreman's gate stopped this run before pushing. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(...$failures),
+                "Foreman's gate failed. Flagged the issue for a human.");
 
             return null;
         }

@@ -268,7 +268,7 @@ class PrWatchTest extends TestCase
     private function process(Run $run, MockInterface $github, ?\Closure $onClaude = null): void
     {
         Process::fake(function (PendingProcess $process) use ($onClaude) {
-            if (in_array('--json-schema', $process->command, true)) {
+            if (self::isScopeJudge($process)) {
                 return Process::result(self::SCOPE_JUDGE_PASS);
             }
 

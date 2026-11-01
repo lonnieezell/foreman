@@ -80,7 +80,7 @@ class ReviewPassTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($diff, $answers) {
             $command = $this->commands[] = $process->command;
 
-            if (in_array('--json-schema', $command, true)) {
+            if (self::isScopeJudge($process)) {
                 return Process::result(self::SCOPE_JUDGE_PASS);
             }
 

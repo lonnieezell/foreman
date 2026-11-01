@@ -314,7 +314,7 @@ When the agent says it is done with a `pr` result, Foreman doesn't push yet. The
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
 3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
 
-If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then it runs all three checks again. If they pass a second time, the [scope judge](#scope-judge) has the last word. Only if it passes the change does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then the [scope judge](#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
 
 ### The size limit
 
@@ -384,7 +384,7 @@ A deep review on every change costs time and money for little gain. A typo fix i
 
 ## Scope judge
 
-After the review pass and the second run of [Foreman's gate](#foremans-gate), one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with three fields:
+After the review pass, and before [Foreman's gate](#foremans-gate) runs the second time, one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with three fields:
 
 - `in_scope`: whether the change sticks to what the issue asks for. Unrelated features, refactors the issue didn't mention, and leaving out most of the work all count against it.
 - `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine.
@@ -396,8 +396,8 @@ Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It
 
 What happens next depends on the verdict:
 
-- **Pass.** The change is in scope and leaves tests alone. Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
-- **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then it runs [Foreman's gate](#foremans-gate) and the judge again. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
+- **Pass.** The change is in scope and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
+- **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
 - **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, nothing is pushed. The run goes to **Needs you**, and the comment quotes what went wrong each time. Foreman never treats a missing verdict as a pass.
 
 The run log shows each question to the judge and its verdict.
@@ -414,6 +414,6 @@ The judge never sees that story. It gets no session, no tools and no access to t
 - It only sees the diff and the issue. A change that matches the issue's words but misses its intent can pass.
 - A very large diff makes the judge's job harder. The [size limit](#the-size-limit) keeps the diff in check.
 - A global `CLAUDE.md` in the repository's Claude profile may still load. Leaving out settings doesn't cover memory files. Project files don't load, because the judge runs outside the repository.
-- The correction round gets the gate and the judge again, but not a second review pass. The risk tier stays as it was set before the correction.
+- The judge runs before the second gate, so a veto doesn't waste a full gate run. The corrected change still goes through the gate before the push, but it doesn't get a second review pass. The risk tier stays as it was set before the correction.
 - It only judges the first PR of a run. Fix-up rounds on an open PR don't get a judge.
 - The judge's cost isn't added to the run's cost or counted against the spend cap. A Haiku call on a diff under the size limit costs a few cents at most.

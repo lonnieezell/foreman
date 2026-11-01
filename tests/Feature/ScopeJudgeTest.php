@@ -35,6 +35,9 @@ class ScopeJudgeTest extends TestCase
     /** @var list<string> The PR bodies Foreman opened. */
     private array $prBodies = [];
 
+    /** @var list<list<string>> Each judge call's command. */
+    private array $judgeCommands = [];
+
     /** @var list<string> What each judge call got on stdin. */
     private array $judgeInputs = [];
 
@@ -78,8 +81,9 @@ class ScopeJudgeTest extends TestCase
         Process::fake(function (PendingProcess $process) use (&$verdicts) {
             $command = $this->commands[] = $process->command;
 
-            if ($command[0] === 'claude' && in_array('--json-schema', $command, true)) {
+            if (self::isScopeJudge($process)) {
                 $this->sequence[] = 'judge';
+                $this->judgeCommands[] = $command;
                 $this->judgeInputs[] = $process->input;
                 $verdict = $verdicts ? array_shift($verdicts) : self::PASS;
 
@@ -137,12 +141,6 @@ class ScopeJudgeTest extends TestCase
         return [$run->fresh(), $comments ?? []];
     }
 
-    /** @return list<list<string>> */
-    private function judgeCommands(): array
-    {
-        return collect($this->commands)->filter(fn ($c) => $c[0] === 'claude' && in_array('--json-schema', $c, true))->values()->all();
-    }
-
     private function ran(array $prefix): bool
     {
         return collect($this->commands)->contains(fn ($c) => array_slice($c, 0, count($prefix)) === $prefix);
@@ -152,7 +150,7 @@ class ScopeJudgeTest extends TestCase
     {
         $this->settle();
 
-        $judge = $this->judgeCommands()[0];
+        $judge = $this->judgeCommands[0];
         $prompt = $this->judgeInputs[0];
 
         $this->assertSame(['claude', '-p', '--model', 'haiku'], array_slice($judge, 0, 4));
@@ -170,7 +168,7 @@ class ScopeJudgeTest extends TestCase
         [$run] = $this->settle();
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
-        $this->assertSame(['issue', 'gate', 'review', 'gate', 'judge'], $this->sequence);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'gate'], $this->sequence);
         $this->assertStringContainsString('Scope judge: passed. Only fixes the bug the issue names.', $this->prBodies[0]);
     }
 
@@ -179,7 +177,7 @@ class ScopeJudgeTest extends TestCase
         [$run] = $this->settle([self::VETO]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
-        $this->assertSame(['issue', 'gate', 'review', 'gate', 'judge', 'correction', 'gate', 'judge'], $this->sequence);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'gate'], $this->sequence);
 
         $correction = collect($this->commands)->first(fn ($c) => $c[0] === 'claude' && str_contains($c[2], 'scope judge'));
         $this->assertStringContainsString('Adds an unrelated settings page.', $correction[2]);
@@ -209,7 +207,7 @@ class ScopeJudgeTest extends TestCase
         [$run] = $this->settle([null]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
-        $this->assertSame(['issue', 'gate', 'review', 'gate', 'judge', 'judge'], $this->sequence);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge', 'gate'], $this->sequence);
         $this->assertStringContainsString('Scope judge: passed.', $this->prBodies[0]);
     }
 
@@ -219,7 +217,7 @@ class ScopeJudgeTest extends TestCase
         [$run, $comments] = $this->settle([null, $missingField]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
-        $this->assertSame(['issue', 'gate', 'review', 'gate', 'judge', 'judge'], $this->sequence);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge'], $this->sequence);
         $this->assertStringContainsString('API Error: overloaded', $comments[0]);
         $this->assertStringContainsString('weakens_tests', $comments[0]);
         $this->assertFalse($this->ran(['git', 'push']));
