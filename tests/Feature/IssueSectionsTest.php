@@ -259,6 +259,20 @@ class IssueSectionsTest extends TestCase
             ->assertSeeHtmlInOrder(['<dt class="tone-good">2</dt>', '<dd>PR ready</dd>', '<dt class="tone-bad">1</dt>', '<dd>Failed</dd>']);
     }
 
+    public function test_continuing_a_needs_you_run_that_has_a_pr_does_nothing(): void
+    {
+        $run = $this->makeRun($this->repository(), 1, RunStatus::NeedsHuman, ['session_id' => 's', 'worktree_path' => '/tmp/wt', 'pr_url' => 'https://example.test/pull/1']);
+        $github = Mockery::mock(GitHub::class);
+        $github->expects('reclaim')->never();
+        $this->app->instance(GitHub::class, $github);
+        Queue::fake();
+
+        Livewire::test(Dashboard::class)->call('continueRun', $run->id);
+
+        $this->assertSame(1, Run::count());
+        Queue::assertNothingPushed();
+    }
+
     public function test_continuing_a_needs_you_issue_from_the_dashboard_starts_a_resumed_run_and_stays_on_the_dashboard(): void
     {
         $repo = $this->repository();

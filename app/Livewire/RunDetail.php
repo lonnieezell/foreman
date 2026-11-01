@@ -34,6 +34,10 @@ class RunDetail extends Component
     /** Resume the same Claude session in the same worktree, after the human replied on the issue. */
     public function continueRun(GitHub $github)
     {
+        if (! $this->run->canContinueAfterReply()) {
+            return;   // the page hides the button for this run, so a stale or forged call does nothing
+        }
+
         return $this->redirectRoute('runs.show', $this->run->continueAfterReply($github), navigate: true);
     }
 
