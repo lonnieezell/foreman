@@ -145,6 +145,19 @@ class DashboardTest extends TestCase
             ->assertSee('x-data="countdown"', false);
     }
 
+    public function test_the_countdowns_parent_is_not_a_paragraph(): void
+    {
+        // The countdown reads data-next from its parent. The row also holds the popover's <div>,
+        // and a browser closes a <p> at the first <div>, which would leave the countdown without it.
+        $repo = $this->repository(enabled: true);
+        $repo->update(['last_polled_at' => now()]);
+        Process::fake();
+
+        $this->get('/')
+            ->assertSee('<div class="line-meta"', false)
+            ->assertDontSee('<p class="line-meta"', false);
+    }
+
     public function test_a_repository_over_its_daily_limit_shows_a_notice_instead_of_its_line(): void
     {
         $repo = $this->repository(enabled: true);
