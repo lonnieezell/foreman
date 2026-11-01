@@ -25,7 +25,10 @@ class StackSet
     /** @param list<Stack> $stacks */
     public function __construct(public readonly array $stacks) {}
 
-    /** Look for marker files anywhere in the worktree, so a Tauri app's `src-tauri/Cargo.toml` counts. */
+    /**
+     * Look for marker files anywhere in the worktree, so a Tauri app's `src-tauri/Cargo.toml` counts.
+     * Git-ignored files don't count: they aren't the repo's code, such as Foreman's own worktrees of other repos.
+     */
     public static function detect(string $root): self
     {
         $stacks = [];
@@ -33,7 +36,7 @@ class StackSet
         foreach (self::MARKERS as $class => $names) {
             $dirs = [];
 
-            foreach (Finder::create()->files()->in($root)->name($names)->exclude(self::SKIPPED_DIRS) as $file) {
+            foreach (Finder::create()->files()->in($root)->name($names)->exclude(self::SKIPPED_DIRS)->ignoreVCSIgnored(true) as $file) {
                 $dirs[] = str_replace('\\', '/', $file->getRelativePath());
             }
 

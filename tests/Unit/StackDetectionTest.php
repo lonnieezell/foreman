@@ -95,6 +95,16 @@ class StackDetectionTest extends TestCase
         $this->assertSame([], StackSet::detect($this->root)->names());
     }
 
+    public function test_marker_files_in_git_ignored_folders_are_ignored(): void
+    {
+        (new Process(['git', 'init', '--quiet'], $this->root))->mustRun();
+        $this->touch('composer.json', '{}');
+        $this->touch('.gitignore', "/storage/foreman\n");
+        $this->touch('storage/foreman/worktrees/other-app/issue-1/src-tauri/Cargo.toml');
+
+        $this->assertSame(['php'], StackSet::detect($this->root)->names());
+    }
+
     public function test_a_repo_with_several_stacks_gets_the_union_of_their_rules(): void
     {
         $this->touch('composer.json', json_encode(['require' => ['laravel/framework' => '^13.0']]));

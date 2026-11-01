@@ -44,6 +44,19 @@ jobs:
           git show "origin/${{ github.base_ref }}:.github/foreman/test-integrity.php" > "$RUNNER_TEMP/test-integrity.php" || cp .github/foreman/test-integrity.php "$RUNNER_TEMP/test-integrity.php"
           php "$RUNNER_TEMP/test-integrity.php" --base=origin/${{ github.base_ref }}
       -
+        name: 'Set up Node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      -
+        name: 'Install Node dependencies'
+        run: 'npm ci'
+      -
+        name: 'Build assets'
+        run: 'npm run build'
+      -
         name: Tests
         run: vendor/bin/phpunit
       -
@@ -51,7 +64,7 @@ jobs:
         run: 'composer audit'
       -
         name: Semgrep
-        run: 'pipx run semgrep scan --config p/php --config p/laravel --error'
+        run: 'pipx run semgrep scan --config p/php --error'
   typescript:
     name: typescript
     runs-on: ubuntu-latest
@@ -103,71 +116,3 @@ jobs:
         name: Semgrep
         if: '${{ github.event.repository.private }}'
         run: 'pipx run semgrep scan --config p/typescript --config p/react --error'
-  rust:
-    name: rust
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    defaults:
-      run:
-        working-directory: storage/foreman/worktrees/newmythmedia-garret-app/issue-516/src-tauri
-    steps:
-      -
-        name: 'Check out'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      -
-        name: 'Set up PHP'
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          tools: none
-      -
-        name: 'Set up Rust'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: 'rustfmt, clippy'
-      -
-        name: 'Cache Rust build'
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: storage/foreman/worktrees/newmythmedia-garret-app/issue-516/src-tauri
-      -
-        name: 'Format check'
-        run: 'cargo fmt --check'
-      -
-        name: Clippy
-        run: 'cargo clippy --all-targets -- -D warnings'
-      -
-        name: 'Test integrity'
-        working-directory: '${{ github.workspace }}'
-        run: |-
-          git show "origin/${{ github.base_ref }}:.github/foreman/test-integrity.php" > "$RUNNER_TEMP/test-integrity.php" || cp .github/foreman/test-integrity.php "$RUNNER_TEMP/test-integrity.php"
-          php "$RUNNER_TEMP/test-integrity.php" --base=origin/${{ github.base_ref }}
-      -
-        name: Tests
-        run: 'cargo test'
-      -
-        name: 'Install cargo-audit'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-      -
-        name: 'Cargo audit'
-        run: 'cargo audit'
-      -
-        name: 'CodeQL init'
-        if: '${{ !github.event.repository.private }}'
-        uses: github/codeql-action/init@v3
-        with:
-          languages: rust
-      -
-        name: 'CodeQL analyze'
-        if: '${{ !github.event.repository.private }}'
-        uses: github/codeql-action/analyze@v3
-      -
-        name: Semgrep
-        if: '${{ github.event.repository.private }}'
-        run: 'pipx run semgrep scan --config p/default --error'
