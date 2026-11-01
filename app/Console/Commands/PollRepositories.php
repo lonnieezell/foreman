@@ -98,7 +98,6 @@ class PollRepositories extends Command
             'branch' => "agent/issue-{$issue['number']}",
             'status' => RunStatus::Queued,
             'model' => $repo->model,
-            'effort' => $repo->effort,
         ]);
 
         $run->log("Claimed #{$issue['number']}: {$issue['title']}");

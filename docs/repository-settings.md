@@ -42,17 +42,7 @@ Spend is the cost Claude Code reports for each run. On a subscription it's an es
 
 ### Model
 
-Haiku, Sonnet, Opus or Fable. Default: Sonnet. Passed to `claude --model`.
-
-You can also change the model, and the effort below, from the repository's row on the dashboard. Click the model name under the repository's name, pick new values and press Save. The change applies to new runs only.
-
-### Effort
-
-How hard Claude thinks. Default, Low, Medium, High, XHigh or Max. Passed to `claude --effort`.
-
-**Default** leaves `--effort` out, so Claude uses its own default. Every model accepts every level. Higher levels let Claude think longer, which usually costs more tokens.
-
-Like the model, effort applies to new runs. A run that is already queued keeps the model and effort it was created with.
+Haiku, Sonnet or Opus. Default: Sonnet. Passed to `claude --model`.
 
 ### Claude profile
 

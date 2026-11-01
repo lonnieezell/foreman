@@ -11,8 +11,6 @@ use App\Services\Preflight;
 use App\Services\Usage;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -62,24 +60,6 @@ class Dashboard extends Component
     {
         $repo = Repository::findOrFail($id);
         $repo->update(['concurrency' => max(1, min(8, $repo->concurrency + $delta))]);
-    }
-
-    /** Returns null once saved, or the first validation message. Applies to new runs only. */
-    public function saveClaudeSettings(int $id, string $model, string $effort): ?string
-    {
-        $repo = Repository::findOrFail($id);
-        $validator = Validator::make(['model' => $model, 'effort' => $effort], [
-            'model' => ['required', Rule::in(array_keys(Repository::MODELS))],
-            'effort' => ['nullable', Rule::in(array_keys(Repository::EFFORTS))],
-        ]);
-
-        if ($validator->fails()) {
-            return $validator->errors()->first();
-        }
-
-        $repo->update(['model' => $model, 'effort' => $effort ?: null]);
-
-        return null;
     }
 
     public function checkNow(int $id): void

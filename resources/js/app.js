@@ -25,36 +25,6 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
-    // The model and effort popover on a dashboard row. The draft lives here, not in Livewire, so the
-    // dashboard's poll can't reset it. Opening re-reads the row's saved values from the data attributes.
-    window.Alpine.data('claudeSettings', (id) => ({
-        model: '',
-        effort: '',
-        saving: false,
-        error: '',
-        reset() {
-            this.model = this.$root.dataset.model;
-            this.effort = this.$root.dataset.effort;
-            this.error = '';
-        },
-        async save() {
-            this.saving = true;
-            this.error = '';
-
-            try {
-                this.error = (await this.$wire.saveClaudeSettings(id, this.model, this.effort)) ?? '';
-            } catch {
-                this.error = 'Couldn’t save. Try again.';
-            }
-
-            this.saving = false;
-
-            if (!this.error) {
-                this.$refs.popover.hidePopover();
-            }
-        },
-    }));
-
     // Copies text a Livewire method returns. Handing ClipboardItem the promise keeps the click's
     // permission while the server builds the text, which Safari needs.
     window.Alpine.data('copyFrom', (method) => ({

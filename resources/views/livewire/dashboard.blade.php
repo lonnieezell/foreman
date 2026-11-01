@@ -118,32 +118,9 @@
                 <div>
                     <h2 class="line-name"><a href="{{ route('repositories.edit', $repo) }}" wire:navigate>{{ $repo->name }}</a></h2>
                     {{-- data-next sits outside the ignored countdown so each re-render can move it --}}
-                    <p class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->modelLabel() }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
+                    <p class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->model }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
                         <span title="Merges into {{ $repo->base_branch }}">{{ $repo->github_repo }}</span>
-                        {{-- The data attributes feed the popover's draft; the popover itself is wire:ignore'd so the poll can't close it --}}
-                        <span x-data="claudeSettings({{ $repo->id }})" data-model="{{ $repo->model }}" data-effort="{{ $repo->effort }}">
-                            <button type="button" class="line-model" x-ref="trigger" popovertarget="claude-{{ $repo->id }}" aria-label="Model and effort for {{ $repo->name }}">{{ $repo->modelLabel() }}</button>
-                            <div id="claude-{{ $repo->id }}" class="claude-popover" popover wire:ignore x-ref="popover" x-anchor.bottom-start="$refs.trigger" x-on:toggle="$event.newState === 'open' && reset()">
-                                <label>Model
-                                    <select x-model="model">
-                                        @foreach (App\Models\Repository::MODELS as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
-                                <label>Effort
-                                    <select x-model="effort">
-                                        <option value="">Default</option>
-                                        @foreach (App\Models\Repository::EFFORTS as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
-                                <p class="hint">Applies to new runs.</p>
-                                <p class="error" x-show="error" x-text="error"></p>
-                                <button type="button" class="btn" x-on:click="save()" x-bind:disabled="saving" x-text="saving ? 'Saving…' : 'Save'">Save</button>
-                            </div>
-                        </span>
+                        <span>{{ $repo->model }}</span>
                         @if ($running)
                             <span class="line-countdown" title="Next check for ready issues, every {{ $repo->poll_interval_minutes }} min" wire:ignore x-data="countdown"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.5V8l2.25 1.5" /></svg><span x-text="text"></span></span>
                         @endif

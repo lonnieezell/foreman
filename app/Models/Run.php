@@ -101,7 +101,6 @@ class Run extends Model
             'branch' => $this->branch,
             'status' => RunStatus::Queued,
             'model' => $this->repository->model,
-            'effort' => $this->repository->effort,
             'worktree_path' => $this->worktree_path,
             'resume_session_id' => $this->session_id,
         ]);

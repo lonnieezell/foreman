@@ -126,8 +126,7 @@ class ProcessRun implements ShouldQueue
     {
         $repo = $run->repository;
         $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
-        $effort = $run->effort ? "{$run->effort} effort, " : '';
-        $run->log("Starting Claude ({$run->model}, {$effort}{$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
+        $run->log("Starting Claude ({$repo->model}, {$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
 
         $prompt = match (true) {
             (bool) $run->pr_round => $this->roundPrompt($run),
@@ -137,17 +136,13 @@ class ProcessRun implements ShouldQueue
 
         $command = [
             'claude', '-p', $prompt,
-            '--model', $run->model,
+            '--model', $repo->model,
             '--max-turns', (string) $repo->max_turns,
             // Rounds read CI results; GitHub writes stay with Foreman
             '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
             '--output-format', 'stream-json',
             '--verbose',
         ];
-
-        if ($run->effort) {
-            array_push($command, '--effort', $run->effort);
-        }
 
         if ($run->resume_session_id) {
             // Same conversation, so the agent doesn't re-explore the codebase

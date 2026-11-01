@@ -64,7 +64,6 @@
 
     <dl class="facts">
         <div><dt>Model</dt><dd>{{ $run->model }}</dd></div>
-        <div><dt>Effort</dt><dd>{{ $run->effort ?? 'Default' }}</dd></div>
         <div><dt>Turns</dt><dd>{{ $run->num_turns ?? '–' }}</dd></div>
         <div><dt>Cost</dt><dd>${{ number_format($run->cost_usd, 2) }}</dd></div>
         @if ($run->input_tokens !== null)

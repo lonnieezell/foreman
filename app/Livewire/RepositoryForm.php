@@ -25,7 +25,6 @@ class RepositoryForm extends Component
     public int $poll_interval_minutes = 10;
     public string $daily_budget = '';
     public string $model = 'sonnet';
-    public string $effort = '';
     public string $claude_profile = '';
     public int $max_turns = 40;
     public int $max_minutes = 45;
@@ -45,7 +44,6 @@ class RepositoryForm extends Component
                 'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs',
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
-            $this->effort = (string) $repository->effort;
             $this->claude_profile = (string) $repository->claude_profile;
             $this->prompt_template = (string) $repository->prompt_template;
         }
@@ -123,8 +121,7 @@ class RepositoryForm extends Component
             'concurrency' => ['required', 'integer', 'between:1,8'],
             'poll_interval_minutes' => ['required', 'integer', 'between:1,1440'],
             'daily_budget' => ['nullable', 'numeric', 'min:0'],
-            'model' => ['required', Rule::in(array_keys(Repository::MODELS))],
-            'effort' => ['nullable', Rule::in(array_keys(Repository::EFFORTS))],
+            'model' => ['required', 'string'],
             'claude_profile' => [config('foreman.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('foreman.claude_profiles')))],
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
@@ -139,7 +136,6 @@ class RepositoryForm extends Component
 
         $data['daily_budget'] = $data['daily_budget'] === '' ? null : $data['daily_budget'];
         $data['claude_profile'] = $data['claude_profile'] ?: null;
-        $data['effort'] = $data['effort'] ?: null;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
         $default = file_get_contents(resource_path('prompts/default.md'));
