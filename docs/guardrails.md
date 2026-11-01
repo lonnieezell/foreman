@@ -19,7 +19,8 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Test integrity | A script that fails when tests are deleted, weakened or skipped, or when tool settings are loosened. See [Test integrity](#test-integrity). | Built |
 | Definition of done | A Stop hook that sends the agent back until the verify script and the integrity check pass. See [Definition of done](#definition-of-done). | Built |
 | Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
-| Everything after that | Other hooks, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
+| Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). | Built |
+| Everything after that | Other hooks, risk tiers, review and a CI kit for your repository. | Not built yet |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
@@ -260,10 +261,40 @@ If either fails, the agent can't stop. It gets a message with the end of the fai
 
 Some failures the agent can't fix: a missing tool, a flaky test, a check that fails on the base branch too. A hook that blocks forever would burn money for nothing. Claude Code also has its own limit. After 8 blocked stops in a row it forces the agent to stop, with no say from Foreman. Three is well under that. It leaves the agent two real chances to fix what the first failure showed, and Foreman decides when to stop instead of Claude Code.
 
-After the third block, the next stop is let through. The run log says `Stop hook gave up after 3 blocked stops.` The count starts again each time Foreman starts the agent, including when a run resumes after a human reply. Foreman's own checks after the agent finishes are meant to flag a run that gave up for a human. Those checks aren't built yet. See [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
+After the third block, the next stop is let through. The run log says `Stop hook gave up after 3 blocked stops.` The count starts again each time Foreman starts the agent, including when a run resumes after a human reply. Foreman's own checks after the agent finishes catch a run that gave up. See [Foreman's gate](#foremans-gate) and [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
 
 ### What it doesn't do
 
 - It does not stop the agent from opening a PR. It only holds back the end of the turn.
 - If it can't read its rules, it lets the agent stop and logs why. Blocking forever would be worse.
 - The verify script is only as good as you make it. An empty script falls back to the detected stacks' checks, and a stack Foreman can't detect has none.
+
+## Foreman's gate
+
+When the agent says it is done with a `pr` result, Foreman doesn't push yet. The run moves to the **Reviewing** station. There Foreman runs these in the worktree:
+
+1. The [test-integrity check](#test-integrity), against `origin/` and the base branch.
+2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
+3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
+
+Only if all three pass does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result and the size. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+
+### The size limit
+
+The limit is 1,000 changed lines by default. Set `FOREMAN_MAX_PR_LINES` in `.env` to change it, then restart Foreman. See [Global settings](global-settings.md#environment-variables). A change over the limit goes to **Needs you** instead of opening a PR, so a person decides whether to split it up. A change exactly at the limit still opens.
+
+### Why checks run again outside the agent
+
+The [Definition of done](#definition-of-done) already runs the same checks in a hook. That hook is not enough on its own:
+
+- It gives up after 3 blocked stops, and then lets the agent stop with failing checks.
+- It runs inside the agent's session. A hook can fail to load, or fail to read its rules, and then it lets the agent stop too.
+- The agent can change files after the last time the hook ran, or tell Foreman the work is done without the hook ever running.
+
+Foreman's gate runs in Foreman's own process, after the agent has finished. The agent can't skip it, shorten it or talk its way past it. Foreman only trusts a check that it ran itself.
+
+### What it doesn't do
+
+- It only gates the first PR of a run. Fix-up rounds on a PR that is already open still push without it.
+- It is only as good as the verify script. A repository with no script and no detected stack has nothing to run except the integrity check and the size check.
+- Counting lines is a blunt measure. A large generated file counts the same as hand-written code. Binary files count as zero.

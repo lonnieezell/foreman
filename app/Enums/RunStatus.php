@@ -8,6 +8,7 @@ enum RunStatus: string
     case Preparing = 'preparing';   // worktree + setup script
     case Working = 'working';       // agent is writing code
     case Checking = 'checking';     // agent is running tests / static analysis
+    case Reviewing = 'reviewing';   // Foreman's own gate, before it pushes
     case PrOpened = 'pr_opened';     // PR opened (or fixes pushed) and not watched further
     case WatchingPr = 'watching_pr'; // waiting on CI and review bots; no worker attached
     case PrReady = 'pr_ready';
@@ -18,7 +19,7 @@ enum RunStatus: string
     /** @return list<self> The stations on a repository's line, in order. */
     public static function stations(): array
     {
-        return [self::Queued, self::Preparing, self::Working, self::Checking];
+        return [self::Queued, self::Preparing, self::Working, self::Checking, self::Reviewing];
     }
 
     /** @return list<string> */
@@ -39,6 +40,7 @@ enum RunStatus: string
             self::Preparing => 'Setting up',
             self::Working => 'Writing code',
             self::Checking => 'Running checks',
+            self::Reviewing => 'Reviewing',
             self::PrOpened => 'PR opened',
             self::WatchingPr => 'Watching PR',
             self::PrReady => 'PR ready',

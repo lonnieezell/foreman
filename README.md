@@ -42,9 +42,9 @@ GitHub issue labelled ready-for-agent
 claimed: label swapped to agent-working
         │
         ▼
-Waiting ─► Setting up ─► Writing code ─► Running checks
-            worktree +     claude -p       tests / static
-            setup script                   analysis
+Waiting ─► Setting up ─► Writing code ─► Running checks ─► Reviewing
+            worktree +     claude -p       tests / static    Foreman's own gate:
+            setup script                   analysis          verify, integrity, size
         │
         ├─► PR opened ─► Watching PR ─► PR ready      (checks pass, no open bot threads, or merged)
         │                    │
