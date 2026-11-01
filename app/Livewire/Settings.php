@@ -22,11 +22,17 @@ class Settings extends Component
 
     // Empty means use the default from .env or config/foreman.php
     public string $five_hour_ceiling = '';
+
     public string $weekly_pace_margin = '';
+
     public string $weekly_cap = '';
+
     public string $probe_minutes = '';
+
     public string $pr_max_rounds = '';
+
     public string $pr_quiet_minutes = '';
+
     public string $pr_timeout_minutes = '';
 
     // Empty means no limit

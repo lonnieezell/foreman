@@ -15,27 +15,49 @@ class RepositoryForm extends Component
     public ?Repository $repository = null;
 
     public string $name = '';
+
     public string $local_path = '';
+
     public string $github_repo = '';
+
     public string $base_branch = 'main';
+
     public string $ready_label = 'ready-for-agent';
+
     public string $working_label = 'agent-working';
+
     public string $human_label = 'needs-human';
+
     public int $concurrency = 1;
+
     public int $poll_interval_minutes = 10;
+
     public string $daily_budget = '';
+
     public string $max_budget_per_run = '';
+
     public string $model = 'sonnet';
+
     public string $effort = '';
+
     public string $claude_profile = '';
+
     public int $max_turns = 40;
+
     public int $max_minutes = 45;
+
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
+
     public string $locked_paths = '';
+
     public string $setup_script = Repository::DEFAULT_SETUP_SCRIPT;
+
     public string $verify_script = '';
+
     public string $prompt_template = '';
+
     public bool $cleanup_worktrees = true;
+
     public bool $watch_prs = true;
 
     public function mount(?Repository $repository = null): void

@@ -52,7 +52,7 @@ class RunLogTest extends TestCase
         $run = $this->makeRun();
         File::ensureDirectoryExists(dirname($run->logPath()));
         File::put($run->logPath(), implode("\n", [
-            "  s=open(p).read()",                      // cut off mid-entry by the tail
+            '  s=open(p).read()',                      // cut off mid-entry by the tail
             "[00:47:08] $ cat > a.ts <<'EOF'",
             'import { x } from "y";',
             '',

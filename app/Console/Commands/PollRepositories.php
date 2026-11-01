@@ -64,12 +64,14 @@ class PollRepositories extends Command
                 $repo->update(['last_error' => null]);
             } catch (Throwable $e) {
                 $repo->update(['last_error' => trim($e->getMessage())]);
+
                 continue;
             }
 
             // Only now, so a profile with nothing to do is never probed
             if ($issues && ! $usage->allows($repo)) {
                 $this->line("Holding {$repo->name}: ".$usage->holdReason($repo->profileName()));
+
                 continue;
             }
 

@@ -8,10 +8,15 @@ use Illuminate\Support\Arr;
 class Setting extends Model
 {
     protected $table = 'foreman_settings';
+
     protected $primaryKey = 'key';
+
     public $incrementing = false;
+
     protected $keyType = 'string';
+
     public $timestamps = false;
+
     protected $guarded = [];
 
     // Keys under config('foreman') the settings page can override
