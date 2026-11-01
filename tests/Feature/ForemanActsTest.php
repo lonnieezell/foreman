@@ -246,13 +246,13 @@ class ForemanActsTest extends TestCase
         ])->fresh();
 
         Livewire::test(RepositoryForm::class, ['repository' => $repository])
-            ->assertSee('still lets the agent push or use')
+            ->assertSee('This list has entries from the old default')
             ->call('resetAllowedTools')
             ->assertSet('allowed_tools', Repository::DEFAULT_ALLOWED_TOOLS)
-            ->assertDontSee('still lets the agent push or use');
+            ->assertDontSee('This list has entries from the old default');
 
         $repository->update(['allowed_tools' => Repository::DEFAULT_ALLOWED_TOOLS]);
-        Livewire::test(RepositoryForm::class, ['repository' => $repository])->assertDontSee('still lets the agent push or use');
+        Livewire::test(RepositoryForm::class, ['repository' => $repository])->assertDontSee('This list has entries from the old default');
     }
 
     public function test_the_default_prompt_tells_the_agent_to_commit_write_the_result_and_use_test_looks_wrong(): void

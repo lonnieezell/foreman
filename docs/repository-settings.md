@@ -2,7 +2,11 @@
 
 Each repository has its own settings. To open them, click the gear icon on the repository's row, or click its name.
 
-## Where the code lives
+The header sums up the saved settings: the repository, the model and effort, and the pace. A side nav jumps to each section. A dot next to **Permissions** means the tool list has entries from an old default. **Edited** next to **Instructions** means the prompt is no longer the default.
+
+The footer stays at the bottom of the screen. It lists which sections have unsaved changes. **Discard** puts back the saved values, and **Save changes** saves them.
+
+## Repository
 
 ### Local checkout
 
@@ -22,33 +26,13 @@ The name shown on the dashboard. **Detect** fills it in from the repository name
 
 The base branch. Default: `main`. Each run's branch starts from `origin/<base>`, and the PR targets it.
 
-## Pace and spend
+## Model & limits
 
-### Issues at a time
-
-How many runs this repository may have active at once, from 1 to 8. Default: 1. You can also change it with **−** / **+** on the dashboard.
-
-All repositories share three workers. So more than three runs at once only helps if you start more workers. See [Troubleshooting](troubleshooting.md#runs-stay-on-waiting).
-
-### Check for issues every (minutes)
-
-How often Foreman looks for ready issues, from 1 to 1440. Default: 10. Checks only call `gh`, so they cost no tokens.
-
-### Daily limit (USD)
-
-Stop starting runs for this repository once today's spend reaches this amount. Empty means no limit. When the limit is reached, the row shows "Daily limit … reached, paused until tomorrow". Runs already in progress finish.
-
-Spend is the cost Claude Code reports for each run. On a subscription it's an estimate, but it's still useful for comparing runs. There's also a limit across all repositories. See [Global settings](global-settings.md#spend).
-
-### Limit per run (USD)
-
-The most a single run may spend. Empty means no limit. Passed to `claude --max-budget-usd`.
-
-The cap counts sub-agents too. It may also overshoot by one response, because Claude checks it between responses. A run that hits the cap stops and usually ends as Failed.
+The model, effort and profile come first. Below them, a **Budget** card holds the spend limits, and a **Pace and stop conditions** card holds the rest.
 
 ### Model
 
-Haiku, Sonnet, Opus or Fable. Default: Sonnet. Passed to `claude --model`.
+Haiku, Sonnet, Opus or Fable, picked from a row of buttons. Default: Sonnet. Passed to `claude --model`.
 
 You can also change the model, and the effort below, from the repository's row on the dashboard. Click the model name under the repository's name, pick new values and press Save. The change applies to new runs only.
 
@@ -64,13 +48,35 @@ Like the model, effort applies to new runs. A run that is already queued keeps t
 
 Which Claude Code login to run under. The menu lists the profiles in `CLAUDE_PROFILES`. With no profiles set up, it shows **Default (~/.claude)**. See [Usage limits and profiles](usage-limits.md#claude-profiles).
 
+### Per day
+
+The daily limit, in USD. Foreman stops starting runs for this repository once today's spend reaches this amount. Empty means no limit. When neither budget field is set, the card says so. When the limit is reached, the row shows "Daily limit … reached, paused until tomorrow". Runs already in progress finish.
+
+Spend is the cost Claude Code reports for each run. On a subscription it's an estimate, but it's still useful for comparing runs. There's also a limit across all repositories. See [Global settings](global-settings.md#spend).
+
+### Per run
+
+The most a single run may spend, in USD. Empty means no limit. Passed to `claude --max-budget-usd`.
+
+The cap counts sub-agents too. It may also overshoot by one response, because Claude checks it between responses. A run that hits the cap stops and usually ends as Failed.
+
+### Issues at a time
+
+How many runs this repository may have active at once, from 1 to 8. Default: 1. You can also change it with **−** / **+** on the dashboard.
+
+All repositories share three workers. So more than three runs at once only helps if you start more workers. See [Troubleshooting](troubleshooting.md#runs-stay-on-waiting).
+
+### Check for issues every
+
+How often, in minutes, Foreman looks for ready issues, from 1 to 1440. Default: 10. Checks only call `gh`, so they cost no tokens.
+
 ### Max turns per issue
 
 The most turns Claude may take each time Foreman starts the agent, from 1 to 500. Default: 40. Passed to `claude --max-turns`. A *turn* is one round of Claude replying or using a tool. A run that runs out of turns usually ends as Failed.
 
 The limit is not shared across a run. The [review pass](guardrails.md#risk-tiers), the `/security-review` pass and a [scope correction](guardrails.md#scope-judge) each start the agent again with the full limit. Only **Limit per run** is shared.
 
-### Max minutes per issue
+### Max time per issue
 
 A wall-clock limit each time Foreman starts the agent, from 1 to 600. Default: 45. When it's reached, Foreman stops Claude and the run fails with "Hit the 45-minute limit." The setup script doesn't count toward it. Like **Max turns per issue**, each pass of a run gets the full time again.
 
@@ -86,7 +92,9 @@ Foreman uses three GitHub labels. It creates them when you save. If a label alre
 
 The working and human labels must differ from the ready label. If the labels can't be created, the settings still save, and a warning shows at the top of the form.
 
-## How the agent works
+## Scripts
+
+The line under the heading names the stacks Foreman found in the checkout, such as PHP or TypeScript. See [Stack rules](stack-rules.md#stack-rules).
 
 ### Setup script
 
@@ -120,7 +128,7 @@ vendor/bin/pest
 
 The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](stack-rules.md#what-the-default-checks-cover).
 
-When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](stack-rules.md#stack-rules) table lists the default for each language.
+When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. **Use detected checks** puts this default back in the field. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](stack-rules.md#stack-rules) table lists the default for each language.
 
 Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
 
@@ -129,6 +137,8 @@ The code icon (`< >`) next to the label copies a prompt for Claude Code, like th
 If the checks keep failing, the agent is sent back three times and then allowed to stop. See [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
 
 The verify script runs as you, with no sandbox. Changes apply to new runs.
+
+## Permissions
 
 ### Allowed tools
 
@@ -141,19 +151,25 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 
 The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command.
 
+The form shows the list as chips, grouped into Files, Agents, Shell and Other. A shell chip shows what's inside `Bash(…)`, so `Bash(npm:*)` shows as `npm:*`. Hover a chip to see the full entry.
+
+- **+ Add tool** adds one entry, such as `Bash(make:*)`.
+- **Edit as text** shows the list as comma-separated text, for bigger changes.
+- **Restore default** puts the default list back.
+
 Fix-up rounds use the same list. Foreman reads the CI results and puts them in the prompt, so the agent needs no `gh` tools. See [PR watching](pr-watching.md).
 
 #### Old tool lists
 
-A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save changes** to keep it.
+A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice above the list, and the old entries are struck through. **Remove them** takes out just those entries and keeps the rest of the list. Click **Save changes** to keep the result.
 
 The `gh` entries do nothing now. The guard hook blocks every `gh` command and `git push`, whatever the list says. `Bash(git:*)` still matters, because it lets the agent run git commands beyond inspecting and committing. Keep it only if you need that.
 
-A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it to the field by hand and click **Save changes**.
+A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it with **+ Add tool**, or click **Restore default**. Then click **Save changes**.
 
 ### Locked paths
 
-Files the agent may not edit, one pattern per line. Optional. Patterns start at the repository root. `*` matches within one folder, `**` matches across folders, and `?` matches one character. A pattern ending in `/` locks the whole folder. For example:
+Files the agent may not edit. Optional. The form shows one pattern per row. Click **×** to remove a pattern, or type one in the last row and click **Add**. Patterns start at the repository root. `*` matches within one folder, `**` matches across folders, and `?` matches one character. A pattern ending in `/` locks the whole folder. For example:
 
 ```text
 database/migrations/**
@@ -164,9 +180,14 @@ Foreman blocks the edit and tells the agent which path is locked. This is on top
 
 The lock covers Claude's edit tools only. A shell command on the allowed list, such as `php` or `python`, can still write a locked file. Foreman's gate doesn't check locked paths afterwards. See [Known gaps](security.md#known-gaps).
 
-### Instructions
+## Instructions
 
-The prompt given to the agent at the start of a run. These placeholders are replaced:
+The prompt given to the agent at the start of a run. The form shows the first few lines, the line count, and the placeholders the prompt uses.
+
+- **Open full editor** shows the whole prompt for editing.
+- **Compare with default** shows how the prompt differs from Foreman's default. Added lines are marked `+` and removed lines `−`. The button shows only when the prompt has been edited.
+
+These placeholders are replaced:
 
 | Placeholder | Replaced with |
 | --- | --- |
@@ -187,11 +208,13 @@ The review pass after the gate uses `/code-review` and `/simplify`, plus `/secur
 
 **Restore default** puts the default prompt back. If you save the default unchanged, Foreman stores nothing. Then later improvements to Foreman's default prompt reach this repository on their own.
 
+## After the PR
+
 ### Watch PRs
 
-On by default. After the agent opens a PR, Foreman follows it through CI and review bots and runs fix-up rounds. Off means the run ends as **PR opened**. See [PR watching](pr-watching.md).
+The **Fix failing checks and review-bot comments** switch. On by default. After the agent opens a PR, Foreman follows it through CI and review bots and runs fix-up rounds. Off means the run ends as **PR opened**. The number of fix-up rounds is one setting for all repositories, in [Global settings](global-settings.md#pr-watching). See [PR watching](pr-watching.md).
 
-### Remove the worktree once Foreman is done with the PR
+### Remove the worktree when done
 
 On by default. Foreman deletes the worktree when it's finished with the PR. That's when the PR is ready, handed to you, or cancelled, or straight away if Watch PRs is off. A failed run always keeps its worktree, so you can look inside it.
 
@@ -214,7 +237,7 @@ The sandbox still leaves gaps. A script can still read your `gh` token straight 
 
 ## Archive and remove
 
-The buttons at the top of the settings:
+The box at the bottom of the settings:
 
 - **Archive** takes the repository off the dashboard and stops it, but keeps its settings and history. It's disabled while runs are active or PRs are being watched. Find archived repositories on the **Archive** page.
 - **Remove from Foreman** deletes the repository and its run history from Foreman. Nothing on GitHub is touched.

@@ -55,6 +55,99 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    // The repository settings form: the side nav's current section and the unsaved-changes footer.
+    // `fields` maps each Livewire property to its section's title.
+    window.Alpine.data('repoSettings', (fields) => ({
+        saved: {},
+        current: 'repo',
+        init() {
+            this.snapshot();
+            // The current section is the last one whose top has passed the top quarter of the screen
+            const sections = [...this.$root.querySelectorAll('[data-section]')];
+            this.update = () => {
+                const passed = sections.filter((el) => el.getBoundingClientRect().top < window.innerHeight / 4);
+                this.current = (passed.at(-1) ?? sections[0]).dataset.section;
+            };
+            // Capture, so it also hears the modal's own scrolling
+            document.addEventListener('scroll', this.update, { capture: true, passive: true });
+            this.update();
+        },
+        destroy() {
+            document.removeEventListener('scroll', this.update, { capture: true });
+        },
+        snapshot() {
+            this.saved = Object.fromEntries(Object.keys(fields).map((field) => [field, String(this.$wire[field] ?? '')]));
+        },
+        get changed() {
+            return Object.keys(fields).filter((field) => String(this.$wire[field] ?? '') !== this.saved[field]);
+        },
+        get summary() {
+            const sections = [...new Set(this.changed.map((field) => fields[field]))];
+            const count = this.changed.length;
+            return `${count} unsaved ${count === 1 ? 'change' : 'changes'} · ${sections.join(', ')}`;
+        },
+        async discard() {
+            await this.$wire.discard();
+            this.snapshot();
+        },
+        go(section) {
+            document.getElementById(`settings-${section}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+    }));
+
+    // Allowed tools as grouped chips. The comma-separated string in Livewire stays the source of truth.
+    window.Alpine.data('toolList', (legacy) => ({
+        asText: false,
+        adding: false,
+        draft: '',
+        get entries() {
+            return String(this.$wire.allowed_tools ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+        },
+        get groups() {
+            const files = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'MultiEdit', 'NotebookEdit'];
+            const agents = ['Skill', 'Agent', 'Task'];
+            const groups = { Files: [], Agents: [], Shell: [], Other: [] };
+
+            for (const entry of this.entries) {
+                const shell = entry.match(/^Bash\((.*)\)$/);
+                const group = shell ? 'Shell' : files.includes(entry) ? 'Files' : agents.includes(entry) ? 'Agents' : 'Other';
+                groups[group].push({ entry, label: shell ? shell[1] : entry, legacy: legacy.includes(entry) });
+            }
+
+            return Object.entries(groups).filter(([, tools]) => tools.length).map(([name, tools]) => ({ name, tools }));
+        },
+        add() {
+            const entry = this.draft.trim();
+
+            if (entry && !this.entries.includes(entry)) {
+                this.$wire.allowed_tools = [...this.entries, entry].join(',');
+            }
+
+            this.draft = '';
+            this.adding = false;
+        },
+    }));
+
+    // Locked paths as a list. The newline-separated string in Livewire stays the source of truth.
+    window.Alpine.data('pathList', () => ({
+        draft: '',
+        get paths() {
+            return String(this.$wire.locked_paths ?? '').split('\n').map((path) => path.trim()).filter(Boolean);
+        },
+        add() {
+            const path = this.draft.trim();
+
+            if (path && !this.paths.includes(path)) {
+                this.$wire.locked_paths = [...this.paths, path].join('\n');
+            }
+
+            this.draft = '';
+        },
+        remove(index) {
+            this.$wire.locked_paths = this.paths.filter((_, i) => i !== index).join('\n');
+        },
+    }));
+
     // Copies text a Livewire method returns. Handing ClipboardItem the promise keeps the click's
     // permission while the server builds the text, which Safari needs.
     window.Alpine.data('copyFrom', (method) => ({

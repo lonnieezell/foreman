@@ -2,11 +2,13 @@
 
 namespace App\Livewire;
 
+use App\Guardrails\StackSet;
 use App\Models\Repository;
 use App\Services\GitHub;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Throwable;
 
@@ -62,6 +64,13 @@ class RepositoryForm extends Component
 
     public bool $sandbox = false;
 
+    /** Names of the stacks found in the checkout, for the Scripts section. */
+    #[Locked]
+    public array $stacks = [];
+
+    /** The placeholders `Repository::renderPrompt()` replaces. */
+    public const PLACEHOLDERS = ['issue', 'issue_text', 'branch', 'base', 'repo', 'human_label'];
+
     public function mount(?Repository $repository = null): void
     {
         if ($repository?->exists) {
@@ -86,6 +95,8 @@ class RepositoryForm extends Component
         if ($this->prompt_template === '') {
             $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
         }
+
+        $this->detectStacks();
     }
 
     /**
@@ -131,6 +142,7 @@ class RepositoryForm extends Component
         }
 
         $this->github_repo = $detected;
+        $this->detectStacks();
         $this->verify_script = $this->verify_script ?: Repository::defaultVerifyScript($path, "origin/{$this->base_branch}");
         $this->name = $this->name ?: str($detected)->afterLast('/')->toString();
     }
@@ -228,6 +240,80 @@ class RepositoryForm extends Component
         $this->allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
     }
 
+    public function removeLegacyAllowedTools(): void
+    {
+        $tools = array_map('trim', explode(',', $this->allowed_tools));
+
+        $this->allowed_tools = implode(',', array_diff($tools, Repository::LEGACY_ALLOWED_TOOLS));
+    }
+
+    public function useDetectedChecks(): void
+    {
+        $this->verify_script = Repository::defaultVerifyScript(rtrim($this->expandedPath(), '/'), "origin/{$this->base_branch}");
+    }
+
+    /** Puts back the saved values, or the defaults for a new repository. */
+    public function discard(): void
+    {
+        $repository = $this->repository;
+
+        $this->resetErrorBag();
+        $this->reset();
+        $this->mount($repository);
+    }
+
+    public function getPromptIsEditedProperty(): bool
+    {
+        return trim($this->prompt_template) !== trim(file_get_contents(resource_path('prompts/default.md')));
+    }
+
+    /** The known placeholders the prompt uses, in the order they first appear. */
+    public function getPromptPlaceholdersProperty(): array
+    {
+        preg_match_all('/\{\{(\w+)\}\}/', $this->prompt_template, $matches);
+
+        return array_values(array_unique(array_intersect($matches[1], self::PLACEHOLDERS)));
+    }
+
+    public function getPromptLineCountProperty(): int
+    {
+        return substr_count(rtrim($this->prompt_template, "\n"), "\n") + 1;
+    }
+
+    /**
+     * A line diff of the default prompt against the form's prompt.
+     *
+     * @return list<array{type: 'same'|'added'|'removed', text: string}>
+     */
+    public function getPromptDiffProperty(): array
+    {
+        $old = explode("\n", rtrim(file_get_contents(resource_path('prompts/default.md')), "\n"));
+        $new = explode("\n", rtrim($this->prompt_template, "\n"));
+
+        // Longest common subsequence lengths, filled from the end so the walk below can go forwards
+        $lcs = array_fill(0, count($old) + 1, array_fill(0, count($new) + 1, 0));
+        for ($i = count($old) - 1; $i >= 0; $i--) {
+            for ($j = count($new) - 1; $j >= 0; $j--) {
+                $lcs[$i][$j] = $old[$i] === $new[$j] ? $lcs[$i + 1][$j + 1] + 1 : max($lcs[$i + 1][$j], $lcs[$i][$j + 1]);
+            }
+        }
+
+        $diff = [];
+        [$i, $j] = [0, 0];
+        while ($i < count($old) || $j < count($new)) {
+            if ($i < count($old) && $j < count($new) && $old[$i] === $new[$j]) {
+                $diff[] = ['type' => 'same', 'text' => $old[$i++]];
+                $j++;
+            } elseif ($j < count($new) && ($i === count($old) || $lcs[$i][$j + 1] >= $lcs[$i + 1][$j])) {
+                $diff[] = ['type' => 'added', 'text' => $new[$j++]];
+            } else {
+                $diff[] = ['type' => 'removed', 'text' => $old[$i++]];
+            }
+        }
+
+        return $diff;
+    }
+
     /** True when the tool list in the form still has entries from the old default. */
     public function getHasLegacyAllowedToolsProperty(): bool
     {
@@ -251,6 +337,13 @@ class RepositoryForm extends Component
             '{{base}}' => $this->base_branch,
             '{{verify_script}}' => $this->verify_script,
         ]);
+    }
+
+    private function detectStacks(): void
+    {
+        $path = rtrim($this->expandedPath(), '/');
+
+        $this->stacks = $path !== '' && is_dir($path) ? StackSet::detect($path)->names() : [];
     }
 
     private function expandedPath(): string
