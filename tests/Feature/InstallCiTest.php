@@ -100,16 +100,12 @@ class InstallCiTest extends TestCase
         );
     }
 
-    public function test_laravel_repos_add_the_laravel_semgrep_rules(): void
+    public function test_laravel_repos_scan_with_the_php_rules_which_hold_the_laravel_ones(): void
     {
         $laravel = $this->install($this->repo(['composer.json' => self::LARAVEL]));
-        $plain = $this->install($this->repo(['composer.json' => '{"require":{"php":"^8.3"}}'], 'plain'));
 
-        $semgrep = fn (array $workflow) => $this->step($workflow, 'php', 'Semgrep')['run'];
-
-        $this->assertStringContainsString('--config p/laravel', $semgrep($laravel));
-        $this->assertStringContainsString('--config p/php', $semgrep($laravel));
-        $this->assertStringNotContainsString('p/laravel', $semgrep($plain));
+        // The registry has no p/laravel, and Semgrep fails the whole step on a config it can't download
+        $this->assertSame('pipx run semgrep scan --config p/php --error', $this->step($laravel, 'php', 'Semgrep')['run']);
     }
 
     public function test_a_typescript_repo_gets_its_job(): void

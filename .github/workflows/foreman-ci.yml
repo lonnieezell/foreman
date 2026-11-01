@@ -64,7 +64,7 @@ jobs:
         run: 'composer audit'
       -
         name: Semgrep
-        run: 'pipx run semgrep scan --config p/php --config p/laravel --error'
+        run: 'pipx run semgrep scan --config p/php --error'
   typescript:
     name: typescript
     runs-on: ubuntu-latest

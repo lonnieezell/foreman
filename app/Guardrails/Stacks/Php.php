@@ -140,7 +140,8 @@ class Php extends Stack
             ],
             'audit' => [
                 ['name' => 'Composer audit', 'run' => 'composer audit'],
-                $this->semgrep($laravel ? ['p/php', 'p/laravel'] : ['p/php']),
+                // p/php holds the Laravel rules too. The registry has no p/laravel.
+                $this->semgrep(['p/php']),
             ],
         ];
     }
