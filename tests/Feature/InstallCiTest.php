@@ -404,6 +404,19 @@ class InstallCiTest extends TestCase
         $this->assertSame('src-tauri', $this->step($tauri, 'rust', 'Cache Rust build')['with']['workspaces']);
     }
 
+    public function test_a_tauri_app_installs_its_linux_libraries_before_it_builds(): void
+    {
+        $tauri = $this->install($this->repo(['package.json' => '{}', 'src-tauri/Cargo.toml' => '[package]', 'src-tauri/tauri.conf.json' => '{}'], 'tauri'));
+        $plain = $this->install($this->repo(['Cargo.toml' => '[package]'], 'plain'));
+        $names = $this->stepNames($tauri, 'rust');
+
+        $install = $this->step($tauri, 'rust', 'Install Tauri system libraries')['run'];
+        $this->assertStringContainsString('sudo apt-get install -y', $install);
+        $this->assertStringContainsString('libwebkit2gtk-4.1-dev', $install);
+        $this->assertLessThan(array_search('Format check', $names), array_search('Install Tauri system libraries', $names));
+        $this->assertNotContains('Install Tauri system libraries', $this->stepNames($plain, 'rust'));
+    }
+
     public function test_a_failed_commit_puts_the_repo_back_as_it_was(): void
     {
         $dir = $this->repo(['package.json' => '{}']);

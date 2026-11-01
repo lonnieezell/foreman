@@ -79,8 +79,13 @@ class Rust extends Stack
             ? ['cargo-deny', 'Cargo deny', 'cargo deny check']
             : ['cargo-audit', 'Cargo audit', 'cargo audit'];
 
+        $dir = $this->ciDir();
+        $tauri = $this->has($dir, 'tauri.conf.json') || $this->has($dir, 'tauri.conf.json5') || $this->has($dir, 'Tauri.toml');
+
         return [
             'setup' => [
+                // The tauri crate links against WebKitGTK and friends, which Ubuntu runners don't have. Tauri v2's list.
+                ...($tauri ? [['name' => 'Install Tauri system libraries', 'run' => "sudo apt-get update\nsudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev"]] : []),
                 ['name' => 'Set up Rust', 'uses' => 'dtolnay/rust-toolchain@stable', 'with' => ['components' => 'rustfmt, clippy']],
                 ['name' => 'Cache Rust build', 'uses' => 'Swatinem/rust-cache@v2'] + ($this->ciDir() === '' ? [] : ['with' => ['workspaces' => $this->ciDir()]]),
             ],
