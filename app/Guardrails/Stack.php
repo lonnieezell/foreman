@@ -47,7 +47,7 @@ abstract class Stack
 
     /**
      * @param  string  $base  The ref the work branched from, such as `origin/main`. Format checks only look at files changed since it.
-     * @return list<string> Shell commands, each starting with a `cd` when the stack is not at the root.
+     * @return list<string> Shell commands. When the stack is not at the root, each is a subshell that starts with a `cd`.
      */
     abstract public function verifyCommands(string $base): array;
 
@@ -131,10 +131,10 @@ abstract class Stack
         return is_file($this->path($dir, $file));
     }
 
-    /** Run `$command` inside `$dir`. */
+    /** Run `$command` inside `$dir`. The subshell keeps the `cd` from leaking into later lines of the script. */
     protected function inDir(string $dir, string $command): string
     {
-        return $dir === '' ? $command : 'cd '.escapeshellarg($dir).' && '.$command;
+        return $dir === '' ? $command : '(cd '.escapeshellarg($dir).' && '.$command.')';
     }
 
     /**
