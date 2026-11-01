@@ -42,8 +42,6 @@ class SanitisedIssuePromptTest extends TestCase
             '*' => Process::result(json_encode(['type' => 'result', 'num_turns' => 1])),
         ]);
         $github = \Mockery::mock(GitHub::class)->makePartial()->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
 

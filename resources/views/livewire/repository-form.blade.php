@@ -72,6 +72,11 @@
                     <input id="daily_budget" type="number" step="0.5" min="0" wire:model="daily_budget" placeholder="No limit">
                     @error('daily_budget') <span class="error">{{ $message }}</span> @enderror
                 </div>
+                <div class="field">
+                    <label for="max_budget_per_run">Limit per run (USD)</label>
+                    <input id="max_budget_per_run" type="number" step="0.5" min="0" wire:model="max_budget_per_run" placeholder="No limit">
+                    @error('max_budget_per_run') <span class="error">{{ $message }}</span> @enderror
+                </div>
             </div>
             <div class="field-row field-row-aligned">
                 <div class="field">
@@ -182,6 +187,12 @@
                 <label for="allowed_tools">Allowed tools</label>
                 <textarea id="allowed_tools" rows="3" wire:model="allowed_tools"></textarea>
                 <span class="hint">Passed to <code>--allowedTools</code>. Anything not listed is refused.</span>
+                @if ($this->hasLegacyAllowedTools)
+                    <span class="hint" role="alert">
+                        This list still lets the agent push or use <code>gh</code>. Foreman now does that itself, so the agent no longer needs it.
+                        <button type="button" class="btn btn-quiet" style="padding:0" wire:click="resetAllowedTools">Restore default</button>
+                    </span>
+                @endif
                 @error('allowed_tools') <span class="error">{{ $message }}</span> @enderror
             </div>
 

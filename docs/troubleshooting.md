@@ -45,6 +45,7 @@ A line like `Blocked by guardrail: …` means a Foreman hook refused one of the 
 | "… is locked in this repository's settings" | The path matches **Locked paths** in the [repository settings](repository-settings.md#locked-paths). |
 | "… is a lock file" | The agent tried to change a lock file. Add the `dependencies` label to the issue if it should. |
 | "git push is blocked", "gh commands are blocked", "--no-verify is blocked" | The agent tried a command the agent may not run. |
+| "commit blocked, the formatter failed" | The commit-time formatter failed on a staged file, usually a syntax error. The agent sees the output and fixes the file. See [Formatting at commit time](guardrails.md#formatting-at-commit-time). |
 | "This edit adds a skip or suppress marker" | The agent tried to silence a test or tool instead of fixing the cause. |
 
 A run that keeps hitting the same block usually can't finish. If the block is wrong for this issue, fix the cause: add the `dependencies` label, or remove the pattern from **Locked paths**, then use **Start over**. See [Guardrails](guardrails.md#protected-files-and-commands) for the full list.
@@ -94,6 +95,18 @@ Check these in order:
 5. Does the issue have exactly the ready label, and is it open?
 6. Is the issue blocked by another open issue? Foreman skips blocked issues.
 7. Are all the repository's slots in use?
+8. Is the issue listed as skipped on the repository's row? See [Issue skipped by intake gate](#issue-skipped-by-intake-gate).
+
+## "Issue skipped by intake gate"
+
+The repository's row lists the issue under **Skipped by the intake gate**, with a reason. Foreman only takes issues that a trusted person marked as ready. There are four reasons:
+
+- **The label was added by a bot.** Ask a person with write access to remove the label and add it again. Or, to trust all bot labels, turn on **Trust ready labels added by bots** on the Settings page.
+- **The label was added by someone without write access.** Ask a person with write access to remove it and add it again.
+- **The issue was edited after the label was added.** Read the changes. If they are fine, remove the label and add it again. That counts as a fresh approval.
+- **GitHub has no record of who added the label.** This can happen on a very old issue with a long history. Remove the label and add it again.
+
+The list clears on the next check once nothing is skipped. See [Intake gate](guardrails.md#intake-gate).
 
 ## "Saved, but the labels couldn't be created on GitHub"
 

@@ -24,6 +24,7 @@ class RepositoryForm extends Component
     public int $concurrency = 1;
     public int $poll_interval_minutes = 10;
     public string $daily_budget = '';
+    public string $max_budget_per_run = '';
     public string $model = 'sonnet';
     public string $effort = '';
     public string $claude_profile = '';
@@ -47,6 +48,7 @@ class RepositoryForm extends Component
                 'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs',
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
+            $this->max_budget_per_run = (string) $repository->max_budget_per_run;
             $this->effort = (string) $repository->effort;
             $this->locked_paths = (string) $repository->locked_paths;
             $this->verify_script = (string) $repository->verify_script ?: Repository::defaultVerifyScript($repository->local_path);
@@ -128,6 +130,7 @@ class RepositoryForm extends Component
             'concurrency' => ['required', 'integer', 'between:1,8'],
             'poll_interval_minutes' => ['required', 'integer', 'between:1,1440'],
             'daily_budget' => ['nullable', 'numeric', 'min:0'],
+            'max_budget_per_run' => ['nullable', 'numeric', 'min:0'],
             'model' => ['required', Rule::in(array_keys(Repository::MODELS))],
             'effort' => ['nullable', Rule::in(array_keys(Repository::EFFORTS))],
             'claude_profile' => [config('foreman.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('foreman.claude_profiles')))],
@@ -145,6 +148,7 @@ class RepositoryForm extends Component
         ]);
 
         $data['daily_budget'] = $data['daily_budget'] === '' ? null : $data['daily_budget'];
+        $data['max_budget_per_run'] = $data['max_budget_per_run'] === '' ? null : $data['max_budget_per_run'];
         $data['claude_profile'] = $data['claude_profile'] ?: null;
         $data['effort'] = $data['effort'] ?: null;
         $data['locked_paths'] = trim((string) $data['locked_paths']) ?: null;
@@ -190,6 +194,17 @@ class RepositoryForm extends Component
     public function resetPrompt(): void
     {
         $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
+    }
+
+    public function resetAllowedTools(): void
+    {
+        $this->allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
+    }
+
+    /** True when the tool list in the form still has entries from the old default. */
+    public function getHasLegacyAllowedToolsProperty(): bool
+    {
+        return (new Repository(['allowed_tools' => $this->allowed_tools]))->hasLegacyAllowedTools();
     }
 
     /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */

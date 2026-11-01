@@ -56,6 +56,12 @@ class Setting extends Model
         return (bool) static::get('desktop_notifications', false);
     }
 
+    // When on, the intake gate trusts a ready label added by a bot
+    public static function trustBotLabels(): bool
+    {
+        return (bool) static::get('trust_bot_labels', false);
+    }
+
     public static function globalBudget(): ?float
     {
         $value = static::get('global_daily_budget');

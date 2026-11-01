@@ -74,10 +74,9 @@ class UsageLimitsTest extends TestCase
             'resume_session_id' => 'abc', 'worktree_path' => sys_get_temp_dir(),
         ]);
 
-        Process::fake(['*' => Process::result(implode("\n", array_map('json_encode', $events)))]);
+        $output = implode("\n", array_map('json_encode', $events));
+        Process::fake(fn ($process) => Process::result($process->command[0] === 'claude' ? $output : ''));
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
 

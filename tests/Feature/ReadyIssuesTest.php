@@ -18,12 +18,19 @@ class ReadyIssuesTest extends TestCase
         $issue = fn (int $number, int $blockedBy) => [
             'number' => $number, 'title' => "Issue {$number}", 'url' => "https://example.test/{$number}",
             'issueDependenciesSummary' => ['blockedBy' => $blockedBy],
+            'lastEditedAt' => null,
+            'timelineItems' => ['nodes' => [[
+                'createdAt' => '2026-11-01T10:00:00Z', 'label' => ['name' => 'ready-for-agent'], 'actor' => ['__typename' => 'User', 'login' => 'alice'],
+            ]]],
         ];
 
         // GitHub returns them oldest first
-        Process::fake(['*' => Process::result(json_encode(['data' => ['repository' => ['issues' => ['nodes' => [
-            $issue(676, 0), $issue(677, 1), $issue(680, 0), $issue(681, 0),
-        ]]]]]))]);
+        Process::fake([
+            '*collaborators*' => Process::result(json_encode(['permission' => 'write'])),
+            '*' => Process::result(json_encode(['data' => ['repository' => ['issues' => ['nodes' => [
+                $issue(676, 0), $issue(677, 1), $issue(680, 0), $issue(681, 0),
+            ]]]]])),
+        ]);
 
         $repo = Repository::create([
             'name' => 'app', 'local_path' => base_path(), 'github_repo' => 'owner/app',

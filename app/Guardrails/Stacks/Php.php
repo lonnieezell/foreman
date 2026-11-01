@@ -73,6 +73,11 @@ class Php extends Stack
         };
     }
 
+    public function formatExtensions(): array
+    {
+        return ['php'];
+    }
+
     public function verifyCommands(): array
     {
         $commands = [];

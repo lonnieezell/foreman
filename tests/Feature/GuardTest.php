@@ -228,6 +228,7 @@ class GuardTest extends TestCase
         $hook = $config['hooks']['PreToolUse'][0];
         $this->assertStringContainsString('Bash', $hook['matcher']);
         $this->assertStringContainsString('foreman:guard', $hook['hooks'][0]['command']);
+        $this->assertStringContainsString('foreman:format-staged', $hook['hooks'][1]['command']);
 
         $rules = json_decode(file_get_contents(str_replace('-settings.json', '-rules.json', $settings)), true);
         $this->assertSame(['database/**', 'tests/Locked.php'], $rules['locked_paths']);

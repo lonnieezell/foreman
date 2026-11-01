@@ -10,7 +10,11 @@ use RuntimeException;
 
 class Repository extends Model
 {
-    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git:*),Bash(composer:*),Bash(php artisan:*),Bash(./vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(gh issue:*),Bash(gh pr create:*)';
+    /** The agent may inspect and commit but not push, and it has no `gh`: Foreman acts on GitHub. */
+    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*),Bash(composer:*),Bash(php artisan:*),Bash(./vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(cargo:*),Bash(rustfmt:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(pyright:*),Bash(uv:*),Bash(poetry:*)';
+
+    /** Entries from the old default that let the agent push or act on GitHub itself. */
+    public const LEGACY_ALLOWED_TOOLS = ['Bash(git:*)', 'Bash(gh issue:*)', 'Bash(gh pr create:*)'];
 
     public const DEFAULT_SETUP_SCRIPT = <<<'SH'
 cp .env.example .env
@@ -35,7 +39,9 @@ SH;
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
+            'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
+            'intake_skips' => 'array',
             'archived_at' => 'datetime',
         ];
     }
@@ -126,6 +132,14 @@ SH;
         }
 
         return ['CLAUDE_CONFIG_DIR' => $dir];
+    }
+
+    /** True when the saved tool list still has entries from the old default. */
+    public function hasLegacyAllowedTools(): bool
+    {
+        $saved = array_map('trim', explode(',', (string) $this->allowed_tools));
+
+        return array_intersect(self::LEGACY_ALLOWED_TOOLS, $saved) !== [];
     }
 
     public function renderPrompt(Run $run, string $issueText): string

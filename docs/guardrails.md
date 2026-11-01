@@ -10,15 +10,18 @@ This is where the guardrails are heading. The first steps are built. The others 
 
 | Step | What it does | State |
 | --- | --- | --- |
+| Intake gate | Takes only issues that a trusted person marked as ready. See [Intake gate](#intake-gate). | Built |
 | Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
 | Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
+| Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
 | Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). | Built |
 | Test integrity | A script that fails when tests are deleted, weakened or skipped, or when tool settings are loosened. See [Test integrity](#test-integrity). | Built |
 | Definition of done | A Stop hook that sends the agent back until the verify script and the integrity check pass. See [Definition of done](#definition-of-done). | Built |
-| Everything after that | A check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
+| Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
+| Everything after that | Other hooks, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
-The agent still opens its own PR for now, as described in [Runs and statuses](runs.md#how-a-run-ends). The protected-commands hook below blocks `git push` and `gh pr create`, so until Foreman pushes and opens PRs itself, a run can't finish that way. Getting a run going is covered in [Getting started](getting-started.md).
+Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
 ## Sanitised issue
 
@@ -47,6 +50,51 @@ This lowers the risk of prompt injection. It does not remove it.
 - Bare URLs stay, because they are visible text.
 - Issue comments are not cleaned. They are only read when a human replies and a run resumes, and the agent reads them itself then.
 - The rules match text patterns. A new way to hide content may get through.
+
+## Foreman pushes, not the agent
+
+The agent never acts on GitHub. It commits in its worktree and writes `.foreman/result.json`. Foreman reads the file and then comments, labels, pushes and opens the PR. The three outcomes are listed in [Runs and statuses](runs.md#how-a-run-ends).
+
+### How it works
+
+- **The environment.** The agent's process gets a push URL for `origin` that points nowhere, an empty git credential helper, and no `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. It also has no git or SSH password prompt and no SSH agent. A `git push origin` fails. Foreman's own push runs in a separate process without these changes.
+- **The allowed tools.** The [default list](repository-settings.md#allowed-tools) has no `gh` and no `git push`. Only the git commands that inspect and commit are allowed.
+- **The permission mode.** Runs use Claude's `dontAsk` mode. A tool that isn't on the list is refused, not asked about.
+- **A missing or unreadable result file fails the run.** Foreman never guesses what the agent meant.
+
+### Why it exists
+
+Two public incidents show what happens when an AI agent holds credentials that can change a repository and reads text that anyone can write.
+
+- **Clinejection.** Researchers showed that an issue title could carry instructions to an AI triage workflow on the Cline repository. The agent ran with enough access that the instructions led to stolen publishing credentials.
+- **claude-code-action.** Researchers reported that prompt injection through content such as issue and PR text could make the agent use the GitHub token it was given.
+
+In both, the weak point was not the model's judgement. It was that the agent held rights it didn't need. An agent with no push rights and no token can be tricked into writing a bad result file, but it can't push to a branch or publish a package. A person still reviews the PR.
+
+### What it doesn't catch
+
+- The agent still writes the PR's title and body, and the comment on the issue. Foreman posts them as written.
+- Code the agent commits is still pushed. A bad change can reach a PR, which is why the other guardrails and your review still matter.
+- Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
+- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
+- The agent can still reach the network through allowed tools such as `npm` and `composer`.
+- During a fix-up round the allowed tools still include `gh pr checks` and `gh run view`, but the [protected-commands hook](#protected-files-and-commands) blocks every `gh` command. So the agent can't read CI results itself yet.
+
+## Intake gate
+
+Issue text is the agent's instructions, and anyone who can edit an issue can change it. So Foreman only takes an issue when a trusted person marked it as ready. On every check it skips an issue when:
+
+- the ready label was added by a bot, or
+- the ready label was added by someone without write access to the repository, or
+- the issue was edited after the label was added.
+
+To let bots mark issues as ready, turn on **Trust ready labels added by bots** on the Settings page. It's off by default. A trusted bot's label skips the write-access check, but an edit after the label still skips the issue. See [Global settings](global-settings.md#intake-gate).
+
+Admin, maintain and write access all count as write access. Foreman asks GitHub once per check for each person who added a label, however many issues they labelled.
+
+A skipped issue stays open and keeps its label. The repository's row on the dashboard shows it under **Skipped by the intake gate**, with the reason. To approve it, read the issue, then remove the label and add it again. A person with write access has to do that. If GitHub shows no record of who added the label, Foreman skips the issue too.
+
+Issues that pass are picked up as before.
 
 ## Stack rules
 
@@ -127,6 +175,33 @@ Instead, the [test-integrity check](#test-integrity) fails a run that deletes te
 - A `gh` or `git push` inside a quoted string can be blocked by mistake, and the agent sees the reason.
 - Edits made by a shell command, such as `sed -i` or `echo >`, are not edits to the guard. It only sees `Edit`-style tools. The [test-integrity check](#test-integrity) looks at the finished diff, so it catches those edits to tests and tool settings.
 - Paths are matched as written. A file reached through a symlink to a protected file isn't recognized.
+
+## Formatting at commit time
+
+When the agent runs `git commit`, Foreman first formats the staged files and stages them again. The commit then holds formatted code. This is a second `PreToolUse` hook on `Bash` calls. It runs `php artisan foreman:format-staged`, next to the guard above.
+
+For each stack, Foreman picks the formatter from the [Stack rules](#stack-rules) table. It passes the staged files that the formatter handles, such as `.php` files for Pint or `.rs` files for `rustfmt`. Then it runs `git add` on those files.
+
+| Situation | What happens |
+| --- | --- |
+| A staged file is not formatted | Foreman formats it, stages it again, and the commit goes ahead. |
+| The formatter fails, for example on a syntax error | The hook exits with code 2. The commit is blocked, and the agent sees the formatter's output. |
+| The stack's formatter is not installed | That stack is skipped. This is not a failure. |
+| The command is not a `git commit` | The hook does nothing. |
+
+### Why it runs at commit time
+
+The timing is on purpose. A formatter that ran after every edit would change files while the agent is still working on them. It would also add noise to each step. Running once at commit time lets the agent finish a change first.
+
+### Why it is not a git hook
+
+A git pre-commit hook lives in the `.git` folder. All worktrees of a repository share that folder, so the hook would also run on your own commits in the main checkout. A Claude hook is part of one run's settings file. It only runs for the agent, and it goes away with the run.
+
+### What this doesn't cover
+
+- The formatter runs from the worktree root. For a stack in a sub-folder, a formatter in that folder's own `vendor` or `node_modules` is not found, so it is skipped.
+- A file that is only partly staged gets staged in full.
+- The hook matches `git commit` as text. A commit made through `sh -c "…"` is not formatted.
 
 ## Test integrity
 
