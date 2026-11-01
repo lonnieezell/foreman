@@ -392,7 +392,7 @@ After the review pass and the second run of [Foreman's gate](#foremans-gate), on
 
 ### How it works
 
-Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in an empty folder outside the repository, with no session to resume and no MCP servers. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
+Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in an empty folder outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
 
 What happens next depends on the verdict:
 
@@ -413,6 +413,7 @@ The judge never sees that story. It gets no session, no tools and no access to t
 - It is an AI opinion, not a rule. It can pass a change that drifts, or veto one that is fine. [Test integrity](#test-integrity) is still the mechanical check for weakened tests.
 - It only sees the diff and the issue. A change that matches the issue's words but misses its intent can pass.
 - A very large diff makes the judge's job harder. The [size limit](#the-size-limit) keeps the diff in check.
-- Your user-level Claude Code settings for the repository's profile, such as a global `CLAUDE.md`, still load. Project files don't, because the judge runs outside the repository.
+- A global `CLAUDE.md` in the repository's Claude profile may still load. Leaving out settings doesn't cover memory files. Project files don't load, because the judge runs outside the repository.
+- The correction round gets the gate and the judge again, but not a second review pass. The risk tier stays as it was set before the correction.
 - It only judges the first PR of a run. Fix-up rounds on an open PR don't get a judge.
 - The judge's cost isn't added to the run's cost or counted against the spend cap. A Haiku call on a diff under the size limit costs a few cents at most.

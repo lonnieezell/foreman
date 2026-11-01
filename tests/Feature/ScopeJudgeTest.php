@@ -35,6 +35,11 @@ class ScopeJudgeTest extends TestCase
     /** @var list<string> The PR bodies Foreman opened. */
     private array $prBodies = [];
 
+    /** @var list<string> What each judge call got on stdin. */
+    private array $judgeInputs = [];
+
+    private bool $diffFails = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -75,6 +80,7 @@ class ScopeJudgeTest extends TestCase
 
             if ($command[0] === 'claude' && in_array('--json-schema', $command, true)) {
                 $this->sequence[] = 'judge';
+                $this->judgeInputs[] = $process->input;
                 $verdict = $verdicts ? array_shift($verdicts) : self::PASS;
 
                 return match (true) {
@@ -103,7 +109,9 @@ class ScopeJudgeTest extends TestCase
             }
 
             if (array_slice($command, 0, 2) === ['git', 'diff'] && ! in_array('--numstat', $command, true)) {
-                return Process::result(self::DIFF);
+                return $this->diffFails && ! in_array('-U0', $command, true)
+                    ? Process::result('', 'fatal: bad revision', 128)
+                    : Process::result(self::DIFF);
             }
 
             if (array_slice($command, 0, 3) === ['gh', 'pr', 'create']) {
@@ -145,10 +153,11 @@ class ScopeJudgeTest extends TestCase
         $this->settle();
 
         $judge = $this->judgeCommands()[0];
-        $prompt = $judge[2];
+        $prompt = $this->judgeInputs[0];
 
-        $this->assertSame('haiku', $judge[array_search('--model', $judge, true) + 1]);
+        $this->assertSame(['claude', '-p', '--model', 'haiku'], array_slice($judge, 0, 4));
         $this->assertSame('', $judge[array_search('--tools', $judge, true) + 1]);
+        $this->assertSame('project', $judge[array_search('--setting-sources', $judge, true) + 1]);
         $this->assertContains('--strict-mcp-config', $judge);
         $this->assertNotContains('--resume', $judge);
         $this->assertNotContains('--settings', $judge);
@@ -222,6 +231,24 @@ class ScopeJudgeTest extends TestCase
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertStringContainsString('not json', $comments[0]);
+        $this->assertFalse($this->ran(['git', 'push']));
+    }
+
+    public function test_a_multi_line_reason_is_kept_on_one_line(): void
+    {
+        [, $comments] = $this->settle([self::VETO, ['in_scope' => false, 'weakens_tests' => false, 'reason' => "Still adds\n\n# the settings page."]]);
+
+        $this->assertStringContainsString('> Out of scope: Still adds # the settings page.', $comments[0]);
+    }
+
+    public function test_a_diff_that_fails_stops_the_run_without_asking_the_judge(): void
+    {
+        $this->diffFails = true;
+        [$run, $comments] = $this->settle();
+
+        $this->assertSame(RunStatus::Failed, $run->status);
+        $this->assertNotContains('judge', $this->sequence);
+        $this->assertStringContainsString('fatal: bad revision', $comments[0]);
         $this->assertFalse($this->ran(['git', 'push']));
     }
 }

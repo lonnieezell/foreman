@@ -211,7 +211,7 @@ class ProcessRun implements ShouldQueue
             $budget = round((float) $budget - (float) $run->cost_usd, 2);
 
             if ($budget <= 0) {
-                throw new RuntimeException("The run used up its spend cap of \${$repo->max_budget_per_run} before the review pass.");
+                throw new RuntimeException("The run used up its spend cap of \${$repo->max_budget_per_run} before Foreman could resume the agent.");
             }
         }
 
@@ -586,13 +586,18 @@ class ProcessRun implements ShouldQueue
     {
         $repo = $run->repository;
         $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--no-color', '--no-ext-diff', "origin/{$repo->base_branch}...HEAD"]);
+
+        if ($diff->failed()) {
+            throw new RuntimeException("Couldn't diff the change for the scope judge: ".str(trim($diff->errorOutput()))->limit(500));
+        }
+
         $prompt = strtr(file_get_contents(resource_path('prompts/scope-judge.md')), [
             '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
             '{{issue}}' => $github->sanitisedIssue($repo, $run->issue_number),
             '{{diff}}' => IssueSanitiser::wrapText($diff->output(), clean: false),
         ]);
 
-        // Outside the project, so no CLAUDE.md or project settings get loaded
+        // Outside the project, so no CLAUDE.md or project settings get loaded; user settings are left out too
         $dir = sys_get_temp_dir().'/foreman-scope-judge';
         File::ensureDirectoryExists($dir);
 
@@ -603,9 +608,10 @@ class ProcessRun implements ShouldQueue
             $run->log('Scope judge: asking Haiku whether the change stays within the issue'.($attempt > 1 ? ', again.' : '.'));
 
             try {
-                $process = Process::path($dir)->env($repo->claudeEnv())->timeout(120)->run([
-                    'claude', '-p', $prompt, '--model', 'haiku', '--max-turns', '3', '--tools', '',
-                    '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json',
+                // The prompt goes on stdin: the diff can outgrow the limit on a single argument
+                $process = Process::path($dir)->env($repo->claudeEnv())->timeout(120)->input($prompt)->run([
+                    'claude', '-p', '--model', 'haiku', '--max-turns', '3', '--tools', '',
+                    '--strict-mcp-config', '--setting-sources', 'project', '--no-session-persistence', '--output-format', 'json',
                     '--json-schema', json_encode(self::JUDGE_SCHEMA),
                 ]);
                 $verdict = json_decode($process->output(), true)['structured_output'] ?? null;
@@ -614,7 +620,8 @@ class ProcessRun implements ShouldQueue
                     && is_string($verdict['reason'] ?? null) && trim($verdict['reason']) !== '') {
                     $run->update(['heartbeat_at' => now()]);
 
-                    return $verdict;
+                    // Model output shaped by untrusted text, bound for a markdown list and a quote
+                    return ['reason' => (string) str($verdict['reason'])->squish()->limit(500)] + $verdict;
                 }
 
                 $problem = $process->failed()
