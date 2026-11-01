@@ -117,6 +117,11 @@ class Dashboard extends Component
     public function continueRun(int $id): void
     {
         $run = Run::findOrFail($id);
+
+        if (! $run->canContinueAfterReply()) {
+            return;   // the card hides the button for this run, so a stale or forged call does nothing
+        }
+
         $run->continueAfterReply(app(GitHub::class));
 
         $this->flash = "#{$run->issue_number} is continuing after your reply in {$run->repository->name}.";

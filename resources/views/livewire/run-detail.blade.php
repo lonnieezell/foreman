@@ -35,7 +35,7 @@
             @if ($run->pr_url)
                 <a class="btn btn-go" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a>
             @endif
-            @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->session_id && $run->worktree_path && ! $run->pr_url)
+            @if ($run->canContinueAfterReply())
                 <button class="btn btn-go" wire:click="continueRun" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
             @endif
             @if ($run->status->isActive())
@@ -48,7 +48,11 @@
         </div>
     </div>
 
-    @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url)
+    @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && $run->stop_reason === 'someone_pushed')
+        <div class="notice">
+            <p>Someone else pushed to the PR’s branch, so Foreman stopped watching to avoid fighting over it. It’s yours from here.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url)
         <div class="notice">
             <p>The PR still has failing checks or open review threads that the agent couldn’t settle. It’s yours from here: see the latest comment on the PR.</p>
         </div>

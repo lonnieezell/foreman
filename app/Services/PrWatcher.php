@@ -33,7 +33,7 @@ class PrWatcher
         }
 
         if ($pr['head_sha'] !== $run->head_sha) {
-            $this->finish($run, RunStatus::NeedsHuman, 'Someone else pushed '.substr($pr['head_sha'], 0, 7).' to the branch. Leaving the PR to you.');
+            $this->finish($run, RunStatus::NeedsHuman, 'Someone else pushed '.substr($pr['head_sha'], 0, 7).' to the branch. Leaving the PR to you.', 'someone_pushed');
 
             return;
         }
@@ -57,7 +57,7 @@ class PrWatcher
         if ($run->pr_round >= $maxRounds) {
             $this->github->commentOnPullRequest($repo, $run->pr_url, $this->summary($checks, $threads, $maxRounds));
             $this->github->addHumanLabel($repo, $run->issue_number);
-            $this->finish($run, RunStatus::NeedsHuman, "Still outstanding after {$maxRounds} rounds. Left a summary on the PR.");
+            $this->finish($run, RunStatus::NeedsHuman, "Still outstanding after {$maxRounds} rounds. Left a summary on the PR.", 'rounds_ran_out');
 
             return;
         }
@@ -130,9 +130,9 @@ class PrWatcher
         ProcessRun::dispatch($round)->onQueue('runs');
     }
 
-    private function finish(Run $run, RunStatus $status, string $message): void
+    private function finish(Run $run, RunStatus $status, string $message, ?string $stopReason = null): void
     {
-        $run->moveTo($status);
+        $run->moveTo($status, ['stop_reason' => $stopReason]);
         $run->log($message);
         $run->removeWorktree();
     }

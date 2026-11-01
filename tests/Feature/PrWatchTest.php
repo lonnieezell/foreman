@@ -228,6 +228,7 @@ class PrWatchTest extends TestCase
         $run = $this->check($this->watchedRun(['pr_round' => 2]));
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('rounds_ran_out', $run->stop_reason);
         $this->assertSame(1, Run::count());
     }
 
@@ -240,7 +241,9 @@ class PrWatchTest extends TestCase
         $this->assertSame(RunStatus::Cancelled, $this->check($this->watchedRun())->status);
 
         $this->github($this->pr(['head_sha' => 'bbbbbbb2222']));
-        $this->assertSame(RunStatus::NeedsHuman, $this->check($this->watchedRun())->status);
+        $pushed = $this->check($this->watchedRun());
+        $this->assertSame(RunStatus::NeedsHuman, $pushed->status);
+        $this->assertSame('someone_pushed', $pushed->stop_reason);
     }
 
     public function test_a_paused_foreman_holds_the_round_but_keeps_watching(): void
@@ -499,6 +502,33 @@ class PrWatchTest extends TestCase
             ->assertSee('Needs you · round 2/2')
             ->assertDontSee('Continue after my reply')
             ->assertDontSee('Start over');
+    }
+
+    public function test_continuing_a_handed_over_pr_from_the_run_page_does_nothing(): void
+    {
+        $run = $this->watchedRun(['status' => RunStatus::NeedsHuman]);
+        $github = Mockery::mock(GitHub::class);
+        $github->expects('reclaim')->never();
+        $this->app->instance(GitHub::class, $github);
+        Queue::fake();
+
+        Livewire::test(RunDetail::class, ['run' => $run])->call('continueRun')->assertNoRedirect();
+
+        $this->assertSame(1, Run::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_the_run_page_says_why_a_pr_was_handed_over(): void
+    {
+        $pushed = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'stop_reason' => 'someone_pushed']);
+        Livewire::test(RunDetail::class, ['run' => $pushed])
+            ->assertSee('Someone else pushed to the PR’s branch')
+            ->assertDontSee('failing checks or open review threads');
+
+        $rounds = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'stop_reason' => 'rounds_ran_out']);
+        Livewire::test(RunDetail::class, ['run' => $rounds])
+            ->assertSee('failing checks or open review threads')
+            ->assertDontSee('Someone else pushed');
     }
 
     public function test_the_repository_form_saves_the_watch_setting(): void
