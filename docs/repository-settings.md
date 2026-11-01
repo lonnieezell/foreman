@@ -161,7 +161,9 @@ Fix-up rounds use the same list. Foreman reads the CI results and puts them in t
 
 #### Old tool lists
 
-A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice above the list, and the old entries are struck through. **Remove them** takes out just those entries and keeps the rest of the list. Click **Save changes** to keep the result.
+A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice above the list, and the old entries are struck through. **Remove them** takes out just those entries and keeps the rest of the list. When it takes out `Bash(git:*)`, it adds the six narrower git entries above that are missing, so the agent can still commit. Click **Save changes** to keep the result.
+
+If the list can't run `git add` and `git commit`, the settings page shows a warning. The agent can't commit its work without them, so every run ends as **Needs you**.
 
 The `gh` entries do nothing now. The guard hook blocks every `gh` command and `git push`, whatever the list says. `Bash(git:*)` still matters, because it lets the agent run git commands beyond inspecting and committing. Keep it only if you need that.
 

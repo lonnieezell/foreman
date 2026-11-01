@@ -243,8 +243,15 @@ class RepositoryForm extends Component
     public function removeLegacyAllowedTools(): void
     {
         $tools = array_map('trim', explode(',', $this->allowed_tools));
+        $kept = array_diff($tools, Repository::LEGACY_ALLOWED_TOOLS);
 
-        $this->allowed_tools = implode(',', array_diff($tools, Repository::LEGACY_ALLOWED_TOOLS));
+        // Without the narrow git entries that replaced it, the agent can't commit and every run fails
+        if (in_array('Bash(git:*)', $tools, true)) {
+            $git = array_filter(explode(',', Repository::DEFAULT_ALLOWED_TOOLS), fn (string $tool) => str_starts_with($tool, 'Bash(git '));
+            $kept = [...$kept, ...array_diff($git, $kept)];
+        }
+
+        $this->allowed_tools = implode(',', $kept);
     }
 
     public function useDetectedChecks(): void
@@ -312,6 +319,12 @@ class RepositoryForm extends Component
         }
 
         return $diff;
+    }
+
+    /** True when the tool list in the form doesn't let the agent commit. */
+    public function getCannotCommitProperty(): bool
+    {
+        return ! (new Repository(['allowed_tools' => $this->allowed_tools]))->allowsCommit();
     }
 
     /** True when the tool list in the form still has entries from the old default. */

@@ -277,6 +277,16 @@
                     </div>
                 @endif
 
+                @if ($this->cannotCommit)
+                    <div class="settings-alert" role="status">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 16H3z" /><path d="M12 10v4M12 17v.01" /></svg>
+                        <p>
+                            This list can't run git add and git commit, so the agent can't commit its work and every run ends as Needs you.
+                            Add <code>Bash(git add:*)</code> and <code>Bash(git commit:*)</code>, or reset the list to the default.
+                        </p>
+                    </div>
+                @endif
+
                 <div class="field" x-data="toolList(@js(App\Models\Repository::LEGACY_ALLOWED_TOOLS))">
                     <span class="field-label">Allowed tools</span>
                     <div class="tool-groups" x-show="! asText">
