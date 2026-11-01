@@ -101,4 +101,4 @@ This keeps two things apart:
 - **Foreman's secrets.** The agent can't read Foreman's `APP_KEY`.
 - **The target repo's settings.** A real environment variable beats a `.env` value. Without this step, Foreman's `APP_ENV`, `DB_CONNECTION` and the rest would override the worktree's own `.env`. For example, `php artisan key:generate` would refuse to write a key, because `APP_KEY` was already set.
 
-So don't put a value a worktree process needs into Foreman's `.env`. It gets removed. Set it in the shell that starts Foreman instead. The hooks still work: they run `php artisan` from Foreman's folder, so Laravel loads Foreman's `.env` for them.
+So don't put a value a worktree process needs, such as an `ANTHROPIC_API_KEY`, into Foreman's `.env`. Foreman removes every variable named there, even when its value came from your shell. Delete the line from `.env` and set the value in the shell that starts Foreman instead. The hooks still work: they run `php artisan` from Foreman's folder, so Laravel loads Foreman's `.env` for them.
