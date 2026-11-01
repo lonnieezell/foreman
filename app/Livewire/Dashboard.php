@@ -114,9 +114,12 @@ class Dashboard extends Component
         $this->flash = "#{$run->issue_number} is back in the queue for {$run->repository->name}".($started ? ' and has started.' : '.');
     }
 
-    public function continueRun(int $id)
+    public function continueRun(int $id): void
     {
-        return $this->redirectRoute('runs.show', Run::findOrFail($id)->continueAfterReply(app(GitHub::class)), navigate: true);
+        $run = Run::findOrFail($id);
+        $run->continueAfterReply(app(GitHub::class));
+
+        $this->flash = "#{$run->issue_number} is continuing after your reply in {$run->repository->name}.";
     }
 
     public function recheck(): void
