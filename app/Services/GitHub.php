@@ -78,19 +78,12 @@ class GitHub
         return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
     }
 
-    /** @return list<string> */
-    public function labels(Repository $repo, int $issue): array
+    /** Opens a PR for a branch that is already pushed. Returns its URL. */
+    public function openPullRequest(Repository $repo, string $branch, string $title, string $body): string
     {
-        $output = $this->gh($repo, ['issue', 'view', (string) $issue, '--json', 'labels'], allowFailure: true);
+        $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body]);
 
-        return collect(json_decode($output, true)['labels'] ?? [])->pluck('name')->all();
-    }
-
-    public function pullRequestFor(Repository $repo, string $branch): ?string
-    {
-        $output = $this->gh($repo, ['pr', 'list', '--head', $branch, '--state', 'all', '--json', 'url', '--limit', '1'], allowFailure: true);
-
-        return json_decode($output, true)[0]['url'] ?? null;
+        return trim(collect(explode("\n", trim($output)))->last());
     }
 
     private const PULL_REQUEST_QUERY = <<<'GRAPHQL'

@@ -22,7 +22,7 @@ often wrong, so verify before changing anything. Decide one of:
 ## When you are done
 
 1. Run the project's checks for what you changed, as in the original instructions.
-2. Commit and run `git push`. Do not open a new PR.
+2. Commit your fixes. Do not push and do not open a PR: Foreman pushes for you.
 3. Write `{{review_file}}` (do not commit it) as a JSON array with one entry per thread:
    `[{"thread_id": "<id from the heading>", "verdict": "fixed|declined|unsure", "reply": "<one or two sentences>"}]`
    The reply is posted on the thread for you; do not reply, resolve, or comment on GitHub yourself.

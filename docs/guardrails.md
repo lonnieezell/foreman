@@ -12,10 +12,11 @@ This is where the guardrails are heading. The first steps are built. The others 
 | --- | --- | --- |
 | Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
 | Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
+| Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
 | Everything after that | Hooks inside the agent run, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
-The agent still opens its own PR for now, as described in [Runs and statuses](runs.md#how-a-run-ends). Getting a run going is covered in [Getting started](getting-started.md).
+Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
 ## Sanitised issue
 
@@ -44,6 +45,35 @@ This lowers the risk of prompt injection. It does not remove it.
 - Bare URLs stay, because they are visible text.
 - Issue comments are not cleaned. They are only read when a human replies and a run resumes, and the agent reads them itself then.
 - The rules match text patterns. A new way to hide content may get through.
+
+## Foreman pushes, not the agent
+
+The agent never acts on GitHub. It commits in its worktree and writes `.foreman/result.json`. Foreman reads the file and then comments, labels, pushes and opens the PR. The three outcomes are listed in [Runs and statuses](runs.md#how-a-run-ends).
+
+### How it works
+
+- **The environment.** The agent's process gets a push URL for `origin` that points nowhere, an empty git credential helper, and no `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. It also has no git or SSH password prompt and no SSH agent. A `git push origin` fails. Foreman's own push runs in a separate process without these changes.
+- **The allowed tools.** The [default list](repository-settings.md#allowed-tools) has no `gh` and no `git push`. Only the git commands that inspect and commit are allowed.
+- **The permission mode.** Runs use Claude's `dontAsk` mode. A tool that isn't on the list is refused, not asked about.
+- **A missing or unreadable result file fails the run.** Foreman never guesses what the agent meant.
+
+### Why it exists
+
+Two public incidents show what happens when an AI agent holds credentials that can change a repository and reads text that anyone can write.
+
+- **Clinejection.** Researchers showed that an issue title could carry instructions to an AI triage workflow on the Cline repository. The agent ran with enough access that the instructions led to stolen publishing credentials.
+- **claude-code-action.** Researchers reported that prompt injection through content such as issue and PR text could make the agent use the GitHub token it was given.
+
+In both, the weak point was not the model's judgement. It was that the agent held rights it didn't need. An agent with no push rights and no token can be tricked into writing a bad result file, but it can't push to a branch or publish a package. A person still reviews the PR.
+
+### What it doesn't catch
+
+- The agent still writes the PR's title and body, and the comment on the issue. Foreman posts them as written.
+- Code the agent commits is still pushed. A bad change can reach a PR, which is why the other guardrails and your review still matter.
+- Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
+- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
+- The agent can still reach the network through allowed tools such as `npm` and `composer`.
+- During a fix-up round the agent may run `gh pr checks` and `gh run view`. With no token in its environment, those only work if `gh` keeps its login in its own config.
 
 ## Stack rules
 

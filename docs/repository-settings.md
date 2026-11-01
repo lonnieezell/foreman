@@ -103,12 +103,17 @@ The setup script runs as you, with no sandbox.
 The tools Claude may use, passed to `claude --allowedTools`. Anything not listed is refused. The default lets the agent:
 
 - read and edit files, search, and use skills and sub-agents
-- run `git`, `composer`, `php artisan`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
-- run `gh issue` and `gh pr create`
+- run the git commands that inspect and commit: `git status`, `git diff`, `git log`, `git show`, `git add` and `git commit`
+- run `composer`, `php artisan`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
+- run Rust tools (`cargo`, `rustfmt`) and Python tools (`python`, `python3`, `pytest`, `ruff`, `mypy`, `pyright`, `uv` and `poetry`)
 
-The agent acts with your `gh` and git logins. This list is what keeps it in bounds, so review it before widening it.
+The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking.
 
 During a fix-up round, Foreman also allows `gh pr checks` and `gh run view`, so the agent can read CI results. See [PR watching](pr-watching.md).
+
+#### Old tool lists
+
+A repository saved before this change may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save** to keep it. Skip it if you widened the list on purpose.
 
 ### Instructions
 
@@ -124,6 +129,8 @@ The prompt given to the agent at the start of a run. These placeholders are repl
 | `{{human_label}}` | The human label |
 
 A custom prompt that still tells the agent to run `gh issue view` skips the cleanup, because the agent reads the raw issue itself. Use `{{issue_text}}` instead.
+
+The default prompt tells the agent to commit its work and write the result file described in [How a run ends](runs.md#how-a-run-ends). It also tells the agent to use the `test_looks_wrong` reason instead of changing a test that seems wrong.
 
 The default prompt starts with `/mattpocock-skills:implement` and also uses `/simplify`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
 

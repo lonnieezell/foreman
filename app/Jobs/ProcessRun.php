@@ -20,6 +20,9 @@ class ProcessRun implements ShouldQueue
     /** Where a review round writes its verdicts, relative to the worktree. */
     public const REVIEW_FILE = '.foreman/review.json';
 
+    /** Where the agent says how it ended, relative to the worktree. Foreman acts on it. */
+    public const RESULT_FILE = '.foreman/result.json';
+
     /** A Bash command matching this moves the run to Checking: tests, linters, formatters, type checks. */
     public const CHECK_COMMAND = '/\b(pest|phpunit|phpstan|pint|artisan test|vitest|jest|playwright|eslint|prettier|biome|tsc|rustfmt|pytest|ruff|mypy|pyright)\b'
         .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
@@ -54,9 +57,7 @@ class ProcessRun implements ShouldQueue
                 ? $run->worktree_path          // continuing: keep the agent's work in progress
                 : $this->prepareWorktree($run);
 
-            if ($run->pr_round) {
-                $this->prepareReviewFile($worktree);
-            }
+            $this->prepareForemanFiles($worktree);
 
             $this->runAgent($run, $worktree, $github);
             $this->settle($run, $github);
@@ -141,6 +142,7 @@ class ProcessRun implements ShouldQueue
             '--max-turns', (string) $repo->max_turns,
             // Rounds read CI results; GitHub writes stay with Foreman
             '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
+            '--permission-mode', 'dontAsk',
             '--output-format', 'stream-json',
             '--verbose',
         ];
@@ -155,7 +157,7 @@ class ProcessRun implements ShouldQueue
         }
 
         $process = Process::path($worktree)
-            ->env($repo->claudeEnv())
+            ->env([...$repo->claudeEnv(), ...self::agentEnv()])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -285,45 +287,100 @@ class ProcessRun implements ShouldQueue
         }
 
         $repo = $run->repository;
-        $prUrl = $github->pullRequestFor($repo, $run->branch);
-        $labels = $github->labels($repo, $run->issue_number);
+        $result = $this->readResult($run->worktree_path);
 
-        if (in_array($repo->human_label, $labels, true)) {
-            $run->moveTo(RunStatus::NeedsHuman, ['pr_url' => $prUrl, 'finished_at' => now()]);
-            $run->log('Agent flagged the issue for a human.');
+        if ($result === null) {
+            $reason = ($this->result['is_error'] ?? false)
+                ? 'Claude stopped with an error ('.($this->result['subtype'] ?? 'unknown').').'
+                : 'The agent finished without a readable result file ('.self::RESULT_FILE.').';
+
+            // Its last message usually says why, so keep it where a human will see it
+            $last = trim($this->result['result'] ?? '');
+
+            throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
+        }
+
+        if ($result['outcome'] !== 'pr') {
+            $github->flagForHuman($repo, $run->issue_number, $result['comment']);
+            $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+            $run->log($result['outcome'] === 'already_done'
+                ? 'Agent says the issue is already done. Flagged it for a human.'
+                : 'Agent asked for a human'.(($result['reason'] ?? '') !== '' ? " ({$result['reason']})" : '').'.');
 
             return;
         }
 
-        if ($prUrl && $repo->watch_prs) {
+        $this->push($run);
+
+        $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
+        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body);
+
+        if ($repo->watch_prs) {
             $this->watch($run, $github->pullRequest($repo, $prUrl)['head_sha'], ['pr_url' => $prUrl]);
             $run->log("PR opened: {$prUrl}. Watching it for checks and review bots.");
 
             return;
         }
 
-        if ($prUrl) {
-            $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
-            $run->log("PR opened: {$prUrl}");
-            $run->removeWorktree();
+        $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
+        $run->log("PR opened: {$prUrl}");
+        $run->removeWorktree();
+    }
 
-            return;
-        }
+    /** Foreman's own push, with the agent's restrictions left off. */
+    private function push(Run $run): void
+    {
+        $this->step($run, "Pushing {$run->branch}", ['git', 'push', '--set-upstream', 'origin', $run->branch], $run->worktree_path);
+    }
 
-        $reason = ($this->result['is_error'] ?? false)
-            ? 'Claude stopped with an error ('.($this->result['subtype'] ?? 'unknown').').'
-            : 'The agent finished without opening a PR or flagging the issue.';
+    /**
+     * Environment that stops the agent pushing: origin's push URL goes nowhere, no credential helper
+     * answers, and GitHub tokens are dropped. A false value removes the variable.
+     *
+     * @return array<string,string|false>
+     */
+    public static function agentEnv(): array
+    {
+        return [
+            'GIT_CONFIG_COUNT' => '2',
+            'GIT_CONFIG_KEY_0' => 'remote.origin.pushurl',
+            'GIT_CONFIG_VALUE_0' => '/nonexistent/foreman-agents-cannot-push',
+            'GIT_CONFIG_KEY_1' => 'credential.helper',
+            'GIT_CONFIG_VALUE_1' => '',
+            'GIT_TERMINAL_PROMPT' => '0',
+            'GH_TOKEN' => false,
+            'GITHUB_TOKEN' => false,
+            'GH_ENTERPRISE_TOKEN' => false,
+            'GITHUB_ENTERPRISE_TOKEN' => false,
+            'GIT_ASKPASS' => false,
+            'SSH_ASKPASS' => false,
+            'SSH_AUTH_SOCK' => false,
+        ];
+    }
 
-        // Its last message usually says why, so keep it where a human will see it
-        $last = trim($this->result['result'] ?? '');
+    /**
+     * What the agent wrote in its result file, or null when it is missing or not one of the three outcomes.
+     *
+     * @return array{outcome:string,title?:string,body?:string,comment?:string,reason?:string}|null
+     */
+    private function readResult(string $worktree): ?array
+    {
+        $result = json_decode((string) @file_get_contents("{$worktree}/".self::RESULT_FILE), true);
+        $text = fn (string $key) => is_array($result) && is_string($result[$key] ?? null) && trim($result[$key]) !== '';
 
-        throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
+        return match (is_array($result) ? ($result['outcome'] ?? null) : null) {
+            'pr' => $text('title') && $text('body') ? $result : null,
+            'needs_human' => $text('comment') && $text('reason') ? $result : null,
+            'already_done' => $text('comment') ? $result : null,
+            default => null,
+        };
     }
 
     /** Post the agent's verdicts on the bot threads it was given, then watch the new head. */
     private function settleRound(Run $run, GitHub $github): void
     {
         $repo = $run->repository;
+        $this->push($run);
         $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
         $pushed = $head !== $run->head_sha;
         $verdicts = $this->readVerdicts($run->worktree_path);
@@ -376,10 +433,10 @@ class ProcessRun implements ShouldQueue
             ->all();
     }
 
-    /** Clear the last round's verdicts and keep the file out of git without touching .gitignore. */
-    private function prepareReviewFile(string $worktree): void
+    /** Clear the last run's result and verdicts, and keep them out of git without touching .gitignore. */
+    private function prepareForemanFiles(string $worktree): void
     {
-        File::delete("{$worktree}/".self::REVIEW_FILE);
+        File::delete(["{$worktree}/".self::RESULT_FILE, "{$worktree}/".self::REVIEW_FILE]);
 
         $exclude = trim(Process::path($worktree)->run(['git', 'rev-parse', '--git-path', 'info/exclude'])->output());
 
