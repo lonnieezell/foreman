@@ -132,16 +132,18 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 
 - read and edit files, search, and use skills and sub-agents
 - run the git commands that inspect and commit: `git status`, `git diff`, `git log`, `git show`, `git add` and `git commit`
-- run `composer`, `php artisan`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
+- run `composer`, `php`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
 - run Rust tools (`cargo`, `rustfmt`) and Python tools (`python`, `python3`, `pytest`, `ruff`, `mypy`, `pyright`, `uv` and `poetry`)
 
-The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking.
+The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command.
 
 Fix-up rounds use the same list. Foreman reads the CI results and puts them in the prompt, so the agent needs no `gh` tools. See [PR watching](pr-watching.md).
 
 #### Old tool lists
 
 A repository saved before this change may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save** to keep it. Skip it if you widened the list on purpose.
+
+A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it to the field by hand and click **Save**.
 
 ### Locked paths
 

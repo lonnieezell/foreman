@@ -261,4 +261,18 @@ class ForemanActsTest extends TestCase
         $this->assertStringNotContainsString('git push', $prompt);
         $this->assertStringNotContainsString('gh pr create', $prompt);
     }
+
+    public function test_the_default_tools_allow_php_like_the_other_stacks(): void
+    {
+        $this->assertContains('Bash(php:*)', explode(',', Repository::DEFAULT_ALLOWED_TOOLS));
+    }
+
+    public function test_the_default_prompt_says_a_bash_denial_covers_only_that_call(): void
+    {
+        $prompt = file_get_contents(resource_path('prompts/default.md'));
+
+        $this->assertStringContainsString('denied', $prompt);
+        $this->assertStringContainsString('only the commands in that call', $prompt);
+        $this->assertStringContainsString('retry without', $prompt);
+    }
 }
