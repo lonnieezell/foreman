@@ -163,8 +163,8 @@
     .stepper button:disabled { color: var(--rule); cursor: default; }
     .stepper span { font-family: var(--font-display); font-weight: 600; font-size: .95rem; min-width: 1.4rem; text-align: center; font-variant-numeric: tabular-nums; }
 
-    /* The track: four stations, then the output bin */
-    .track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 1.5rem; overflow-x: auto; }
+    /* The track: one row, one column per station */
+    .track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-top: 1.5rem; overflow-x: auto; }
     .station { position: relative; padding-top: 3.25rem; min-width: 7.5rem; }
     .station::before { /* rail */
         content: ''; position: absolute; left: 0; right: 0; top: 2.6rem; height: 4px; background: var(--rule);
