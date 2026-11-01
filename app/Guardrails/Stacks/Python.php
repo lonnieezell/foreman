@@ -62,21 +62,20 @@ class Python extends Stack
         foreach ($this->dirs as $dir) {
             $run = $this->has($dir, 'uv.lock') ? 'uv run ' : ($this->has($dir, 'poetry.lock') ? 'poetry run ' : '');
             // Explicit files skip ruff's excludes unless `--force-exclude` is set
-            $steps = [
-                $this->onChangedFiles($base, "{$run}ruff format --check --force-exclude"),
-                $this->onChangedFiles($base, "{$run}ruff check --force-exclude"),
-            ];
+            $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff format --check --force-exclude"));
+            $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff check --force-exclude"));
+            $steps = [];
 
             if ($this->configures($dir, 'mypy', ['mypy.ini'])) {
-                $steps[] = "{$run}mypy .";
+                $steps[] = 'mypy .';
             }
             if ($this->configures($dir, 'pyright', ['pyrightconfig.json'])) {
-                $steps[] = "{$run}pyright";
+                $steps[] = 'pyright';
             }
-            $steps[] = "{$run}pytest";
+            $steps[] = 'pytest';
 
             foreach ($steps as $step) {
-                $commands[] = $this->inDir($dir, $step);
+                $commands[] = $this->inDir($dir, $run.$step);
             }
         }
 

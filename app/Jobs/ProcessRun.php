@@ -126,11 +126,17 @@ class ProcessRun implements ShouldQueue
     private function catchUpWithBase(Run $run, string $worktree, bool $fetch): void
     {
         $base = "origin/{$run->repository->base_branch}";
+        $this->guardCancel($run);
 
-        if ($fetch && ($fetched = Process::path($worktree)->run(['git', 'fetch', 'origin', '--quiet']))->failed()) {
-            $run->log("Couldn't fetch origin, so {$base} wasn't merged. Going on from the branch as it was: ".str(trim($fetched->errorOutput()))->limit(500));
+        if ($fetch) {
+            $fetched = Process::path($worktree)->run(['git', 'fetch', 'origin', '--quiet']);
+            $run->update(['heartbeat_at' => now()]);
 
-            return;
+            if ($fetched->failed()) {
+                $run->log("Couldn't fetch origin, so {$base} wasn't merged. Going on from the branch as it was: ".str(trim($fetched->errorOutput()))->limit(500));
+
+                return;
+            }
         }
 
         // `git merge --abort` can't always restore uncommitted changes, so never risk them
@@ -141,17 +147,21 @@ class ProcessRun implements ShouldQueue
         }
 
         $run->log("Merging {$base} into {$run->branch}");
+
         try {
-            $merge = Process::path($worktree)->timeout(300)->run(['git', 'merge', '--no-edit', $base]);
-            $output = $merge->failed() ? trim($merge->errorOutput()."\n".$merge->output()) : null;
+            // Well under the 5-minute heartbeat limit, so a slow merge can't get the run reaped
+            $merge = Process::path($worktree)->timeout(120)->run(['git', 'merge', '--no-edit', $base]);
+
+            if ($merge->successful()) {
+                return;
+            }
+            $why = trim($merge->errorOutput()."\n".$merge->output());
         } catch (Throwable $e) {
-            $output = $e->getMessage();
+            $why = $e->getMessage();
         }
 
-        if ($output !== null) {
-            Process::path($worktree)->run(['git', 'merge', '--abort']);
-            $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($output)->limit(500));
-        }
+        Process::path($worktree)->run(['git', 'merge', '--abort']);
+        $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($why)->limit(500));
     }
 
     private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300): void

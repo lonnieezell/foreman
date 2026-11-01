@@ -107,7 +107,7 @@ SH;
     /** One line per verify command of the stacks found in `$folder`. Format checks cover files changed since `$base`. */
     public static function defaultVerifyScript(string $folder, string $base): string
     {
-        return is_dir($folder) ? implode("\n", StackSet::detect($folder)->rules('verifyCommands', $base)) : '';
+        return is_dir($folder) ? implode("\n", StackSet::detect($folder)->verifyCommands($base)) : '';
     }
 
     /** Name used for per-profile state like usage-limit pauses. */

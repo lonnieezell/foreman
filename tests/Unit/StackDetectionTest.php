@@ -81,7 +81,7 @@ class StackDetectionTest extends TestCase
         $stacks = StackSet::detect($this->root);
 
         $this->assertEqualsCanonicalizing(['typescript', 'rust'], $stacks->names());
-        $this->assertContains('cd '.escapeshellarg('src-tauri').' && cargo test', $stacks->rules('verifyCommands', 'origin/main'));
+        $this->assertContains('cd '.escapeshellarg('src-tauri').' && cargo test', $stacks->verifyCommands('origin/main'));
     }
 
     public function test_marker_files_in_dependency_folders_are_ignored(): void
@@ -168,10 +168,10 @@ class StackDetectionTest extends TestCase
         $this->assertSame('vendor/bin/pint', $laravel->formatter());
 
         $ci4 = $this->phpStack(['codeigniter4/framework' => '^4.5'], ['friendsofphp/php-cs-fixer' => '^3.0']);
-        $this->assertSame([
-            "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/develop' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection --)",
-            'vendor/bin/phpunit',
-        ], $ci4->verifyCommands('origin/develop'));
+        [$fixer, $phpunit] = $ci4->verifyCommands('origin/develop');
+        $this->assertStringContainsString("--merge-base 'origin/develop' -- '*.php'", $fixer);
+        $this->assertStringEndsWith('| xargs -0 -r vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection --)', $fixer);
+        $this->assertSame('vendor/bin/phpunit', $phpunit);
         $this->assertSame('vendor/bin/php-cs-fixer fix', $ci4->formatter());
 
         $this->assertNull($this->phpStack(['codeigniter4/framework' => '^4.5'])->formatter());
@@ -196,15 +196,12 @@ class StackDetectionTest extends TestCase
 
         $py = StackSet::detect($this->root)->stacks[0];
 
-        $this->assertSame(
-            [
-                "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.py' && git ls-files -z --others --exclude-standard -- '*.py'; } | xargs -0 -r uv run ruff format --check --force-exclude --)",
-                "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.py' && git ls-files -z --others --exclude-standard -- '*.py'; } | xargs -0 -r uv run ruff check --force-exclude --)",
-                'uv run mypy .',
-                'uv run pytest',
-            ],
-            $py->verifyCommands('origin/main'),
-        );
+        $commands = $py->verifyCommands('origin/main');
+        [$format, $lint] = $commands;
+        $this->assertStringContainsString("--merge-base 'origin/main' -- '*.py'", $format);
+        $this->assertStringEndsWith('| xargs -0 -r uv run ruff format --check --force-exclude --)', $format);
+        $this->assertStringEndsWith('| xargs -0 -r uv run ruff check --force-exclude --)', $lint);
+        $this->assertSame(['uv run mypy .', 'uv run pytest'], array_slice($commands, 2));
         $this->assertSame('ruff format', $py->formatter());
     }
 

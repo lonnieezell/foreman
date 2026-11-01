@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
@@ -55,16 +56,16 @@ class ResumeCatchUpTest extends TestCase
 
     /**
      * Runs the job with git answering as given: `status` is the porcelain output, `merge` and `fetch` the exit codes.
-     * A `merge` of -1 throws, as a timeout does.
+     * With `mergeThrows`, the merge throws, as a timeout does.
      */
-    private function process(Run $run, string $status = '', int $merge = 0, int $fetch = 0): Run
+    private function process(Run $run, string $status = '', int $merge = 0, int $fetch = 0, bool $mergeThrows = false): Run
     {
-        Process::fake(function (PendingProcess $process) use ($status, $merge, $fetch) {
+        Process::fake(function (PendingProcess $process) use ($status, $merge, $fetch, $mergeThrows) {
             $this->ran[] = $process->command;
             $abort = $process->command === ['git', 'merge', '--abort'];
 
-            if ($merge === -1 && ! $abort && array_slice($process->command, 0, 2) === ['git', 'merge']) {
-                throw new RuntimeException('The process "git merge" exceeded the timeout of 300 seconds.');
+            if ($mergeThrows && ! $abort && array_slice($process->command, 0, 2) === ['git', 'merge']) {
+                throw new RuntimeException('The process "git merge" exceeded the timeout of 120 seconds.');
             }
 
             return match (array_slice($process->command, 0, 2)) {
@@ -80,23 +81,21 @@ class ResumeCatchUpTest extends TestCase
         return $run->fresh();
     }
 
-    /** Where `$command` ran, by position, or null when it never ran. */
-    private function position(array $command): ?int
-    {
-        $found = array_search($command, $this->ran, true);
-
-        return $found === false ? null : $found;
-    }
-
-    private function claudePosition(): ?int
+    /** Where the first command equal to `$match`, or passing it, ran by position. Null when none ran. */
+    private function position(array|Closure $match): ?int
     {
         foreach ($this->ran as $i => $command) {
-            if ($command[0] === 'claude') {
+            if (is_array($match) ? $command === $match : $match($command)) {
                 return $i;
             }
         }
 
         return null;
+    }
+
+    private function claudePosition(): ?int
+    {
+        return $this->position(fn (array $command) => $command[0] === 'claude');
     }
 
     public function test_a_resumed_run_merges_the_latest_base_before_the_agent_starts(): void
@@ -155,7 +154,7 @@ class ResumeCatchUpTest extends TestCase
 
     public function test_a_merge_that_throws_is_aborted_and_the_run_goes_on(): void
     {
-        $run = $this->process($this->makeRun(), merge: -1);
+        $run = $this->process($this->makeRun(), mergeThrows: true);
 
         $this->assertNotNull($this->position(['git', 'merge', '--abort']));
         $this->assertNotNull($this->claudePosition());

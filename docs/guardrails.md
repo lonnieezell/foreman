@@ -156,7 +156,7 @@ When the worktree is gone and Foreman rebuilds it from the pushed branch, the me
 | Situation | What happens |
 | --- | --- |
 | The merge goes through | The run goes on from the merged branch. The run log shows `Merging origin/<base> into <branch>`. |
-| The merge conflicts, fails or takes over 5 minutes | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
+| The merge conflicts, fails or takes over 2 minutes | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
 | Fetching `origin` fails | Foreman doesn't merge. The run goes on from the branch as it was, and the log line starts with `Couldn't fetch origin`. |
 | The worktree has uncommitted changes | Foreman doesn't merge, because `git merge --abort` can't always put those changes back. The run goes on from the branch as it was. |
 
