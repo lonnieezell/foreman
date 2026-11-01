@@ -28,6 +28,7 @@ class VerifyScriptTest extends TestCase
         $this->dir = sys_get_temp_dir().'/foreman-verify-'.uniqid();
         File::ensureDirectoryExists("{$this->dir}/frontend");
         file_put_contents("{$this->dir}/composer.json", json_encode(['require-dev' => ['laravel/pint' => '*', 'phpstan/phpstan' => '*', 'pestphp/pest' => '*']]));
+        file_put_contents("{$this->dir}/phpstan.neon", '');
         file_put_contents("{$this->dir}/frontend/package.json", json_encode(['scripts' => ['lint' => 'x', 'test' => 'x']]));
         file_put_contents("{$this->dir}/frontend/pnpm-lock.yaml", '');
     }
