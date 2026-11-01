@@ -482,7 +482,7 @@ class ProcessRun implements ShouldQueue
 
     /**
      * Rate the change's risk from its diff, then resume the agent's session to review it as deep as the tier calls for:
-     * `/code-review` (with `/simplify` above tier 1), and `/security-review` for tier 3.
+     * `/code-review` and `/simplify`, plus `/security-review` for tier 3.
      */
     private function reviewPass(Run $run, GitHub $github): void
     {
@@ -492,14 +492,13 @@ class ProcessRun implements ShouldQueue
         $level = [1 => 'low', 2 => 'medium', 3 => 'high'][$tier];
 
         $run->update(['risk_tier' => $tier]);
-        $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort".($tier > 1 ? ', then /simplify' : '').'.');
+        $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort, then /simplify.");
 
         $this->runPass($run, $github, 'The review pass', strtr(file_get_contents(resource_path('prompts/review-pass.md')), [
             '{{tier}}' => (string) $tier,
             '{{reason}}' => $reason,
             '{{level}}' => $level,
             '{{base}}' => $base,
-            '{{simplify}}' => $tier > 1 ? "- Run the simplify skill on your changes and keep the cleanups it applies.\n" : '',
         ]));
 
         if ($tier < 3) {

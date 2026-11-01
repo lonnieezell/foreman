@@ -356,7 +356,7 @@ Foreman resumes the agent's own session for the review pass. The agent keeps eve
 | | Tier 1 | Tier 2 | Tier 3 |
 | --- | --- | --- | --- |
 | `/code-review`, with its fixes applied | Low effort | Medium effort | High effort |
-| `/simplify` | Skipped | Yes | Yes |
+| `/simplify`: cleanups, and reuse of code the repository already has | Yes | Yes | Yes |
 | `/security-review`, with its findings fixed | No | No | Yes, after the code review |
 
 The agent runs the checks again and commits its fixes. Then Foreman runs its whole gate a second time, so a fix from the review can't sneak past it. Foreman stores the tier on the run and shows it on the dashboard and the run page. It also adds a `risk:tier-1`, `risk:tier-2` or `risk:tier-3` label to the PR. It creates the label first if the repository doesn't have it.
@@ -370,7 +370,7 @@ The review pass can end the run early:
 
 ### Why review depth follows risk
 
-A deep review on every change costs time and money for little gain. A typo fix in the docs doesn't need a security review. A new route or a raw SQL query does. The tier comes from rules that a program applies to the diff, not from the agent's own view of its work. So the agent can't talk its way into a lighter review. Reviews still find problems that rules miss, so every tier gets at least a low-effort code review.
+A deep review on every change costs time and money for little gain. A typo fix in the docs doesn't need a security review. A new route or a raw SQL query does. The tier comes from rules that a program applies to the diff, not from the agent's own view of its work. So the agent can't talk its way into a lighter review. Reviews still find problems that rules miss, so every tier gets at least a low-effort code review. Every tier also gets `/simplify`. Small changes are cheap to simplify, and test code is where copied setup and missed helpers pile up.
 
 ### What it doesn't do
 

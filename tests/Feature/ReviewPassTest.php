@@ -145,14 +145,14 @@ class ReviewPassTest extends TestCase
         return collect($this->commands)->contains(fn ($c) => array_slice($c, 0, count($prefix)) === $prefix);
     }
 
-    public function test_a_tier_1_change_gets_a_low_effort_code_review_without_simplify_or_security_review(): void
+    public function test_a_tier_1_change_gets_a_low_effort_code_review_and_simplify_but_no_security_review(): void
     {
         [$run] = $this->settle(self::TEST_DIFF);
 
         $this->assertSame(1, $run->risk_tier);
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertStringContainsString('`low --fix origin/main`', $this->prompt('code-review skill'));
-        $this->assertStringNotContainsString('simplify', $this->prompt('code-review skill'));
+        $this->assertStringContainsString('simplify skill', $this->prompt('code-review skill'));
         $this->assertSame(['issue', 'gate', 'review', 'gate'], $this->sequence);
     }
 
