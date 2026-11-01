@@ -282,15 +282,20 @@ class PrWatchTest extends TestCase
         (new ProcessRun($run))->handle($github);
     }
 
+    private function writePrResult(): void
+    {
+        File::ensureDirectoryExists("{$this->worktree}/.foreman");
+        File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'Fix', 'body' => 'Done.']));
+    }
+
     public function test_an_opened_pr_is_watched_and_its_worktree_kept(): void
     {
         $run = $this->watchedRun(['status' => RunStatus::Queued, 'pr_url' => null, 'head_sha' => null, 'resume_session_id' => 'sess-0']);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn(self::PR);
+        $github->allows('openPullRequest')->andReturn(self::PR);
         $github->allows('pullRequest')->andReturn($this->pr(['head_sha' => 'ccccccc3333']));
 
-        $this->process($run, $github);
+        $this->process($run, $github, $this->writePrResult(...));
         $run->refresh();
 
         $this->assertSame(RunStatus::WatchingPr, $run->status);
@@ -303,10 +308,9 @@ class PrWatchTest extends TestCase
     {
         $run = $this->watchedRun(['status' => RunStatus::Queued, 'pr_url' => null, 'resume_session_id' => 'sess-0'], ['watch_prs' => false]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn(self::PR);
+        $github->allows('openPullRequest')->andReturn(self::PR);
 
-        $this->process($run, $github);
+        $this->process($run, $github, $this->writePrResult(...));
 
         $this->assertSame(RunStatus::PrOpened, $run->fresh()->status);
         Process::assertRan(fn (PendingProcess $p) => $p->command === ['git', 'worktree', 'remove', '--force', $this->worktree]);
@@ -320,6 +324,7 @@ class PrWatchTest extends TestCase
         ]);
         $github = Mockery::mock(GitHub::class);
         $github->allows('release');
+        $github->allows('labels')->andReturn([]);
         $github->allows('pullRequest')->andReturn($this->pr(['head_sha' => 'ddddddd4444']));
         $github->expects('replyToThread')->with(Mockery::any(), 'T1', 'Fixed in ddddddd: Added the null check.');
         $github->expects('resolveThread')->with(Mockery::any(), 'T1');
@@ -358,6 +363,7 @@ class PrWatchTest extends TestCase
         File::ensureDirectoryExists($this->worktree.'/.foreman');
         $github = Mockery::mock(GitHub::class);
         $github->allows('release');
+        $github->allows('labels')->andReturn([]);
         $github->allows('pullRequest')->andReturn($this->pr());   // head unchanged
         $github->expects('replyToThread')->never();
         $github->expects('resolveThread')->never();
@@ -373,7 +379,6 @@ class PrWatchTest extends TestCase
         $missing = $this->worktree.'/gone';
         $run = $this->watchedRun(['status' => RunStatus::Queued, 'pr_url' => null, 'resume_session_id' => 'sess-0', 'worktree_path' => $missing]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
 
         try {
             $this->process($run, $github);

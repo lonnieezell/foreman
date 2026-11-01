@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Repository;
 use App\Models\Setting;
+use App\Support\IssueSanitiser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -138,6 +139,15 @@ class GitHub
         $this->gh($repo, ['issue', 'edit', (string) $issue, '--add-label', $repo->human_label], allowFailure: true);
     }
 
+    /** The issue's title and body, cleaned and marked as untrusted data, ready for the prompt. */
+    public function sanitisedIssue(Repository $repo, int $issue): string
+    {
+        $output = $this->gh($repo, ['issue', 'view', (string) $issue, '--json', 'title,body']);
+        $data = json_decode($output, true) ?? [];
+
+        return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
+    }
+
     /** @return list<string> */
     public function labels(Repository $repo, int $issue): array
     {
@@ -146,11 +156,12 @@ class GitHub
         return collect(json_decode($output, true)['labels'] ?? [])->pluck('name')->all();
     }
 
-    public function pullRequestFor(Repository $repo, string $branch): ?string
+    /** Opens a PR for a branch that is already pushed. Returns its URL. */
+    public function openPullRequest(Repository $repo, string $branch, string $title, string $body): string
     {
-        $output = $this->gh($repo, ['pr', 'list', '--head', $branch, '--state', 'all', '--json', 'url', '--limit', '1'], allowFailure: true);
+        $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body]);
 
-        return json_decode($output, true)[0]['url'] ?? null;
+        return trim(collect(explode("\n", trim($output)))->last());
     }
 
     private const PULL_REQUEST_QUERY = <<<'GRAPHQL'

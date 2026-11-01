@@ -34,6 +34,23 @@ When you've dealt with the cause, click **Start over** on the run page, or **Ret
 
 If Claude stopped because a usage limit was hit, see [Usage limits](usage-limits.md#if-a-run-hits-a-limit).
 
+## "Blocked by guardrail" in the log
+
+A line like `Blocked by guardrail: …` means a Foreman hook refused one of the agent's tool calls. The rest of the line says why. The run carries on, and the agent sees the same reason and can try something else.
+
+| Reason starts with | What it means |
+| --- | --- |
+| "… is protected" | The agent tried to edit a CI workflow, `CLAUDE.md`, `AGENTS.md`, `.claude/` or an `.env` file. |
+| "… holds tool settings" | The agent tried to change a linter, formatter, type-checker or test config. |
+| "… is locked in this repository's settings" | The path matches **Locked paths** in the [repository settings](repository-settings.md#locked-paths). |
+| "… is a lock file" | The agent tried to change a lock file. Add the `dependencies` label to the issue if it should. |
+| "git push is blocked", "gh commands are blocked", "--no-verify is blocked" | The agent tried a command the agent may not run. |
+| "This edit adds a skip or suppress marker" | The agent tried to silence a test or tool instead of fixing the cause. |
+
+A run that keeps hitting the same block usually can't finish. If the block is wrong for this issue, fix the cause: add the `dependencies` label, or remove the pattern from **Locked paths**, then use **Start over**. See [Guardrails](guardrails.md#protected-files-and-commands) for the full list.
+
+If every tool call is blocked with "Foreman guard could not read its rules", the files in `storage/foreman/hooks/` are missing or unreadable. Start the run over.
+
 ## Runs stay on Waiting
 
 `composer run foreman` starts three workers. A run waits on **Waiting** until one is free. If all three are busy, or none are running, add a worker in another terminal:

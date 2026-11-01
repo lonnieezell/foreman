@@ -53,8 +53,6 @@ class EffortTest extends TestCase
     {
         Process::fake(['*' => Process::result(json_encode(['type' => 'result', 'num_turns' => 1]))]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
 

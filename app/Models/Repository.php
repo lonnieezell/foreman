@@ -9,7 +9,11 @@ use RuntimeException;
 
 class Repository extends Model
 {
-    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git:*),Bash(composer:*),Bash(php artisan:*),Bash(./vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(gh issue:*),Bash(gh pr create:*)';
+    /** The agent may inspect and commit but not push, and it has no `gh`: Foreman acts on GitHub. */
+    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*),Bash(composer:*),Bash(php artisan:*),Bash(./vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(cargo:*),Bash(rustfmt:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(pyright:*),Bash(uv:*),Bash(poetry:*)';
+
+    /** Entries from the old default that let the agent push or act on GitHub itself. */
+    public const LEGACY_ALLOWED_TOOLS = ['Bash(git:*)', 'Bash(gh issue:*)', 'Bash(gh pr create:*)'];
 
     public const DEFAULT_SETUP_SCRIPT = <<<'SH'
 cp .env.example .env
@@ -34,6 +38,7 @@ SH;
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
+            'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
             'intake_skips' => 'array',
             'archived_at' => 'datetime',
@@ -92,6 +97,12 @@ SH;
         return trim("{$this->model} {$this->effort}");
     }
 
+    /** @return list<string> The globs from the "Locked paths" setting, one per line. */
+    public function lockedPathList(): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $this->locked_paths))));
+    }
+
     /** Name used for per-profile state like usage-limit pauses. */
     public function profileName(): string
     {
@@ -116,13 +127,22 @@ SH;
         return ['CLAUDE_CONFIG_DIR' => $dir];
     }
 
-    public function renderPrompt(Run $run): string
+    /** True when the saved tool list still has entries from the old default. */
+    public function hasLegacyAllowedTools(): bool
+    {
+        $saved = array_map('trim', explode(',', (string) $this->allowed_tools));
+
+        return array_intersect(self::LEGACY_ALLOWED_TOOLS, $saved) !== [];
+    }
+
+    public function renderPrompt(Run $run, string $issueText): string
     {
         $template = $this->prompt_template
             ?: file_get_contents(resource_path('prompts/default.md'));
 
         return strtr($template, [
             '{{issue}}' => (string) $run->issue_number,
+            '{{issue_text}}' => $issueText,
             '{{branch}}' => $run->branch,
             '{{base}}' => $this->base_branch,
             '{{repo}}' => $this->github_repo,

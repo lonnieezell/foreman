@@ -64,8 +64,6 @@ class ClaudeProfilesTest extends TestCase
 
         Process::fake(['*' => Process::result(json_encode(['type' => 'result', ...$result]))]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
 
@@ -77,7 +75,7 @@ class ClaudeProfilesTest extends TestCase
         $this->processRun($this->repository(['claude_profile' => 'work']), ['num_turns' => 1]);
 
         Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'claude'
-            && $process->environment === ['CLAUDE_CONFIG_DIR' => '/home/me/.claude-work']);
+            && $process->environment['CLAUDE_CONFIG_DIR'] === '/home/me/.claude-work');
     }
 
     public function test_repositories_without_a_profile_use_the_default_login(): void

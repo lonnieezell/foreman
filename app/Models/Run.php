@@ -156,8 +156,13 @@ class Run extends Model
 
     public function log(string $line): void
     {
-        File::ensureDirectoryExists(dirname($this->logPath()));
-        File::append($this->logPath(), '['.now()->format('H:i:s').'] '.rtrim($line)."\n");
+        self::appendLog($this->logPath(), $line);
+    }
+
+    public static function appendLog(string $path, string $line): void
+    {
+        File::ensureDirectoryExists(dirname($path));
+        File::append($path, '['.now()->format('H:i:s').'] '.rtrim($line)."\n");
     }
 
     public function tail(int $lines = 400): string

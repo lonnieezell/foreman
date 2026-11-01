@@ -31,8 +31,6 @@ class RunEndingsTest extends TestCase
             'result' => "The fix is already on `main`.\n\nSee `Finding::has_title` in findings.rs:114.",
         ]))]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('labels')->andReturn([]);
-        $github->allows('pullRequestFor')->andReturn(null);
         $github->expects('flagForHuman')->withArgs(fn ($repo, $issue, $comment) => $issue === 907
             && str_contains($comment, "> The fix is already on `main`.\n>\n> See `Finding::has_title` in findings.rs:114."));
 
@@ -40,7 +38,7 @@ class RunEndingsTest extends TestCase
         $run->refresh();
 
         $this->assertSame(RunStatus::Failed, $run->status);
-        $this->assertStringContainsString('The agent finished without opening a PR or flagging the issue.', $run->error);
+        $this->assertStringContainsString('The agent finished without a readable result file', $run->error);
         $this->assertStringContainsString('See `Finding::has_title` in findings.rs:114.', $run->error);
 
         File::delete([$run->logPath(), $run->rawLogPath()]);
