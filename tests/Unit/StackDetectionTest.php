@@ -10,6 +10,7 @@ use App\Guardrails\Stacks\TypeScript;
 use App\Guardrails\StackSet;
 use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class StackDetectionTest extends TestCase
@@ -81,7 +82,7 @@ class StackDetectionTest extends TestCase
         $stacks = StackSet::detect($this->root);
 
         $this->assertEqualsCanonicalizing(['typescript', 'rust'], $stacks->names());
-        $this->assertContains('cd '.escapeshellarg('src-tauri').' && cargo test', $stacks->verifyCommands('origin/main'));
+        $this->assertContains('(cd '.escapeshellarg('src-tauri').' && cargo test)', $stacks->verifyCommands('origin/main'));
     }
 
     public function test_marker_files_in_dependency_folders_are_ignored(): void
@@ -214,7 +215,69 @@ class StackDetectionTest extends TestCase
 
         $this->assertCount(6, $commands);
         $this->assertContains('cargo clippy --all-targets -- -D warnings', $commands);
-        $this->assertContains("cd 'src-tauri' && cargo fmt --check", $commands);
+        $this->assertContains("(cd 'src-tauri' && cargo fmt --check)", $commands);
+    }
+
+    public function test_a_default_script_runs_every_command_in_the_folder_it_names(): void
+    {
+        $verify = $this->subFolderThenRootScript();
+
+        $run = $this->runVerify($verify);
+
+        $this->assertSame(0, $run->getExitCode(), $run->getErrorOutput());
+        $this->assertSame([
+            "{$this->root}/frontend pnpm run lint",
+            "{$this->root}/frontend pnpm run test",
+            "{$this->root} cargo fmt --check",
+            "{$this->root} cargo clippy --all-targets -- -D warnings",
+            "{$this->root} cargo test",
+        ], $this->toolLog());
+    }
+
+    public function test_a_missing_sub_folder_fails_the_default_script(): void
+    {
+        $verify = $this->subFolderThenRootScript();
+        File::deleteDirectory("{$this->root}/frontend");
+
+        $run = $this->runVerify($verify);
+
+        $this->assertNotSame(0, $run->getExitCode());
+        $this->assertSame([], $this->toolLog());
+    }
+
+    /** A TypeScript stack with two checks in `frontend/`, then a Rust stack at the root. */
+    private function subFolderThenRootScript(): string
+    {
+        $this->touch('frontend/package.json', json_encode(['scripts' => ['lint' => 'eslint .', 'test' => 'vitest']]));
+        $this->touch('frontend/pnpm-lock.yaml');
+        $this->touch('Cargo.toml');
+
+        return implode("\n", StackSet::detect($this->root)->verifyCommands('origin/main'));
+    }
+
+    /** Run `$verify` the way the Stop hook and the gate do, with stub tools that log the folder they ran in. */
+    private function runVerify(string $verify): Process
+    {
+        $bin = "{$this->root}/.bin";
+        File::ensureDirectoryExists($bin);
+        foreach (['pnpm', 'cargo'] as $tool) {
+            file_put_contents("{$bin}/{$tool}", "#!/bin/sh\necho \"\$(pwd -P) {$tool} \$*\" >> '{$this->root}/.tools.log'\n");
+            chmod("{$bin}/{$tool}", 0755);
+        }
+
+        $process = new Process(['bash', '-ec', $verify], $this->root, ['PATH' => $bin.':'.getenv('PATH')]);
+        $process->run();
+
+        return $process;
+    }
+
+    /** @return list<string> */
+    private function toolLog(): array
+    {
+        $log = "{$this->root}/.tools.log";
+        $root = realpath($this->root);
+
+        return is_file($log) ? array_map(fn ($line) => str_replace($root, $this->root, $line), file($log, FILE_IGNORE_NEW_LINES)) : [];
     }
 
     /** Every stack fills every rule table, so the integrity check and the hooks never meet an empty one. */
