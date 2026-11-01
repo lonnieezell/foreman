@@ -35,6 +35,7 @@ SH;
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
             'last_polled_at' => 'datetime',
+            'intake_skips' => 'array',
             'archived_at' => 'datetime',
         ];
     }

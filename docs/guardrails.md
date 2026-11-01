@@ -6,15 +6,30 @@ Guardrails are being added one step at a time. This page only describes what For
 
 ## The pipeline at a glance
 
-This is where the guardrails are heading. The first step is built. The others are not yet.
+This is where the guardrails are heading. The first steps are built. The others are not yet.
 
 | Step | What it does | State |
 | --- | --- | --- |
+| Intake gate | Takes only issues that a trusted person marked as ready. See [Intake gate](#intake-gate). | Built |
 | Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
 | Everything after that | Hooks inside the agent run, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
 The agent still opens its own PR for now, as described in [Runs and statuses](runs.md#how-a-run-ends). Getting a run going is covered in [Getting started](getting-started.md).
+
+## Intake gate
+
+Issue text is the agent's instructions, and anyone who can edit an issue can change it. So Foreman only takes an issue when a trusted person marked it as ready. On every check it skips an issue when:
+
+- the ready label was added by a bot, or
+- the ready label was added by someone without write access to the repository, or
+- the issue was edited after the label was added.
+
+Admin, maintain and write access all count as write access. Foreman asks GitHub once per check for each person who added a label, however many issues they labelled.
+
+A skipped issue stays open and keeps its label. The repository's row on the dashboard shows it under **Skipped by the intake gate**, with the reason. To approve it, read the issue, then remove the label and add it again. A person with write access has to do that. If GitHub shows no record of who added the label, Foreman skips the issue too.
+
+Issues that pass are picked up as before.
 
 ## Stack rules
 

@@ -13,7 +13,12 @@ use Illuminate\Support\Facades\Process;
  */
 class GitHub
 {
-    /** @return list<array{number:int,title:string,url:string}> */
+    /**
+     * Ready issues that pass the intake gate. Issues the gate skips are saved on the
+     * repository with their reasons, and the list is cleared when nothing is skipped.
+     *
+     * @return list<array{number:int,title:string,url:string}>
+     */
     public function readyIssues(Repository $repo, int $limit): array
     {
         [$owner, $name] = explode('/', $repo->github_repo, 2);
@@ -22,16 +27,79 @@ class GitHub
         $output = $this->api($repo, ['graphql',
             '-f', 'query=query($owner: String!, $name: String!, $label: String!) { repository(owner: $owner, name: $name) {
                 issues(labels: [$label], states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
-                    nodes { number title url issueDependenciesSummary { blockedBy } }
+                    nodes { number title url lastEditedAt issueDependenciesSummary { blockedBy }
+                        timelineItems(itemTypes: [LABELED_EVENT], last: 100) { nodes { ... on LabeledEvent {
+                            createdAt label { name } actor { __typename login } } } } }
                 } } }',
             '-F', "owner={$owner}", '-F', "name={$name}", '-f', "label={$repo->ready_label}"]);
 
-        return collect(json_decode($output, true)['data']['repository']['issues']['nodes'] ?? [])
-            ->filter(fn (array $issue) => ($issue['issueDependenciesSummary']['blockedBy'] ?? 0) === 0)
-            ->take($limit)
-            ->map(fn (array $issue) => ['number' => $issue['number'], 'title' => $issue['title'], 'url' => $issue['url']])
-            ->values()
-            ->all();
+        $writeAccess = [];
+        $skipped = [];
+        $ready = [];
+
+        foreach (json_decode($output, true)['data']['repository']['issues']['nodes'] ?? [] as $issue) {
+            if (count($ready) >= $limit) {
+                break;
+            }
+
+            if (($issue['issueDependenciesSummary']['blockedBy'] ?? 0) !== 0) {
+                continue;
+            }
+
+            if ($reason = $this->intakeSkipReason($repo, $issue, $writeAccess)) {
+                $skipped[] = ['number' => $issue['number'], 'reason' => $reason];
+
+                continue;
+            }
+
+            $ready[] = ['number' => $issue['number'], 'title' => $issue['title'], 'url' => $issue['url']];
+        }
+
+        $repo->update(['intake_skips' => $skipped ?: null]);
+
+        return $ready;
+    }
+
+    /**
+     * Why the intake gate refuses an issue, or null when it's trusted. Only a person with write
+     * access counts, and only if the issue hasn't changed since they added the label.
+     *
+     * @param  array<string,bool>  $writeAccess  per-poll cache of who has write access
+     */
+    private function intakeSkipReason(Repository $repo, array $issue, array &$writeAccess): ?string
+    {
+        $labeled = collect($issue['timelineItems']['nodes'] ?? [])
+            ->filter(fn (array $e) => ($e['label']['name'] ?? null) === $repo->ready_label)
+            ->last();
+
+        $login = $labeled['actor']['login'] ?? null;
+
+        if (! $labeled || ! $login) {
+            return 'GitHub has no record of who added the ready label';
+        }
+
+        if ($labeled['actor']['__typename'] === 'Bot') {
+            return "the ready label was added by a bot ({$login})";
+        }
+
+        $writeAccess[$login] ??= $this->hasWriteAccess($repo, $login);
+
+        if (! $writeAccess[$login]) {
+            return "the ready label was added by {$login}, who doesn’t have write access";
+        }
+
+        if (($issue['lastEditedAt'] ?? null) && Carbon::parse($issue['lastEditedAt'])->gt(Carbon::parse($labeled['createdAt']))) {
+            return 'the issue was edited after the ready label was added';
+        }
+
+        return null;
+    }
+
+    private function hasWriteAccess(Repository $repo, string $login): bool
+    {
+        $output = $this->api($repo, ["repos/{$repo->github_repo}/collaborators/{$login}/permission"], allowFailure: true);
+
+        return in_array(json_decode($output, true)['permission'] ?? null, ['admin', 'maintain', 'write'], true);
     }
 
     /** Swap ready → working so the next poll can't pick it up twice. */
