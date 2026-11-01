@@ -104,6 +104,7 @@ class Run extends Model
             'effort' => $this->repository->effort,
             'worktree_path' => $this->worktree_path,
             'resume_session_id' => $this->session_id,
+            'previous_run_id' => $this->id,   // its finish time marks which comments are new
         ]);
         $next->log("Continuing run {$this->id} after a human reply.");
 

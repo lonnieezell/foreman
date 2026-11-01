@@ -148,6 +148,62 @@ class GitHub
         return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
     }
 
+    /**
+     * Issue comments written after $since by people with write access, cleaned and marked as untrusted.
+     * Everyone else's comments are left out. Empty when there are none.
+     */
+    public function trustedComments(Repository $repo, int $issue, ?Carbon $since): string
+    {
+        [$owner, $name] = explode('/', $repo->github_repo, 2);
+
+        $output = $this->api($repo, ['graphql',
+            '-f', 'query=query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) {
+                issue(number: $number) { comments(last: 100) { nodes { author { login } body createdAt } } } } }',
+            '-F', "owner={$owner}", '-F', "name={$name}", '-F', "number={$issue}"]);
+
+        $writeAccess = [];
+
+        return collect(json_decode($output, true)['data']['repository']['issue']['comments']['nodes'] ?? [])
+            ->filter(fn (array $c) => ! $since || Carbon::parse($c['createdAt'])->gt($since))
+            ->filter(function (array $c) use ($repo, &$writeAccess) {
+                $login = $c['author']['login'] ?? null;
+
+                return $login && ($writeAccess[$login] ??= $this->hasWriteAccess($repo, $login));
+            })
+            ->map(fn (array $c) => "{$c['author']['login']} wrote:\n".IssueSanitiser::wrapText($c['body']))
+            ->implode("\n\n");
+    }
+
+    /** Longest log kept per failed run: the end of it, where the failure is. */
+    private const LOG_BYTES = 6000;
+
+    /**
+     * The failed-step logs of the failed checks, one entry per workflow run, trimmed to the end.
+     * Checks without a workflow run (external statuses) have no log to fetch.
+     *
+     * @param  list<array{name:string,state:string,url:?string}>  $checks
+     * @return list<array{checks:list<string>,log:string}>
+     */
+    public function failedCheckLogs(Repository $repo, array $checks): array
+    {
+        $runs = [];
+
+        foreach ($checks as $check) {
+            if ($check['state'] === 'failed' && preg_match('~/actions/runs/(\d+)~', (string) $check['url'], $match)) {
+                $runs[$match[1]][] = $check['name'];
+            }
+        }
+
+        return collect($runs)
+            ->map(function (array $names, int|string $id) use ($repo) {
+                $log = $this->gh($repo, ['run', 'view', (string) $id, '--log-failed'], allowFailure: true);
+
+                return ['checks' => $names, 'log' => trim(mb_strcut($log, max(0, strlen($log) - self::LOG_BYTES)))];
+            })
+            ->filter(fn (array $run) => $run['log'] !== '')
+            ->values()->all();
+    }
+
     /** @return list<string> */
     public function labels(Repository $repo, int $issue): array
     {

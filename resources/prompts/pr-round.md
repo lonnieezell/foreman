@@ -1,13 +1,16 @@
 You opened PR {{pr}} for issue #{{issue}} on branch {{branch}}. This is review
 round {{round}} of {{max_rounds}}. CI and review bots have reported back; deal with
-what is listed below, then stop. Stay inside the issue's scope.
+what is listed below, then stop. Stay inside the issue's scope. You have no access
+to GitHub: Foreman fetched everything below for you.
+
+{{untrusted_note}}
 
 ## Checks not passing
 
 {{checks}}
 
-For a failing check, read its log with `gh pr checks` and `gh run view <run-id> --log-failed`,
-reproduce it locally with the project's own commands, and fix it.
+For a failing check, read its log above, reproduce it locally with the
+project's own commands, and fix it.
 
 ## Bot review threads
 

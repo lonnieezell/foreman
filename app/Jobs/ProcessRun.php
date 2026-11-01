@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Models\Run;
 use App\Services\GitHub;
 use App\Services\Usage;
+use App\Support\IssueSanitiser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -131,8 +132,8 @@ class ProcessRun implements ShouldQueue
         $run->log("Starting Claude ({$run->model}, {$effort}{$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
 
         $prompt = match (true) {
-            (bool) $run->pr_round => $this->roundPrompt($run),
-            (bool) $run->resume_session_id => $this->resumePrompt($run),
+            (bool) $run->pr_round => $this->roundPrompt($run, $github),
+            (bool) $run->resume_session_id => $this->resumePrompt($run, $github),
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)),
         };
 
@@ -140,8 +141,7 @@ class ProcessRun implements ShouldQueue
             'claude', '-p', $prompt,
             '--model', $run->model,
             '--max-turns', (string) $repo->max_turns,
-            // Rounds read CI results; GitHub writes stay with Foreman
-            '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
+            '--allowedTools', $repo->allowed_tools,
             '--permission-mode', 'dontAsk',
             '--settings', $this->writeHookSettings($run, $worktree, $allowLockFiles),
             '--output-format', 'stream-json',
@@ -495,14 +495,18 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    private function roundPrompt(Run $run): string
+    private function roundPrompt(Run $run, GitHub $github): string
     {
-        $checks = collect($run->pr_feedback['checks'] ?? [])
+        $notPassing = $run->pr_feedback['checks'] ?? [];
+
+        $checks = collect($notPassing)
             ->map(fn ($c) => "- {$c['name']}: {$c['state']}".($c['url'] ? " ({$c['url']})" : ''))
+            ->merge(collect($github->failedCheckLogs($run->repository, $notPassing))
+                ->map(fn ($l) => "\nLog of the failed steps for ".implode(', ', $l['checks']).", the end of it:\n".IssueSanitiser::wrapText($l['log'], clean: false)))
             ->implode("\n") ?: 'None.';
 
         $threads = collect($run->pr_feedback['threads'] ?? [])
-            ->map(fn ($t) => "### {$t['id']}\n{$t['author']} on {$t['path']}".($t['line'] ? ":{$t['line']}" : '')."\n\n{$t['body']}")
+            ->map(fn ($t) => "### {$t['id']}\n{$t['author']} on {$t['path']}".($t['line'] ? ":{$t['line']}" : '')."\n\n".IssueSanitiser::wrapText($t['body']))
             ->implode("\n\n") ?: 'None.';
 
         return strtr(file_get_contents(resource_path('prompts/pr-round.md')), [
@@ -512,16 +516,20 @@ class ProcessRun implements ShouldQueue
             '{{round}}' => (string) $run->pr_round,
             '{{max_rounds}}' => (string) config('foreman.pr_watch.max_rounds'),
             '{{review_file}}' => self::REVIEW_FILE,
+            '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
             '{{checks}}' => $checks,
             '{{threads}}' => $threads,
         ]);
     }
 
-    private function resumePrompt(Run $run): string
+    private function resumePrompt(Run $run, GitHub $github): string
     {
-        return "A human has replied on issue #{$run->issue_number}. Read the new comments with "
-            ."`gh issue view {$run->issue_number} --comments`, then continue from where you stopped, "
-            .'following the same instructions as before.';
+        $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at)
+            ?: 'No new comments from people with write access.';
+
+        return "A human has replied on issue #{$run->issue_number}. The new comments are below. "
+            .IssueSanitiser::TEXT_NOTE
+            ."\n\n{$comments}\n\nContinue from where you stopped, following the same instructions as before.";
     }
 
     /**
