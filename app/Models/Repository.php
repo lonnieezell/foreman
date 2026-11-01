@@ -146,6 +146,15 @@ SH;
         return array_intersect(self::LEGACY_ALLOWED_TOOLS, $saved) !== [];
     }
 
+    /** True when the saved tool list lets the agent commit, which every run needs before Foreman can push. */
+    public function allowsCommit(): bool
+    {
+        $saved = array_map('trim', explode(',', (string) $this->allowed_tools));
+
+        return array_intersect(['Bash', 'Bash(git:*)'], $saved) !== []
+            || array_diff(['Bash(git add:*)', 'Bash(git commit:*)'], $saved) === [];
+    }
+
     public function renderPrompt(Run $run, string $issueText): string
     {
         $template = $this->prompt_template

@@ -51,13 +51,38 @@ class RepositoryFormTest extends TestCase
         return file_get_contents(resource_path('prompts/default.md'));
     }
 
-    public function test_remove_them_drops_only_the_old_default_entries(): void
+    public function test_remove_them_swaps_the_old_git_entry_for_the_narrow_ones_and_drops_the_rest(): void
     {
         Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(git:*),Bash(npm:*),Bash(gh issue:*),Bash(gh pr create:*)'])])
             ->assertSee('Remove them')
             ->call('removeLegacyAllowedTools')
-            ->assertSet('allowed_tools', 'Read,Bash(npm:*)')
+            ->assertSet('allowed_tools', 'Read,Bash(npm:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*)')
             ->assertDontSee('Remove them');
+    }
+
+    public function test_remove_them_adds_only_the_git_entries_that_are_missing(): void
+    {
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(git:*),Bash(git add:*),Bash(git commit:*)'])])
+            ->call('removeLegacyAllowedTools')
+            ->assertSet('allowed_tools', 'Read,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)');
+    }
+
+    public function test_remove_them_adds_no_git_entries_when_only_gh_entries_were_old(): void
+    {
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(gh issue:*)'])])
+            ->call('removeLegacyAllowedTools')
+            ->assertSet('allowed_tools', 'Read');
+    }
+
+    public function test_a_list_that_cannot_commit_gets_a_warning(): void
+    {
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(npm:*)'])])
+            ->assertSee("can't run git add and git commit", escape: false);
+
+        foreach ([Repository::DEFAULT_ALLOWED_TOOLS, 'Read,Bash(git:*)', 'Read,Bash'] as $tools) {
+            Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => $tools])])
+                ->assertDontSee("can't run git add and git commit", escape: false);
+        }
     }
 
     public function test_the_old_entries_notice_says_only_git_widens_anything(): void
