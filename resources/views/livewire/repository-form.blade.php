@@ -169,6 +169,13 @@
             </div>
 
             <div class="field">
+                <label for="locked_paths">Locked paths</label>
+                <textarea id="locked_paths" rows="3" wire:model="locked_paths" placeholder="database/migrations/**&#10;tests/Feature/BillingTest.php"></textarea>
+                <span class="hint">One pattern per line, relative to the repository root. <code>*</code> matches within a folder and <code>**</code> matches across folders. The agent can't edit these files.</span>
+                @error('locked_paths') <span class="error">{{ $message }}</span> @enderror
+            </div>
+
+            <div class="field">
                 <label for="prompt_template">Instructions</label>
                 <textarea id="prompt_template" rows="16" wire:model="prompt_template"></textarea>
                 <span class="hint">

@@ -91,6 +91,12 @@ SH;
         return trim("{$this->model} {$this->effort}");
     }
 
+    /** @return list<string> The globs from the "Locked paths" setting, one per line. */
+    public function lockedPathList(): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $this->locked_paths))));
+    }
+
     /** Name used for per-profile state like usage-limit pauses. */
     public function profileName(): string
     {

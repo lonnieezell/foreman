@@ -30,6 +30,7 @@ class RepositoryForm extends Component
     public int $max_turns = 40;
     public int $max_minutes = 45;
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
+    public string $locked_paths = '';
     public string $setup_script = Repository::DEFAULT_SETUP_SCRIPT;
     public string $prompt_template = '';
     public bool $cleanup_worktrees = true;
@@ -46,6 +47,7 @@ class RepositoryForm extends Component
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
             $this->effort = (string) $repository->effort;
+            $this->locked_paths = (string) $repository->locked_paths;
             $this->claude_profile = (string) $repository->claude_profile;
             $this->prompt_template = (string) $repository->prompt_template;
         }
@@ -129,6 +131,7 @@ class RepositoryForm extends Component
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
             'allowed_tools' => ['required', 'string'],
+            'locked_paths' => ['nullable', 'string'],
             'setup_script' => ['required', 'string'],
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
@@ -140,6 +143,7 @@ class RepositoryForm extends Component
         $data['daily_budget'] = $data['daily_budget'] === '' ? null : $data['daily_budget'];
         $data['claude_profile'] = $data['claude_profile'] ?: null;
         $data['effort'] = $data['effort'] ?: null;
+        $data['locked_paths'] = trim((string) $data['locked_paths']) ?: null;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
         $default = file_get_contents(resource_path('prompts/default.md'));
