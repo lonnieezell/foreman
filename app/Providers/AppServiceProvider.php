@@ -15,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // One instance per poll, so a "Run anyway" used by a fix-up round still covers issue intake
+        // One instance per process (each poll is its own), so a "Run anyway" used by a fix-up round still covers issue intake
         $this->app->singleton(Usage::class);
     }
 
