@@ -208,7 +208,7 @@ class ProcessRun implements ShouldQueue
 
     /**
      * Write the run's hook settings outside the worktree, so the agent can't edit them.
-     * The hook is `foreman:guard`, which reads its rules from a file next to the settings.
+     * The hooks are `foreman:guard` and `foreman:format-staged`, which read their rules from a file next to the settings.
      */
     private function writeHookSettings(Run $run, string $worktree, bool $allowLockFiles): string
     {
@@ -223,11 +223,14 @@ class ProcessRun implements ShouldQueue
             'allow_lock_files' => $allowLockFiles,
         ]));
 
-        $command = implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), 'foreman:guard', $rules]));
+        $artisan = fn (string $name) => implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), $name, $rules]));
         $settings = "{$dir}/run-{$run->id}-settings.json";
         File::put($settings, json_encode(['hooks' => ['PreToolUse' => [[
             'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
-            'hooks' => [['type' => 'command', 'command' => $command]],
+            'hooks' => [
+                ['type' => 'command', 'command' => $artisan('foreman:guard')],
+                ['type' => 'command', 'command' => $artisan('foreman:format-staged')],
+            ],
         ]]]]));
 
         return $settings;

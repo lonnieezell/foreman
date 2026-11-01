@@ -50,6 +50,11 @@ class Rust extends Stack
         return 'rustfmt';
     }
 
+    public function formatExtensions(): array
+    {
+        return ['rs'];
+    }
+
     public function verifyCommands(): array
     {
         $commands = [];

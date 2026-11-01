@@ -50,6 +50,11 @@ class Python extends Stack
         return 'ruff format';
     }
 
+    public function formatExtensions(): array
+    {
+        return ['py'];
+    }
+
     public function verifyCommands(): array
     {
         $commands = [];

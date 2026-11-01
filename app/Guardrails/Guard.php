@@ -9,6 +9,9 @@ namespace App\Guardrails;
  */
 class Guard
 {
+    /** A command starts at the beginning, or after ; & | ( a backtick or a newline, past any VAR=value prefixes. */
+    public const COMMAND_START = '(?:^|[;&|(`\n])\s*(?:\w+=\S*\s+)*';
+
     private const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
 
     /** Protected in every repository, whatever the stack. Matched against the file name or the end of the path. */
@@ -47,8 +50,7 @@ class Guard
 
     private function checkCommand(string $command): ?string
     {
-        // A command starts at the beginning, or after ; & | ( a backtick or a newline, past any VAR=value prefixes
-        $start = '(?:^|[;&|(`\n])\s*(?:\w+=\S*\s+)*';
+        $start = self::COMMAND_START;
 
         return match (true) {
             (bool) preg_match("/{$start}git(?:\\s+-[\\w-]+(?:[ =]\\S+)?)*\\s+push\\b/", $command) => 'git push is blocked. Foreman pushes the branch after its own checks.',
