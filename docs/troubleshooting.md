@@ -24,13 +24,13 @@ Common errors:
 | --- | --- |
 | "Running setup script failed: …" | The setup script hit an error in the fresh worktree. The message has the script's output. Fix the script in the repository's settings. |
 | "Fetching origin failed: …" or "Creating worktree … failed: …" | git couldn't fetch or make the worktree. Check that the local checkout's remote works, and that the base branch exists on `origin`. |
-| "Hit the 45-minute limit." | The agent ran out of time. Split the issue up, or raise **Max minutes per issue**. |
+| "Hit the 45-minute limit." | The agent ran out of time. Split the issue up, or raise **Max time per issue**. |
 | "Claude stopped with an error (…)." | Claude ended the run with an error. The part in brackets says which. `error_max_turns` means it ran out of turns: split the issue up, or raise **Max turns per issue**. |
 | "The agent finished without a readable result file (.foreman/result.json)." | Claude exited normally, but the result file is missing, isn't valid JSON, or lacks a field its outcome needs. Its last message follows the error and usually says why. See [How a run ends](runs.md#how-a-run-ends). |
 | "Claude exited without a result: …" | Claude crashed or couldn't start. The message has its error output. |
 | "The review pass stopped with an error (…).", "The correction round stopped with an error (…)." or "/security-review stopped with an error (…)." | A pass after the gate ended with an error, such as running out of turns. Nothing was pushed. See [Risk tiers](guardrails.md#risk-tiers). |
 | "/security-review ended without reviewing anything." | `/security-review` couldn't work out the diff, so it did nothing. Check that the base branch exists on `origin`. |
-| "The run used up its spend cap of $… before Foreman could resume the agent." | **Limit per run** was used up before the review pass or a correction could start. Raise the limit, or use **Start over**. |
+| "The run used up its spend cap of $… before Foreman could resume the agent." | The **Per run** budget was used up before the review pass or a correction could start. Raise the limit, or use **Start over**. |
 | "Couldn't diff the change for the scope judge: …" | git couldn't diff the branch against `origin/<base>` for the [scope judge](guardrails.md#scope-judge). |
 | "Pushing … failed: …" | Foreman's push was refused. Check your git access to the repository, and whether the branch already exists on GitHub. |
 | "Signing the agent's commits failed: …" | Your git config signs commits, and signing failed. Check that `gpg-agent` is running and your key is unlocked. See [Sandbox](repository-settings.md#sandbox). |

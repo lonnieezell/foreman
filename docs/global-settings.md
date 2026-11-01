@@ -24,7 +24,7 @@ Changes on the Settings page reach running workers before their next job. You do
 
 ### Spend
 
-**Daily limit across all repositories (USD).** Once today's spend reaches this, no new runs or fix-up rounds start. Empty means no limit. Each repository can also have its own limit. See [Repository settings](repository-settings.md#daily-limit-usd).
+**Daily limit across all repositories (USD).** Once today's spend reaches this, no new runs or fix-up rounds start. Empty means no limit. Each repository can also have its own limit. See [Repository settings](repository-settings.md#per-day).
 
 "Today" starts at midnight UTC. A run's cost counts toward the day the run was queued.
 

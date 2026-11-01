@@ -97,19 +97,19 @@ class DashboardTest extends TestCase
     {
         Process::fake();
 
-        $this->get('/')->assertDontSee('Where the code lives');
+        $this->get('/')->assertDontSee('Local checkout');
         $this->get('/?add=1')
             ->assertSee('class="modal"', false)
             ->assertSee('wire:click="closeModal" aria-label="Close"', false)
-            ->assertSee('Where the code lives');
+            ->assertSee('Local checkout');
 
         Livewire::test(Dashboard::class)
-            ->assertDontSee('Where the code lives')
+            ->assertDontSee('Local checkout')
             ->set('adding', true)
-            ->assertSee('Where the code lives')
+            ->assertSee('Local checkout')
             ->call('closeModal')
             ->assertSet('adding', false)
-            ->assertDontSee('Where the code lives');
+            ->assertDontSee('Local checkout');
     }
 
     public function test_repository_settings_open_in_the_same_modal(): void
