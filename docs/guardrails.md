@@ -14,7 +14,8 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
 | Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
-| Everything after that | Hooks inside the agent run, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
+| Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). | Built |
+| Everything after that | Other hooks, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
@@ -73,7 +74,7 @@ In both, the weak point was not the model's judgement. It was that the agent hel
 - Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
 - The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
 - The agent can still reach the network through allowed tools such as `npm` and `composer`.
-- During a fix-up round the agent may run `gh pr checks` and `gh run view`. With no token in its environment, those only work if `gh` keeps its login in its own config.
+- During a fix-up round the allowed tools still include `gh pr checks` and `gh run view`, but the [protected-commands hook](#protected-files-and-commands) blocks every `gh` command. So the agent can't read CI results itself yet.
 
 ## Stack rules
 
@@ -114,3 +115,43 @@ When a CodeIgniter 4 repository also requires `codeigniter4/shield`, the high-ri
 - The skip markers match text. A `@phpstan-ignore` or `@ts-expect-error` with a written reason will be allowed once the check that uses these tables exists.
 - A repository with no framework in `composer.json` gets the shared PHP rules and no high-risk paths or risky code.
 - Foreman can't see a stack that has no marker file.
+
+## Protected files and commands
+
+Every run starts Claude with its own settings file. The file adds a `PreToolUse` hook, which Claude runs before each `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and `Bash` call. The hook runs one Foreman command, `php artisan foreman:guard`. The command reads the tool call on its input and decides if it may go ahead.
+
+The settings file and its rules file are in `storage/foreman/hooks/`, outside the worktree. So the agent can't edit them.
+
+### What the hook blocks
+
+| Blocked | Details |
+| --- | --- |
+| Stack config | Each stack's protected config from the [Stack rules](#stack-rules) table, such as `phpunit.xml`, `phpstan.neon` and `tsconfig.json`. |
+| Locked paths | The patterns in the repository's **Locked paths** setting. See [Repository settings](repository-settings.md#locked-paths). |
+| Repository controls | CI workflows (`.github/workflows/`), `CLAUDE.md`, `AGENTS.md`, `.claude/`, and `.env` files. `.env.example` is allowed, because it holds no secrets and setup scripts copy it. |
+| Lock files | Each stack's lock files, unless the issue has the `dependencies` label. |
+| Commands | `git push`, any `gh` command, and `--no-verify`. |
+| Skip and suppress markers | An edit that adds more of a stack's skip marker than it removes, such as `markTestSkipped`, `.skip(` or `@phpstan-ignore`. |
+
+Each block gives the agent a plain reason, so it can try another way. Foreman also writes a line to the run log, like `Blocked by guardrail: git push is blocked. …`. Blocks show on the run page. See [Troubleshooting](troubleshooting.md#blocked-by-guardrail-in-the-log).
+
+Tools other than the five above, such as `Read`, are never blocked.
+
+### Why exit code 2 matters
+
+Claude Code treats the hook's exit code as the answer. Only exit code 2 blocks the tool call. Exit code 1 counts as a hook error that Claude logs and then ignores, so the call goes ahead. A guard that exits 1 would look like it works and block nothing.
+
+So the command exits 2 for every block. It also exits 2 if it can't read its rules or the tool call, so a broken guard blocks instead of letting everything through. The tests pipe real hook input into the command and check for exit code 2.
+
+### Why existing tests aren't locked outright
+
+The agent has to change tests: it adds tests for new work, and it updates old ones when behavior changes on purpose. Locking every test file would stop that. A broad lock would also push the agent to work around it, or to give up on a good change.
+
+Instead, a separate test-integrity check will fail a run that deletes tests, adds skip markers, or ends with fewer assertions. That check isn't built yet. Until it is, only the skip-marker block above applies. When one test file matters, add it to **Locked paths**.
+
+### What this doesn't catch
+
+- Matching is on text. A command built from variables or run through `sh -c "…"` can get past the `git push` and `gh` rules. The guard works with the allowed-tools list, and doesn't replace it.
+- A `gh` or `git push` inside a quoted string can be blocked by mistake, and the agent sees the reason.
+- Edits made by a shell command, such as `sed -i` or `echo >`, are not edits to the guard. It only sees `Edit`-style tools. The next guardrail steps check the finished diff.
+- Paths are matched as written. A file reached through a symlink to a protected file isn't recognized.

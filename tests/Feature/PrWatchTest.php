@@ -324,6 +324,7 @@ class PrWatchTest extends TestCase
         ]);
         $github = Mockery::mock(GitHub::class);
         $github->allows('release');
+        $github->allows('labels')->andReturn([]);
         $github->allows('pullRequest')->andReturn($this->pr(['head_sha' => 'ddddddd4444']));
         $github->expects('replyToThread')->with(Mockery::any(), 'T1', 'Fixed in ddddddd: Added the null check.');
         $github->expects('resolveThread')->with(Mockery::any(), 'T1');
@@ -362,6 +363,7 @@ class PrWatchTest extends TestCase
         File::ensureDirectoryExists($this->worktree.'/.foreman');
         $github = Mockery::mock(GitHub::class);
         $github->allows('release');
+        $github->allows('labels')->andReturn([]);
         $github->allows('pullRequest')->andReturn($this->pr());   // head unchanged
         $github->expects('replyToThread')->never();
         $github->expects('resolveThread')->never();

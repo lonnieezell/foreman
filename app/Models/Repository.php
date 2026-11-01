@@ -38,6 +38,7 @@ SH;
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
+            'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
@@ -93,6 +94,12 @@ SH;
     public function modelLabel(): string
     {
         return trim("{$this->model} {$this->effort}");
+    }
+
+    /** @return list<string> The globs from the "Locked paths" setting, one per line. */
+    public function lockedPathList(): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $this->locked_paths))));
     }
 
     /** Name used for per-profile state like usage-limit pauses. */

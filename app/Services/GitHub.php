@@ -78,6 +78,14 @@ class GitHub
         return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
     }
 
+    /** @return list<string> */
+    public function labels(Repository $repo, int $issue): array
+    {
+        $output = $this->gh($repo, ['issue', 'view', (string) $issue, '--json', 'labels'], allowFailure: true);
+
+        return collect(json_decode($output, true)['labels'] ?? [])->pluck('name')->all();
+    }
+
     /** Opens a PR for a branch that is already pushed. Returns its URL. */
     public function openPullRequest(Repository $repo, string $branch, string $title, string $body): string
     {

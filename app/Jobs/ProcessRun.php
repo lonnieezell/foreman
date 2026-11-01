@@ -59,7 +59,7 @@ class ProcessRun implements ShouldQueue
 
             $this->prepareForemanFiles($worktree);
 
-            $this->runAgent($run, $worktree, $github);
+            $this->runAgent($run, $worktree, $github, in_array('dependencies', $github->labels($repo, $run->issue_number), true));
             $this->settle($run, $github);
         } catch (Throwable $e) {
             $run->refresh();
@@ -123,7 +123,7 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    private function runAgent(Run $run, string $worktree, GitHub $github): void
+    private function runAgent(Run $run, string $worktree, GitHub $github, bool $allowLockFiles): void
     {
         $repo = $run->repository;
         $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
@@ -143,9 +143,14 @@ class ProcessRun implements ShouldQueue
             // Rounds read CI results; GitHub writes stay with Foreman
             '--allowedTools', $repo->allowed_tools.($run->pr_round ? ',Bash(gh pr checks:*),Bash(gh run view:*)' : ''),
             '--permission-mode', 'dontAsk',
+            '--settings', $this->writeHookSettings($run, $worktree, $allowLockFiles),
             '--output-format', 'stream-json',
             '--verbose',
         ];
+
+        if ($repo->max_budget_per_run !== null) {
+            array_push($command, '--max-budget-usd', $repo->max_budget_per_run);
+        }
 
         if ($run->effort) {
             array_push($command, '--effort', $run->effort);
@@ -199,6 +204,33 @@ class ProcessRun implements ShouldQueue
         if ($this->result === null && $result->failed()) {
             throw new RuntimeException('Claude exited without a result: '.str($result->errorOutput())->limit(500));
         }
+    }
+
+    /**
+     * Write the run's hook settings outside the worktree, so the agent can't edit them.
+     * The hook is `foreman:guard`, which reads its rules from a file next to the settings.
+     */
+    private function writeHookSettings(Run $run, string $worktree, bool $allowLockFiles): string
+    {
+        $dir = storage_path('foreman/hooks');
+        File::ensureDirectoryExists($dir);
+
+        $rules = "{$dir}/run-{$run->id}-rules.json";
+        File::put($rules, json_encode([
+            'worktree' => $worktree,
+            'log' => $run->logPath(),
+            'locked_paths' => $run->repository->lockedPathList(),
+            'allow_lock_files' => $allowLockFiles,
+        ]));
+
+        $command = implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), 'foreman:guard', $rules]));
+        $settings = "{$dir}/run-{$run->id}-settings.json";
+        File::put($settings, json_encode(['hooks' => ['PreToolUse' => [[
+            'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
+            'hooks' => [['type' => 'command', 'command' => $command]],
+        ]]]]));
+
+        return $settings;
     }
 
     /** Turn Claude's stream-json into a readable log and stage updates. */

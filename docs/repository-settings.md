@@ -40,6 +40,12 @@ Stop starting runs for this repository once today's spend reaches this amount. E
 
 Spend is the cost Claude Code reports for each run. On a subscription it's an estimate, but it's still useful for comparing runs. There's also a limit across all repositories. See [Global settings](global-settings.md#spend).
 
+### Limit per run (USD)
+
+The most a single run may spend. Empty means no limit. Passed to `claude --max-budget-usd`.
+
+The cap counts sub-agents too. It may also overshoot by one response, because Claude checks it between responses. A run that hits the cap stops and usually ends as Failed.
+
 ### Model
 
 Haiku, Sonnet, Opus or Fable. Default: Sonnet. Passed to `claude --model`.
@@ -114,6 +120,17 @@ During a fix-up round, Foreman also allows `gh pr checks` and `gh run view`, so 
 #### Old tool lists
 
 A repository saved before this change may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save** to keep it. Skip it if you widened the list on purpose.
+
+### Locked paths
+
+Files the agent may not edit, one pattern per line. Optional. Patterns are relative to the repository root. `*` matches within one folder, and `**` matches across folders. A pattern ending in `/` locks the whole folder. For example:
+
+```text
+database/migrations/**
+tests/Feature/BillingTest.php
+```
+
+Foreman blocks the edit and tells the agent which path is locked. This is on top of the files every run protects, such as CI workflows, `CLAUDE.md` and lock files. See [Guardrails](guardrails.md#protected-files-and-commands). Changes apply to new runs.
 
 ### Instructions
 
