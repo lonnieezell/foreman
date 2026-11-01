@@ -58,7 +58,7 @@ class ProcessRun implements ShouldQueue
                 $this->prepareReviewFile($worktree);
             }
 
-            $this->runAgent($run, $worktree, in_array('dependencies', $github->labels($repo, $run->issue_number), true));
+            $this->runAgent($run, $worktree, $github, in_array('dependencies', $github->labels($repo, $run->issue_number), true));
             $this->settle($run, $github);
         } catch (Throwable $e) {
             $run->refresh();
@@ -122,7 +122,7 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    private function runAgent(Run $run, string $worktree, bool $allowLockFiles): void
+    private function runAgent(Run $run, string $worktree, GitHub $github, bool $allowLockFiles): void
     {
         $repo = $run->repository;
         $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
@@ -132,7 +132,7 @@ class ProcessRun implements ShouldQueue
         $prompt = match (true) {
             (bool) $run->pr_round => $this->roundPrompt($run),
             (bool) $run->resume_session_id => $this->resumePrompt($run),
-            default => $repo->renderPrompt($run),
+            default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)),
         };
 
         $command = [

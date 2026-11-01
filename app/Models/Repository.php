@@ -121,13 +121,14 @@ SH;
         return ['CLAUDE_CONFIG_DIR' => $dir];
     }
 
-    public function renderPrompt(Run $run): string
+    public function renderPrompt(Run $run, string $issueText): string
     {
         $template = $this->prompt_template
             ?: file_get_contents(resource_path('prompts/default.md'));
 
         return strtr($template, [
             '{{issue}}' => (string) $run->issue_number,
+            '{{issue_text}}' => $issueText,
             '{{branch}}' => $run->branch,
             '{{base}}' => $this->base_branch,
             '{{repo}}' => $this->github_repo,

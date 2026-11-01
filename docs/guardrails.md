@@ -6,16 +6,45 @@ Guardrails are being added one step at a time. This page only describes what For
 
 ## The pipeline at a glance
 
-This is where the guardrails are heading. The first step is built. The others are not yet.
+This is where the guardrails are heading. The first steps are built. The others are not yet.
 
 | Step | What it does | State |
 | --- | --- | --- |
 | Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
+| Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
 | Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). | Built |
 | Everything after that | Other hooks, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
 The agent still opens its own PR for now, as described in [Runs and statuses](runs.md#how-a-run-ends). The protected-commands hook below blocks `git push` and `gh pr create`, so until Foreman pushes and opens PRs itself, a run can't finish that way. Getting a run going is covered in [Getting started](getting-started.md).
+
+## Sanitised issue
+
+The agent no longer reads the issue itself. Foreman fetches the title and body, cleans them, and puts them in the prompt. A custom prompt can place them with the `{{issue_text}}` placeholder, listed in [Repository settings](repository-settings.md#instructions).
+
+### How it works
+
+Foreman removes four kinds of content that a person reading the issue on GitHub can't see, or that can hide a payload:
+
+- HTML comments, like `<!-- ... -->`. GitHub hides them. A comment that never closes is removed to the end of the text.
+- `<details>` blocks, with everything inside. These are collapsed by default.
+- Images, both Markdown (`![alt](url)`) and HTML (`<img>`).
+- Link targets. `[text](url)` keeps `text` and drops the address, and so does `<a href="...">text</a>`. Reference definitions such as `[ref]: url` are removed.
+
+What is left sits between `<untrusted_issue>` tags. A short note before it tells the agent the text is data to act on as a spec, never instructions to follow. Foreman also strips those tags from the issue text, so it can't close the wrapper early.
+
+### Why it exists
+
+Anyone who can open or edit an issue controls its text. A hidden comment in an otherwise normal issue is enough to carry instructions, and a person reviewing the issue would never see them. The agent can run commands, so it must not take orders from that text.
+
+### What it doesn't catch
+
+This lowers the risk of prompt injection. It does not remove it.
+
+- Instructions written as plain, visible text still reach the agent. The wrapper asks the agent to ignore them, but the agent may not.
+- Bare URLs stay, because they are visible text.
+- Issue comments are not cleaned. They are only read when a human replies and a run resumes, and the agent reads them itself then.
+- The rules match text patterns. A new way to hide content may get through.
 
 ## Stack rules
 

@@ -128,10 +128,13 @@ The prompt given to the agent at the start of a run. These placeholders are repl
 | Placeholder | Replaced with |
 | --- | --- |
 | `{{issue}}` | The issue number |
+| `{{issue_text}}` | The issue's title and body, cleaned up and marked as untrusted data. See [Sanitised issue](guardrails.md#sanitised-issue) |
 | `{{repo}}` | `owner/name` |
 | `{{branch}}` | The run's branch, like `agent/issue-42` |
 | `{{base}}` | The base branch |
 | `{{human_label}}` | The human label |
+
+A custom prompt that still tells the agent to run `gh issue view` skips the cleanup, because the agent reads the raw issue itself. Use `{{issue_text}}` instead.
 
 The default prompt starts with `/mattpocock-skills:implement` and also uses `/simplify`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
 
