@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Repository;
+use App\Support\IssueSanitiser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -66,6 +67,15 @@ class GitHub
     {
         $this->gh($repo, ['issue', 'comment', (string) $issue, '--body', $comment], allowFailure: true);
         $this->gh($repo, ['issue', 'edit', (string) $issue, '--add-label', $repo->human_label], allowFailure: true);
+    }
+
+    /** The issue's title and body, cleaned and marked as untrusted data, ready for the prompt. */
+    public function sanitisedIssue(Repository $repo, int $issue): string
+    {
+        $output = $this->gh($repo, ['issue', 'view', (string) $issue, '--json', 'title,body']);
+        $data = json_decode($output, true) ?? [];
+
+        return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
     }
 
     /** @return list<string> */
