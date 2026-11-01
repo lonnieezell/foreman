@@ -10,6 +10,7 @@ use App\Models\Run;
 use App\Services\GitHub;
 use App\Services\Usage;
 use App\Support\IssueSanitiser;
+use Dotenv\Dotenv;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -130,7 +131,7 @@ class ProcessRun implements ShouldQueue
             $this->catchUpWithBase($run, $worktree, fetch: false);
         }
 
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900);
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: self::worktreeEnv());
 
         return $worktree;
     }
@@ -180,12 +181,12 @@ class ProcessRun implements ShouldQueue
         $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($why)->limit(500));
     }
 
-    private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300): void
+    private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300, array $env = []): void
     {
         $run->log($label);
         $this->guardCancel($run);
 
-        $result = Process::path($cwd)->timeout($timeout)->run($command);
+        $result = Process::path($cwd)->env($env)->timeout($timeout)->run($command);
         $run->update(['heartbeat_at' => now()]);
 
         if ($result->failed()) {
@@ -251,7 +252,7 @@ class ProcessRun implements ShouldQueue
         $this->result = null;
 
         $process = Process::path($worktree)
-            ->env([...$repo->claudeEnv(), ...self::agentEnv()])
+            ->env([...self::worktreeEnv(), ...$repo->claudeEnv(), ...self::agentEnv()])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -719,7 +720,7 @@ class ProcessRun implements ShouldQueue
         $beat = 0;
 
         try {
-            $process = Process::path($run->worktree_path)->timeout($timeout)->run($command, function () use ($run, &$beat) {
+            $process = Process::path($run->worktree_path)->env(self::worktreeEnv())->timeout($timeout)->run($command, function () use ($run, &$beat) {
                 if (time() - $beat >= 30) {
                     $beat = time();
                     $run->update(['heartbeat_at' => now()]);
@@ -779,6 +780,20 @@ class ProcessRun implements ShouldQueue
             'SSH_ASKPASS' => false,
             'SSH_AUTH_SOCK' => false,
         ];
+    }
+
+    /**
+     * Environment for processes in a worktree: every variable from Foreman's own .env is removed.
+     * Laravel puts those into the real environment, so children would inherit Foreman's APP_KEY,
+     * and its settings would beat the target repo's own .env.
+     *
+     * @return array<string,false>
+     */
+    public static function worktreeEnv(): array
+    {
+        $file = app()->environmentFilePath();
+
+        return is_file($file) ? array_fill_keys(array_keys(Dotenv::parse((string) file_get_contents($file))), false) : [];
     }
 
     /**

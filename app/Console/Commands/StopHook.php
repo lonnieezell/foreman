@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
 use Illuminate\Console\Command;
@@ -58,7 +59,7 @@ class StopHook extends Command
     /** The trimmed output when the command fails, or null when it passes. */
     private function failure(string $label, array $command, string $cwd, int $timeout): ?string
     {
-        $process = new Process($command, $cwd, timeout: $timeout);
+        $process = new Process($command, $cwd, ProcessRun::worktreeEnv(), timeout: $timeout);
 
         try {
             $process->run();

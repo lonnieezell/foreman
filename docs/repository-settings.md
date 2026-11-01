@@ -102,7 +102,7 @@ npm run build --silent
 
 The code icon (`< >`) next to the label copies a prompt for Claude Code. Paste it into `claude` in the project, and Claude works out a script that fits. The prompt uses what's in the form now, including unsaved edits.
 
-The setup script runs as you, with no sandbox.
+The setup script runs as you, with no sandbox. It doesn't get the variables from Foreman's own `.env`, so the worktree's `.env` decides its settings. See [Worktree processes don't get these settings](global-settings.md#worktree-processes-dont-get-these-settings).
 
 ### Verify script
 
