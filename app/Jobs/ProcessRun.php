@@ -424,7 +424,7 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    /** Decide how the run ended by looking at GitHub, not at what the agent claims. */
+    /** Act on the agent's result file, but push only what passes Foreman's own checks. */
     private function settle(Run $run, GitHub $github): void
     {
         if ($run->pr_round) {

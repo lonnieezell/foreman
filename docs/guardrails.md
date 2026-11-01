@@ -2,34 +2,29 @@
 
 Checks that a program enforces stop bad pull requests (PRs). AI review helps, but it can't be the last word. Foreman treats the agent as capable but untrusted. Its work should only become a PR after Foreman has checked it with rules that fit the repository's languages. Issue text is input anyone can write, and agents sometimes delete or skip a failing test because that is a smaller edit than fixing the code. Guardrails catch these things mechanically.
 
-Guardrails are being added one step at a time. This page only describes what Foreman does today, and it grows with each step.
-
 ## The pipeline at a glance
 
-This is where the guardrails are heading. The first steps are built. The others are not yet.
-
-| Step | What it does | State |
-| --- | --- | --- |
-| Intake gate | Takes only issues that a trusted person marked as ready. See [Intake gate](#intake-gate). | Built |
-| Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
-| Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
-| Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). | Built |
-| Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
-| Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). | Built |
-| Test integrity | A script that fails when tests are deleted, weakened or skipped, or when tool settings are loosened. See [Test integrity](#test-integrity). | Built |
-| Definition of done | A Stop hook that sends the agent back until the verify script and the integrity check pass. See [Definition of done](#definition-of-done). | Built |
-| Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
-| Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). | Built |
-| Risk tiers and review | Rates the change from its diff, then has the agent review it as deeply as the tier calls for. The gate runs again afterwards. See [Risk tiers](#risk-tiers). | Built |
-| Scope judge | A separate Haiku call with no tools reads only the issue and the diff, and vetoes changes that go beyond the issue or weaken tests. See [Scope judge](#scope-judge). | Built |
-| CI kit | A command that writes a CI workflow into your repository, with a job per stack. See [Setting up CI in your repo](#setting-up-ci-in-your-repo). | Built |
-| Everything after that | Other hooks. | Not built yet |
+| Step | What it does |
+| --- | --- |
+| Intake gate | Takes only issues that a trusted person marked as ready. See [Intake gate](#intake-gate). |
+| Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). |
+| Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). |
+| Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). |
+| Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command, for PHP, TypeScript, Rust and Python. See [Runs and statuses](runs.md#the-stations). |
+| Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). |
+| Test integrity | A script that fails when tests are deleted, weakened or skipped, or when tool settings are loosened. See [Test integrity](#test-integrity). |
+| Definition of done | A Stop hook that sends the agent back until the verify script and the integrity check pass. See [Definition of done](#definition-of-done). |
+| Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). |
+| Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). |
+| Risk tiers and review | Rates the change from its diff, then has the agent review it as deeply as the tier calls for. The gate runs again afterwards. See [Risk tiers](#risk-tiers). |
+| Scope judge | A separate Haiku call with no tools reads only the issue and the diff, and vetoes changes that go beyond the issue or weaken tests. See [Scope judge](#scope-judge). |
+| CI kit | A command that writes a CI workflow into your repository, with a job per stack. See [Setting up CI in your repo](#setting-up-ci-in-your-repo). |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
 ## Sanitised issue
 
-The agent no longer reads the issue itself. Foreman fetches the title and body, cleans them, and puts them in the prompt. A custom prompt can place them with the `{{issue_text}}` placeholder, listed in [Repository settings](repository-settings.md#instructions).
+The agent doesn't read the issue itself. Foreman fetches the title and body, cleans them, and puts them in the prompt. A custom prompt can place them with the `{{issue_text}}` placeholder, listed in [Repository settings](repository-settings.md#instructions).
 
 ### How it works
 
@@ -87,7 +82,7 @@ Both cases started the same way: untrusted text reached an agent that could run 
 
 [Fix-up rounds](pr-watching.md#fix-up-rounds) and **Continue after my reply** resume the agent's session, and they keep every rule above.
 
-- **The agent still has no `gh` and no push.** It gets the same allowed tools as a first run. Foreman fetches the failed CI logs and the new issue comments, puts them in the prompt, and pushes the round's commits itself.
+- **The agent still has no `gh` and no push.** It gets the same allowed tools as a first run. For a round, Foreman fetches the failed CI logs and the open bot threads. For a resume, it fetches the new issue comments. It puts them in the prompt, and pushes the round's commits itself.
 - **Text from other people is untrusted.** Bot thread bodies, issue comments and CI logs sit between `<untrusted_text>` tags, with a note that they are data and not instructions. Thread bodies and comments get the same [cleanup as the issue](#sanitised-issue). Logs are only trimmed, so their text stays as it is.
 - **Only people with write access count.** On a resume, Foreman passes only the comments written since the run stopped, and only from users with write access to the repository. This is the same test as the [intake gate](#intake-gate). A comment from anyone else is left out. A bot's comment is left out too.
 - **Wrapping lowers the risk, it doesn't remove it.** Plain, visible text can still carry instructions that the agent may follow.
@@ -110,22 +105,22 @@ Issues that pass are picked up as before.
 
 ## Stack rules
 
-Foreman finds a repository's stacks from marker files anywhere in the worktree. A Tauri app's `src-tauri/Cargo.toml` counts, so it is a Rust project nested in a TypeScript one. Folders such as `vendor`, `node_modules`, `target` and `venv`, and any folder starting with a dot, are skipped.
+Foreman finds a repository's stacks from marker files anywhere in the worktree. A Tauri app's `src-tauri/Cargo.toml` counts, so it is a Rust project nested in a TypeScript one. The folders `vendor`, `node_modules`, `target`, `venv` and `__pycache__`, and any folder starting with a dot, are skipped.
 
 A repository can have several stacks. Its rules are the union of each stack's rules.
 
 | | PHP | TypeScript / React | Rust | Python |
 | --- | --- | --- | --- | --- |
 | **Marker file** | `composer.json` | `package.json` | `Cargo.toml` | `pyproject.toml`, `requirements*.txt`, `setup.py` |
-| **Protected config** | `phpunit.xml*`, `phpstan*.neon`, `rector.php`, `pint.json` | `tsconfig*.json`, `eslint.config.*`, `.eslintrc*`, `vitest`, `jest` and `playwright` configs, `biome.json`, `.prettierrc*` | `rustfmt.toml`, `clippy.toml`, `deny.toml`, `.cargo/config.toml`, `rust-toolchain*`, `src-tauri/capabilities/**` | `ruff.toml`, `mypy.ini`, `pytest.ini`, `tox.ini`, `setup.cfg`, and `[tool.*]` tables in `pyproject.toml` |
-| **Lock files** | `composer.lock` | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | `Cargo.lock` | `uv.lock`, `poetry.lock` |
+| **Protected config** | `phpunit.xml*`, `phpstan*.neon`, `rector.php`, `pint.json` | `tsconfig*.json`, `eslint.config.*`, `.eslintrc*`, `vitest`, `jest` and `playwright` configs, `biome.json`, `biome.jsonc`, `.prettierrc*` | `rustfmt.toml`, `.rustfmt.toml`, `clippy.toml`, `.clippy.toml`, `deny.toml`, `.cargo/config.toml`, `rust-toolchain*`, `src-tauri/capabilities/**` | `ruff.toml`, `.ruff.toml`, `mypy.ini`, `pytest.ini`, `tox.ini`, `setup.cfg`, and `[tool.*]` tables in `pyproject.toml` (test integrity only) |
+| **Lock files** | `composer.lock` | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb` | `Cargo.lock` | `uv.lock`, `poetry.lock` |
 | **[Sandbox](repository-settings.md#sandbox) hosts** | `packagist.org`, `repo.packagist.org` | `registry.npmjs.org`, `registry.yarnpkg.com` | `crates.io`, `index.crates.io`, `static.crates.io` | `pypi.org`, `files.pythonhosted.org` |
 | **Test files** | `tests/**` | `*.test.*`, `*.spec.*`, `__tests__/**`, `e2e/**` | `tests/**`, plus inline `#[cfg(test)]` | `tests/**`, `test_*.py`, `*_test.py`, `conftest.py` |
 | **Test markers** | `test(`, `it(`, `function test` | `it(`, `test(` | `#[test]`, `#[tokio::test]` | `def test_` |
 | **Assertion markers** | `expect(`, `assert` | `expect(` | `assert!`, `assert_eq!`, `assert_ne!`, `#[should_panic]` | `assert `, `self.assert`, `pytest.raises` |
 | **Skip and suppress markers** | `markTestSkipped`, `markTestIncomplete`, `->skip(`, `->todo(`, `@pest-mutate-ignore`, `@phpstan-ignore` | `.skip(`, `.only(`, `xit(`, `xdescribe(`, `.todo(`, `@ts-ignore`, `@ts-expect-error`, `eslint-disable` | `#[ignore]`, `#[allow(clippy::`, `#[allow(dead_code)]` | `pytest.mark.skip`, `skipif`, `xfail`, `unittest.skip`, `pytest.skip(`, `# type: ignore`, `# noqa` |
 | **Commit-time formatter** | Pint, or PHP CS Fixer, when the repository requires it | Biome or Prettier, when the repository has it | `rustfmt` | `ruff format` |
-| **Default verify commands** | Pint check (or PHP CS Fixer), PHPStan, then Pest or PHPUnit. A tool runs only if the repository requires it. The format check covers only the changed files. | The `lint`, `typecheck` and `test` scripts, using the package manager of the lock file. `npx tsc --noEmit` when there is a `tsconfig.json` and no `typecheck` script. | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, in each folder with a `Cargo.toml` | `ruff format --check`, `ruff check`, `mypy` and `pyright` when configured, then `pytest`. With `uv.lock` or `poetry.lock`, each runs through `uv run` or `poetry run`. Both `ruff` checks cover only the changed files. |
+| **Default verify commands** | Pint check (or PHP CS Fixer) and PHPStan, each only if the repository requires it. Then Pest if required, or PHPUnit otherwise. The format check covers only the changed files. | The `lint`, `typecheck` and `test` scripts, using the package manager of the lock file. `npx tsc --noEmit` when there is a `tsconfig.json` and no `typecheck` script. | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, in each folder with a `Cargo.toml` | `ruff format --check`, `ruff check`, `mypy` and `pyright` when configured, then `pytest`. With `uv.lock` or `poetry.lock`, each runs through `uv run` or `poetry run`. Both `ruff` checks cover only the changed files. |
 | **High-risk paths** | See the PHP frameworks below | `middleware.ts`, `**/auth/**`, `app/api/**`, `pages/api/**` | `src-tauri/tauri.conf.json`, `src-tauri/capabilities/**`, `**/auth*` | `settings.py`, `**/middleware*.py`, `**/permissions.py`, `**/migrations/**`, `**/auth/**` |
 | **Risky code** | See the PHP frameworks below | `dangerouslySetInnerHTML`, `eval(`, `child_process`, `innerHTML` | `unsafe `, `std::process::Command`, `transmute` | `eval(`, `exec(`, `pickle`, `shell=True`, `.raw(`, `.extra(`, `yaml.load(` |
 
@@ -161,7 +156,8 @@ When the worktree is gone and Foreman rebuilds it from the pushed branch, the me
 | --- | --- |
 | The merge goes through | The run goes on from the merged branch. The run log shows `Merging origin/<base> into <branch>`. |
 | The merge conflicts, fails or takes over 2 minutes | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
-| Fetching `origin` fails | Foreman doesn't merge. The run goes on from the branch as it was, and the log line starts with `Couldn't fetch origin`. |
+| Fetching `origin` fails, worktree reused | Foreman doesn't merge. The run goes on from the branch as it was, and the log line starts with `Couldn't fetch origin`. |
+| Fetching `origin` fails, worktree rebuilt | The run fails with "Fetching origin failed: …", because Foreman can't rebuild the worktree without it. |
 | The worktree has uncommitted changes | Foreman doesn't merge, because `git merge --abort` can't always put those changes back. The run goes on from the branch as it was. |
 
 A conflict doesn't stop the run or flag a human. Most fixes on the base branch aren't needed by the run, and the checks above already ignore problems the agent didn't touch. If the branch still needs the fix, [Foreman's gate](#foremans-gate) fails and a human sees why. The branch's commits are never lost: an aborted merge leaves the branch where it was.
@@ -186,9 +182,9 @@ When a CodeIgniter 4 repository also requires `codeigniter4/shield`, the high-ri
 
 ## Protected files and commands
 
-Every run starts Claude with its own settings file. The file adds a `PreToolUse` hook, which Claude runs before each `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and `Bash` call. The hook runs one Foreman command, `php artisan foreman:guard`. The command reads the tool call on its input and decides if it may go ahead.
+Every run starts Claude with its own settings file. The file adds a `PreToolUse` hook, which Claude runs before each `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and `Bash` call. The guard is `php artisan foreman:guard`. It reads the tool call on its input and decides if it may go ahead. The same hook also runs the [commit-time formatter](#formatting-at-commit-time).
 
-The settings file and its rules file are in `storage/foreman/hooks/`, outside the worktree. So the agent can't edit them.
+The settings file and its rules file are in `storage/foreman/hooks/`, outside the worktree, so Claude's edit tools don't touch them. They aren't fully safe, though. With the sandbox off, an allowed shell tool such as `php` or `python` can write there. See [Known gaps](#known-gaps).
 
 ### What the hook blocks
 
@@ -221,12 +217,13 @@ Instead, the [test-integrity check](#test-integrity) fails a run that deletes te
 
 - Matching is on text. A command built from variables or run through `sh -c "…"` can get past the `git push` and `gh` rules. The guard works with the allowed-tools list, and doesn't replace it.
 - A `gh` or `git push` inside a quoted string can be blocked by mistake, and the agent sees the reason.
-- Edits made by a shell command, such as `sed -i` or `echo >`, are not edits to the guard. It only sees `Edit`-style tools. The [test-integrity check](#test-integrity) looks at the finished diff, so it catches those edits to tests and tool settings.
+- Edits made by a shell command, such as `sed -i`, `echo >` or a `php` script, are not edits to the guard. It only sees `Edit`-style tools. The [test-integrity check](#test-integrity) looks at the finished diff, so it catches those edits to tests and tool settings. Nothing checks locked paths, lock files or `CLAUDE.md` afterwards, so shell edits to those get through.
+- The skip-marker rule applies to every file, Markdown included. An `Edit` that quotes `.skip(` in a doc is blocked, even though the test-integrity check allows it.
 - Paths are matched as written. A file reached through a symlink to a protected file isn't recognized.
 
 ## Formatting at commit time
 
-When the agent runs `git commit`, Foreman first formats the staged files and stages them again. The commit then holds formatted code. This is a second `PreToolUse` hook on `Bash` calls. It runs `php artisan foreman:format-staged`, next to the guard above.
+When the agent runs `git commit`, Foreman first formats the staged files and stages them again. The commit then holds formatted code. It runs `php artisan foreman:format-staged` in the same `PreToolUse` hook as the guard above, and acts only on `Bash` calls.
 
 For each stack, Foreman picks the formatter from the [Stack rules](#stack-rules) table. It passes the staged files that the formatter handles, such as `.php` files for Pint or `.rs` files for `rustfmt`. Then it runs `git add` on those files.
 
@@ -261,9 +258,9 @@ The test-integrity check compares the work with where the branch left its base b
 | Fewer tests or assertions | Per file, using the test and assertion markers in the table. A file that ends with fewer of either than it started with fails. Rust unit tests sit in source files, so every changed `.rs` file is counted. |
 | A new skip or suppress marker | A file that holds more of a skip marker than before, such as `markTestSkipped`, `.skip(`, `#[ignore]`, `@phpstan-ignore` or `# noqa`. Markers that were already there pass. Markdown, text and JSON files are ignored, so docs can quote them. |
 | An edit to protected config | Any change to a file in the table's protected config row, such as `phpunit.xml` or `tsconfig.json`. In `pyproject.toml` only the `[tool.*]` tables count. Other parts of the file can change. |
-| A larger PHPStan baseline | A `phpstan*baseline*.neon` file that holds more errors than before, counting each entry's `count:`. A smaller baseline passes, and the other PHPStan config is protected as above. |
+| A larger PHPStan baseline | A `phpstan*baseline*.neon` or `baseline.neon` file that holds more errors than before, counting each entry's `count:`. A smaller baseline passes, and the other PHPStan config is protected as above. |
 
-A diff with none of these passes. Adding tests, adding assertions and fixing a baseline entry are all fine.
+A diff with none of these passes. Adding tests, adding assertions and fixing a baseline entry are all fine. The guard still blocks `Edit` and `Write` on `phpstan*.neon` files, baselines included, so the agent can only shrink a baseline from the shell.
 
 ### How it runs
 
@@ -291,28 +288,28 @@ The rule tables are copied into the file instead of loaded from Foreman's classe
 
 The agent can't stop until its work passes the repository's checks. Foreman adds a `Stop` hook to every run. Claude Code runs it each time the agent tries to finish. The hook runs `php artisan foreman:stop`, which runs two things, both in the worktree:
 
-1. The [test-integrity check](#test-integrity), against `origin/` and the base branch.
+1. The [test-integrity check](#test-integrity), against `origin/<base>`.
 2. The repository's [verify script](repository-settings.md#verify-script).
 
 If either fails, the agent can't stop. It gets a message with the end of the failing output, up to 3,000 characters per check, and goes back to work. If both pass, it stops.
 
 ### Why it gives up after 3 tries
 
-Some failures the agent can't fix: a missing tool, a flaky test, a check that fails on the base branch too. A hook that blocks forever would burn money for nothing. Claude Code also has its own limit. After 8 blocked stops in a row it forces the agent to stop, with no say from Foreman. Three is well under that. It leaves the agent two real chances to fix what the first failure showed, and Foreman decides when to stop instead of Claude Code.
+Some failures the agent can't fix: a missing tool, a flaky test, a check that fails on the base branch too. A hook that blocks forever would burn money for nothing. Claude Code also has its own limit. After 8 blocked stops in a row it forces the agent to stop, with no say from Foreman. Three is well under that. The agent gets three chances to fix the failing checks, and Foreman decides when to stop instead of Claude Code.
 
-After the third block, the next stop is let through. The run log says `Stop hook gave up after 3 blocked stops.` The count starts again each time Foreman starts the agent, including when a run resumes after a human reply. Foreman's own checks after the agent finishes catch a run that gave up. See [Foreman's gate](#foremans-gate) and [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
+After the third block, the next stop is let through. The run log says `Stop hook gave up after 3 blocked stops.` The count starts again each time Foreman starts the agent, including when a run resumes after a human reply. Foreman's own checks after the agent finishes catch a run that gave up, except in a fix-up round. See [Foreman's gate](#foremans-gate) and [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
 
 ### What it doesn't do
 
 - It does not stop the agent from opening a PR. It only holds back the end of the turn.
-- If it can't read its rules, it lets the agent stop and logs why. Blocking forever would be worse.
+- If it can't read its rules, it lets the agent stop. Blocking forever would be worse. Its message goes to Claude, not to the run log, because the log's path is in the rules it couldn't read.
 - The verify script is only as good as you make it. An empty script falls back to the detected stacks' checks, and a stack Foreman can't detect has none.
 
 ## Foreman's gate
 
 When the agent says it is done with a `pr` result, Foreman doesn't push yet. The run moves to the **Reviewing** station. There Foreman runs these in the worktree:
 
-1. The [test-integrity check](#test-integrity), against `origin/` and the base branch.
+1. The [test-integrity check](#test-integrity), against `origin/<base>`.
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
 3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
 
@@ -394,7 +391,7 @@ After the review pass, and before [Foreman's gate](#foremans-gate) runs the seco
 
 ### How it works
 
-Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in an empty folder outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
+Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in a temporary folder of its own outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
 
 What happens next depends on the verdict:
 
@@ -402,7 +399,7 @@ What happens next depends on the verdict:
 - **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
 - **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, nothing is pushed. The run goes to **Needs you**, and the comment quotes what went wrong each time. Foreman never treats a missing verdict as a pass.
 
-The run log shows each question to the judge and its verdict.
+The run log shows a veto as soon as it happens. A passing verdict is logged only after the second gate passes.
 
 ### Why it is a separate model call
 
@@ -439,7 +436,7 @@ It finds the stacks with the same marker files as [Stack rules](#stack-rules). T
 3. Copies the [test-integrity script](#test-integrity) to `.github/foreman/test-integrity.php`.
 4. Commits both files to that branch.
 
-**It never pushes.** Review the commit, then push the branch and open the PR yourself. The command stops with an error, and changes nothing, if the path is not a git checkout, if no stack is found, or if `foreman-ci.yml` already exists. If the commit itself fails, for example because a pre-commit hook rejects it, the command removes the files and the branch, and switches back.
+**It never pushes.** Review the commit, then push the branch and open the PR yourself. The command stops with an error, and changes nothing, if the path is not a git checkout, if no stack is found, if `foreman-ci.yml` already exists, or if the branch can't be created, for example because it already exists. If the commit itself fails, for example because a pre-commit hook rejects it, the command removes the files and the branch, and switches back.
 
 ### What each job checks
 
@@ -448,13 +445,13 @@ The workflow has one job per stack it found. The steps run top to bottom. A step
 | Stack | Steps, in order |
 | --- | --- |
 | PHP | Formatter check (Pint or PHP CS Fixer), Rector dry run (only if the repo has Rector), PHPStan (only if present), integrity, tests (Pest or PHPUnit), `composer audit`, Semgrep with the PHP rules. Laravel repos also get the Laravel rules. A Laravel app with a `.env.example` gets a copy of it as `.env` and a fresh app key before the checks run. |
-| TypeScript/React | Lint (if there is a `lint` script), typecheck, integrity, tests, the package manager's `audit`, CodeQL. |
+| TypeScript/React | Lint (if there is a `lint` script), typecheck (if there is a `typecheck` script or a `tsconfig.json`), integrity, tests (if there is a `test` script), the package manager's `audit`, CodeQL. |
 | Rust | `cargo fmt --check`, `cargo clippy -D warnings`, integrity, tests, `cargo deny check` (if there is a `deny.toml`) or `cargo audit`, CodeQL. |
-| Python | `ruff format --check`, `ruff check`, mypy or pyright (if configured), integrity, pytest, `pip-audit`, CodeQL. With uv or Poetry, the job adds ruff, pytest and the type checkers to the environment, in case the project doesn't list them. |
+| Python | `ruff format --check`, `ruff check`, mypy and pyright (each if configured), integrity, pytest, `pip-audit`, CodeQL. The job installs ruff, pytest and the configured type checkers itself, in case the project doesn't list them. |
 
 Each job also runs a copy of the test-integrity script. The script needs PHP, so every job, whatever its stack, installs a pinned PHP version (8.3). A runner image update can't change it. The check compares the pull request with its base branch, so the jobs fetch the full git history. The job runs the base branch's copy of the script, not the pull request's. So a pull request can't weaken the check that judges it. Only the pull request that first adds the script uses its own copy.
 
-CodeQL on a private repository needs GitHub Advanced Security. The workflow runs CodeQL only on public repos. On a private repo it runs Semgrep instead, with rules for the stack. If your private repo has Advanced Security, delete the `if` lines on the CodeQL and Semgrep steps. The workflow file says so too.
+CodeQL on a private repository needs GitHub Advanced Security. The TypeScript, Rust and Python jobs run CodeQL only on public repos. On a private repo they run Semgrep instead, with rules for the stack. The PHP job always runs Semgrep, because CodeQL doesn't support PHP. If your private repo has Advanced Security, delete the `if` lines on the CodeQL and Semgrep steps. The workflow file says so too.
 
 Each job caches its dependencies between runs, so only the first run downloads everything:
 
@@ -493,6 +490,15 @@ A *sandbox* is a limit the operating system puts on a command. It controls which
 ### The setup script and the checks run unsandboxed
 
 The [setup script](repository-settings.md#setup-script) and the [verify script](repository-settings.md#verify-script) run as you. That includes your keychain, the macOS store that holds the `gh` and git passwords. Foreman's gate and the [definition-of-done](#definition-of-done) hook run the verify script and the integrity check. So code the agent wrote, such as a new test, runs with your access whenever the checks run.
+
+### Shell tools get past the edit rules
+
+The [guard](#protected-files-and-commands) only checks Claude's edit tools. An allowed shell tool, such as `php`, `python` or an npm script, can write any file you can write while the sandbox is off. With the sandbox on, it can still write anywhere in the worktree. This means:
+
+- **Locked paths, lock files and repository controls** such as `CLAUDE.md` can be changed from the shell. The test-integrity check only covers tests and tool settings, so nothing catches these changes before the PR.
+- **Foreman's hook files** in `storage/foreman/hooks/` can be changed while the sandbox is off. A changed rules file changes what the guard and the Stop hook enforce for the rest of the run. Writing to the stop counter lets the agent stop with failing checks. [Foreman's gate](#foremans-gate) still checks a first PR, but fix-up rounds push without it.
+
+Your review of the PR is the check for these. [Issue #61](https://github.com/lonnieezell/foreman/issues/61) tracks closing this gap.
 
 ### What the sandbox setting doesn't cover
 

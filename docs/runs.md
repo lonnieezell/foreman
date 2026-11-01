@@ -11,7 +11,7 @@ Every minute, Foreman's scheduler looks at each started repository that is due f
 3. *Claims* each issue by swapping the ready label for the working label (`agent-working`).
 4. Queues a run for a worker to pick up.
 
-This only calls `gh`, so checking costs no tokens. Claude starts only after an issue is claimed.
+This only calls `gh`, so checking costs no tokens. The agent starts only after an issue is claimed. The one Claude call before that is a usage probe, a one-turn Haiku call made when the profile's usage numbers are stale. See [Usage limits](usage-limits.md#where-the-numbers-come-from).
 
 Nothing is claimed while Foreman is paused, while a daily spend limit is reached, or while the repository's Claude profile is held for usage. See [Global settings](global-settings.md) and [Usage limits](usage-limits.md#when-runs-are-held).
 
@@ -45,7 +45,7 @@ If your project uses other tools or script names, the run can finish without eve
 
 ### Reviewing
 
-The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script and the integrity check itself, then checks the size of the change. Every run that ends in a PR passes through this station. If all three pass, Foreman sets the [risk tier](guardrails.md#risk-tiers) and resumes the agent for a review pass, still on this station. Next, the [scope judge](guardrails.md#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs the three checks again. If they pass, Foreman pushes and opens the PR with a footer that lists the checks and the judge's verdict. If not, the run ends as **Needs you**. See [Foreman's gate](guardrails.md#foremans-gate).
+The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script and the integrity check itself, then checks the size of the change. Every run that opens a PR passes through this station. Fix-up rounds on a PR that is already open don't. If all three pass, Foreman sets the [risk tier](guardrails.md#risk-tiers) and resumes the agent for a review pass, still on this station. Next, the [scope judge](guardrails.md#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs the three checks again. If they pass, Foreman pushes and opens the PR with a footer that lists the checks and the judge's verdict. If not, the run ends as **Needs you**. See [Foreman's gate](guardrails.md#foremans-gate).
 
 ## How a run ends
 
@@ -55,7 +55,7 @@ The file says one of three things:
 
 | Outcome | What the file holds | What Foreman does | The run ends as |
 | --- | --- | --- | --- |
-| `pr` | A title and a body | Runs [its own gate](guardrails.md#foremans-gate), then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body if the agent left it out, and its own footer at the bottom. | **Watching PR**, or **PR opened** if Watch PRs is off |
+| `pr` | A title and a body | Runs [its own gate](guardrails.md#foremans-gate), then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body unless the body already starts with it, and its own footer at the bottom. It also adds a `risk:tier-<n>` label to the PR. | **Watching PR**, or **PR opened** if Watch PRs is off |
 | `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
 | `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
 
@@ -95,7 +95,9 @@ Foreman stopped and wants a human. There are nine ways to get here:
 
 ### Failed
 
-The run hit an error, ran out of time, or ended with neither a PR nor the human label. Foreman comments on the issue with the error, adds the human label, and keeps the worktree so you can look inside it. See [A run failed](troubleshooting.md#a-run-failed).
+The run hit an error, ran out of time, or ended without a readable result file. Foreman comments on the issue with the error, adds the human label, and keeps the worktree so you can look inside it. See [A run failed](troubleshooting.md#a-run-failed).
+
+One kind of failure is different. If a worker stops sending heartbeats for 5 minutes, for example because the laptop slept, Foreman marks the run as failed and releases the issue. It doesn't comment or add the human label.
 
 ### Cancelled
 

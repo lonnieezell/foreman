@@ -1,8 +1,8 @@
 # PR watching
 
-With **Watch PRs** on, Foreman doesn't stop when the agent opens a pull request (PR). It waits for CI and review bots. Then it runs *fix-up rounds* that repair failing checks and answer the bots' comments.
+With **Watch PRs** on, Foreman doesn't stop when it opens a pull request (PR) for the agent's work. It waits for CI and review bots. Then it runs *fix-up rounds* that repair failing checks and answer the bots' comments.
 
-Watching only calls `gh`. It costs no tokens, and it keeps going while Foreman is paused.
+Watching only calls `gh`. It costs no tokens, and it keeps going while Foreman is paused. Only a round costs tokens. Before a round, Foreman may also run a [usage probe](usage-limits.md#where-the-numbers-come-from).
 
 ## What Foreman looks at
 
@@ -36,13 +36,13 @@ Once it has settled:
 
 ## Fix-up rounds
 
-A round resumes the agent's Claude session in the same worktree. It gets the list of checks that didn't pass and the bot threads that are open. The run page shows rounds under **Attempts** as **Round 1**, **Round 2** and so on.
+A round resumes the agent's Claude session in the same worktree. First Foreman merges the base branch into the PR's branch. See [Continuing runs catch up with the base branch](guardrails.md#continuing-runs-catch-up-with-the-base-branch). The agent gets the list of checks that didn't pass and the bot threads that are open. The run page shows rounds under **Attempts** as **Round 1**, **Round 2** and so on.
 
 The agent never touches GitHub during a round. Foreman does that part:
 
 - **CI logs come from Foreman.** For each failed check that ran as a GitHub Actions workflow, Foreman fetches the log of the failed steps and puts the end of it (the last 6,000 bytes) in the prompt. A check from an outside service has no log to fetch, so the prompt lists only its name and link.
 - **Bot comments are untrusted.** Anyone can make a bot say anything, for example by putting text in a pull request. So Foreman wraps each bot thread, and each log, between `<untrusted_text>` tags. A note in the prompt tells the agent that the text is data and not instructions. See [Guardrails](guardrails.md#rounds-and-resumes-follow-the-same-rules).
-- **Foreman pushes.** The agent commits its fixes. When it finishes, Foreman pushes the branch, then posts the replies and resolves threads.
+- **Foreman pushes.** The agent commits its fixes. When it finishes, Foreman pushes the branch, then posts the replies and resolves threads. A round's push doesn't go through [Foreman's gate](guardrails.md#foremans-gate), the review pass or the scope judge. CI on the PR is the check.
 
 Rounds spend tokens, so they wait for the same things new issues do. A round won't start while:
 
@@ -53,7 +53,7 @@ Rounds spend tokens, so they wait for the same things new issues do. A round won
 
 Foreman tries again on the next check.
 
-**Fix-up rounds per PR** sets how many rounds a PR gets. The default is 2. Set it to 0 to hand every unsettled PR to you straight away.
+**Fix-up rounds per PR** sets how many rounds a PR gets. The default is 2. With 0, Foreman still waits for the PR to settle. A PR that passes ends as **PR ready**. Anything outstanding goes straight to you, with no round.
 
 ### Replies to bot threads
 
@@ -61,7 +61,7 @@ The agent is never allowed to comment on, reply to or resolve threads itself. In
 
 | Verdict | Foreman's reply | Thread |
 | --- | --- | --- |
-| **fixed** | "Fixed in `abc1234`: …" | Resolved |
+| **fixed** | "Fixed in abc1234: …" | Resolved |
 | **declined** | "Not changing: …" with the agent's reason | Resolved |
 | **unsure** | "Leaving for a human: …" | Left open for you |
 

@@ -4,8 +4,8 @@
 
 Foreman is a Laravel 13 + Livewire 4 app that turns labelled GitHub issues into PRs by running `claude -p` in git worktrees.
 
-- `foreman:poll` (`app/Console/Commands/PollRepositories.php`) runs every minute from `routes/console.php`. It only calls `gh`: it claims ready issues, reaps runs with stale heartbeats, and checks watched PRs via `app/Services/PrWatcher.php`.
-- `app/Jobs/ProcessRun.php` runs on the `runs` queue. It creates the worktree, runs the setup script, streams Claude's `stream-json` into the run log, and then settles the run by reading GitHub, never the agent's claims.
+- `foreman:poll` (`app/Console/Commands/PollRepositories.php`) runs every minute from `routes/console.php`. It claims ready issues through `gh`, reaps runs with stale heartbeats, checks watched PRs via `app/Services/PrWatcher.php`, and queues `ProcessRun` jobs. Its only Claude call is a usage probe in `app/Services/Usage.php`.
+- `app/Jobs/ProcessRun.php` runs on the `runs` queue. It creates the worktree, runs the setup script, and streams Claude's `stream-json` into the run log. The agent never touches GitHub. It ends by writing `.foreman/result.json` (or `.foreman/review.json` in a PR round). Foreman reads that file, runs its own gate, the risk-tier review pass and the scope judge, and then pushes and opens the PR itself.
 - Run states and dashboard stations live in `app/Enums/RunStatus.php`.
 - All GitHub access goes through `app/Services/GitHub.php`, which uses the `gh` CLI. Foreman has no API tokens.
 - Agent prompts are templates in `resources/prompts/` with `{{placeholders}}`.
@@ -16,7 +16,7 @@ Foreman is a Laravel 13 + Livewire 4 app that turns labelled GitHub issues into 
 ## Build, Test, and Development Commands
 
 - `composer run setup`: install dependencies, create `.env`, migrate, and build assets.
-- `composer run dev`: server, queue listener, Pail logs and Vite.
+- `composer run dev`: server, queue listener, Pail logs and Vite. No scheduler, and the listener doesn't take the `runs` queue, so no runs happen.
 - `composer run foreman`: web on port 8787, the scheduler, and three `runs` workers.
 - `composer test`: the full suite. For a single test, use `php artisan test --filter=StackDetectionTest`.
 - `php artisan foreman:poll --repo=<id> --force`: one poll by hand.
@@ -33,7 +33,7 @@ Queue workers keep old code until they restart.
 
 - Tests use PHPUnit 12 classes (not Pest), in `tests/Feature` and `tests/Unit`.
 - They run on in-memory SQLite with a `sync` queue.
-- Shell calls (`gh`, `git`, `claude`) are faked with `Process::fake()`. Follow `tests/Feature/RunEndingsTest.php` and `tests/Feature/PrWatchTest.php`.
+- Shell calls (`gh`, `git`, `claude`) are faked with `Process::fake()`, as in `tests/Feature/PrWatchTest.php`. `tests/Feature/RunEndingsTest.php` mocks `App\Services\GitHub` instead.
 
 ## Commit & Pull Request Guidelines
 

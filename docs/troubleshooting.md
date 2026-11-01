@@ -9,8 +9,8 @@ The dashboard checks that everything Foreman depends on is there. It lists any p
 | git isn't on the PATH of the process running Foreman. | Start Foreman from a terminal where `git --version` works. |
 | GitHub CLI isn't installed or isn't logged in. | Run `gh auth login`, then restart Foreman. |
 | Claude Code isn't on the PATH. | Start Foreman from a terminal where `claude --version` works. |
-| The scheduler isn't running, so no repositories are being checked. | Start everything with `composer run foreman`, not just `php artisan serve`. |
-| Run(s) have been waiting over two minutes for a worker. | See [Runs stay on Waiting](#runs-stay-on-waiting). |
+| The scheduler isn't running, so no repositories are being checked. | Start everything with `composer run foreman`. `php artisan serve` and `composer run dev` don't start the scheduler. |
+| *N* run(s) have been waiting over two minutes for a worker. | See [Runs stay on Waiting](#runs-stay-on-waiting). |
 
 Foreman remembers the tool checks for five minutes. So a fixed problem can take a moment to clear unless you click **Check again**.
 
@@ -26,8 +26,14 @@ Common errors:
 | "Fetching origin failed: …" or "Creating worktree … failed: …" | git couldn't fetch or make the worktree. Check that the local checkout's remote works, and that the base branch exists on `origin`. |
 | "Hit the 45-minute limit." | The agent ran out of time. Split the issue up, or raise **Max minutes per issue**. |
 | "Claude stopped with an error (…)." | Claude ended the run with an error. The part in brackets says which. `error_max_turns` means it ran out of turns: split the issue up, or raise **Max turns per issue**. |
-| "The agent finished without opening a PR or flagging the issue." | Claude exited normally but left no PR and no human label. Its last message follows the error and usually says why. |
+| "The agent finished without a readable result file (.foreman/result.json)." | Claude exited normally, but the result file is missing, isn't valid JSON, or lacks a field its outcome needs. Its last message follows the error and usually says why. See [How a run ends](runs.md#how-a-run-ends). |
 | "Claude exited without a result: …" | Claude crashed or couldn't start. The message has its error output. |
+| "The review pass stopped with an error (…).", "The correction round stopped with an error (…)." or "/security-review stopped with an error (…)." | A pass after the gate ended with an error, such as running out of turns. Nothing was pushed. See [Risk tiers](guardrails.md#risk-tiers). |
+| "/security-review ended without reviewing anything." | `/security-review` couldn't work out the diff, so it did nothing. Check that the base branch exists on `origin`. |
+| "The run used up its spend cap of $… before Foreman could resume the agent." | **Limit per run** was used up before the review pass or a correction could start. Raise the limit, or use **Start over**. |
+| "Couldn't diff the change for the scope judge: …" | git couldn't diff the branch against `origin/<base>` for the [scope judge](guardrails.md#scope-judge). |
+| "Pushing … failed: …" | Foreman's push was refused. Check your git access to the repository, and whether the branch already exists on GitHub. |
+| "Signing the agent's commits failed: …" | Your git config signs commits, and signing failed. Check that `gpg-agent` is running and your key is unlocked. See [Sandbox](repository-settings.md#sandbox). |
 | "The worker stopped responding. It was probably restarted mid-run." | No heartbeat for 5 minutes, usually because the laptop slept or Foreman was stopped. Foreman only releases the issue in this case. It doesn't comment or add the human label. |
 
 When you've dealt with the cause, click **Start over** on the run page, or **Retry** on the dashboard. That queues the issue again with a fresh worktree.
@@ -50,7 +56,7 @@ A line like `Blocked by guardrail: …` means a Foreman hook refused one of the 
 
 A run that keeps hitting the same block usually can't finish. If the block is wrong for this issue, fix the cause: add the `dependencies` label, or remove the pattern from **Locked paths**, then use **Start over**. See [Guardrails](guardrails.md#protected-files-and-commands) for the full list.
 
-If every tool call is blocked with "Foreman guard could not read its rules", the files in `storage/foreman/hooks/` are missing or unreadable. Start the run over.
+If every edit and shell call is refused, the guard may not be able to read its rules. Its message, "Foreman guard could not read its rules or the tool call.", goes to the agent, not to the run log. Check that the files in `storage/foreman/hooks/` exist and are readable, then start the run over.
 
 ## "Stop hook gave up"
 
@@ -66,9 +72,9 @@ What to do:
 4. If the agent's work is wrong, fix it by hand or comment on the issue, then use **Start over**.
 5. If the integrity check blocked a change on purpose, such as removing a test that no longer applies, make that change yourself.
 
-The run isn't flagged for a human by this alone. Foreman's own checks after the agent finishes are meant to do that. Until they exist, watch for this line.
+The run isn't flagged for a human by this line alone. [Foreman's gate](guardrails.md#foremans-gate) runs the same checks again after the agent finishes, and sends a failing run to **Needs you**. Fix-up rounds are the exception: they skip the gate, so a round that gave up still pushes. Watch for this line on rounds.
 
-If the log shows `Foreman stop hook could not read its rules`, the files in `storage/foreman/hooks/` are missing. The agent was allowed to stop. Start the run over.
+If the Stop hook can't read its rules, it lets the agent stop. Its message goes to Claude, not to the run log, because the hook can't find the log without its rules. Check that the files in `storage/foreman/hooks/` exist, then start the run over.
 
 ## Runs stay on Waiting
 
@@ -82,20 +88,22 @@ A repository's **Issues at a time** only helps up to the number of workers.
 
 ## A repository shows "Last check failed"
 
-The last `gh` call for that repository failed. The message on its row says why. Common causes are an expired `gh` login, a renamed repository, or no network. Foreman tries again on the next check.
+Foreman couldn't list the repository's ready issues, or couldn't claim one. The message on its row says why. Common causes are an expired `gh` login, a renamed repository, or no network. Foreman tries again on the next check.
 
 ## Nothing is being picked up
 
 Check these in order:
 
-1. Is the repository started? Its row shows **Stop** when it's running.
-2. Is Foreman paused? The stats row says **Paused**.
-3. Is a daily limit reached? Look at today's spend and the repository's row.
-4. Is its profile held? Look for a **Held** gauge and a notice.
-5. Does the issue have exactly the ready label, and is it open?
-6. Is the issue blocked by another open issue? Foreman skips blocked issues.
-7. Are all the repository's slots in use?
-8. Is the issue listed as skipped on the repository's row? See [Issue skipped by intake gate](#issue-skipped-by-intake-gate).
+1. Is the scheduler running? If not, the dashboard says so at the top. See [Problems at the top of the dashboard](#problems-at-the-top-of-the-dashboard).
+2. Is the repository started? Its row shows **Stop** when it's running.
+3. Is a check due? Each repository is checked on its own timer, every 10 minutes by default. The countdown on its row shows when. Click the round arrow button to check now.
+4. Is Foreman paused? The stats row says **Paused**.
+5. Is a daily limit reached? Look at today's spend and the repository's row.
+6. Is its profile held? Look for a **Held** gauge and a notice.
+7. Does the issue have exactly the ready label, and is it open?
+8. Is the issue blocked by another open issue? Foreman skips blocked issues.
+9. Are all the repository's slots in use?
+10. Is the issue listed as skipped on the repository's row? See [Issue skipped by intake gate](#issue-skipped-by-intake-gate).
 
 ## "Issue skipped by intake gate"
 

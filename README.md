@@ -28,7 +28,7 @@ Foreman runs locally. It uses the `gh` and `claude` logins you already have, so 
 - **Guard rails per repository.** Concurrency, poll interval, daily spend budget, model, max turns, max minutes, and the exact tools the agent may use.
 - **PR watching.** After a PR opens, Foreman waits for CI and review bots to settle. It then runs fix-up rounds that repair failing checks and reply to each bot thread.
 - **Usage-aware scheduling.** On a Claude subscription, Foreman reads each profile's `/usage` numbers. It holds new runs before you hit a limit, so your interactive sessions keep working.
-- **Hand-off and resume.** When the agent is blocked, it comments on the issue and adds `needs-human`. Once you reply, **Continue after my reply** resumes the same Claude session.
+- **Hand-off and resume.** When the agent is blocked, it says so in its result file. Foreman then comments on the issue and adds `needs-human`. Once you reply, **Continue after my reply** resumes the same Claude session.
 - **A dashboard for all of it.** Live run status, a grouped log for each run, token and cost totals, usage gauges for each profile, a global pause, and a global daily budget.
 
 ---
@@ -46,18 +46,19 @@ Waiting ─► Setting up ─► Writing code ─► Running checks ─► Revie
             worktree +     claude -p       tests / static    Foreman's own gate:
             setup script                   analysis          verify, integrity, size
         │
-        ├─► PR opened ─► Watching PR ─► PR ready      (checks pass, no open bot threads, or merged)
-        │                    │
-        │                    └─► fix-up round ─► Watching PR …  (up to FOREMAN_PR_MAX_ROUNDS)
+        ├─► Watching PR ─► PR ready      (checks pass, no open bot threads, or merged)
+        │        │
+        │        └─► fix-up round ─► Watching PR …  (up to FOREMAN_PR_MAX_ROUNDS)
         │
-        ├─► Needs you   (agent added needs-human, or rounds ran out)
-        └─► Failed      (error, timeout, or no PR and no flag)
+        ├─► PR opened   (Watch PRs is off)
+        ├─► Needs you   (the agent asked for help, Foreman's checks failed, or rounds ran out)
+        └─► Failed      (error, timeout, or no readable result file)
 ```
 
 A few design choices are worth knowing about:
 
-- **GitHub is the source of truth.** When the agent exits, Foreman checks GitHub for an open PR on the branch or a `needs-human` label. It does not trust what the agent says it did. A run that ends with neither one fails, and the agent's last message goes on the issue.
-- **Polling is free.** The scheduler only calls `gh`. Claude is started only after an issue is found and claimed.
+- **The agent never touches GitHub.** It commits in its worktree and writes a result file, `.foreman/result.json`. Foreman reads the file, runs its own checks, and then pushes, opens the PR, comments and labels. It only trusts checks it ran itself. A run with no readable result file fails, and the agent's last message goes on the issue.
+- **Polling is nearly free.** The scheduler only calls `gh`, so checking costs no tokens. The one exception is a usage probe: a one-turn Haiku call made when ready issues are waiting and the profile's usage numbers are stale. See [Usage limits](docs/usage-limits.md#where-the-numbers-come-from).
 - **Workers are plain Laravel queue workers.** `composer run foreman` starts three, so up to three runs execute at once across all repositories. Each repository's concurrency setting limits how many of those slots it can use.
 - **Dead runs are reaped.** A run whose worker stops sending heartbeats for 5 minutes is marked failed, and its issue is released. This happens when a laptop sleeps or a process is killed.
 
@@ -72,7 +73,7 @@ A few design choices are worth knowing about:
 | `git` | Worktrees and branches |
 | [GitHub CLI](https://cli.github.com/) (`gh`), logged in | Reads issues, swaps labels, opens and watches PRs |
 | [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`) on your `PATH` | Does the work |
-| The `mattpocock-skills` Claude Code plugin | The default prompt starts with `/mattpocock-skills:implement` and also uses `/simplify`. To avoid needing the plugin, edit the prompt for each repository. |
+| The `mattpocock-skills` Claude Code plugin | The default prompt starts with `/mattpocock-skills:implement`. To avoid needing the plugin, edit the prompt for each repository. |
 
 Every repository you add needs a local clone with a GitHub remote. It also needs a setup script that can prepare a fresh worktree, for example by copying `.env` and installing dependencies.
 
@@ -104,7 +105,7 @@ This starts the web UI at <http://localhost:8787>, the scheduler, and three run 
 
 **3. Add a repository.**
 
-Open the dashboard and click **Add repository**. Enter the path to a local clone and click **Detect** to fill in the GitHub `owner/name`. Review the defaults, then save. Foreman creates the three labels on GitHub if they don't exist.
+Open the dashboard and click **Add repository**. Enter the path to a local clone and click **Detect** to fill in the GitHub `owner/name`. Review the defaults, then save. Foreman creates its three labels on GitHub, or updates their colour and description if they already exist.
 
 **4. Give it an issue.**
 
@@ -144,18 +145,20 @@ The full docs are in [`docs/`](docs/). They're also built into the app: click **
 ## Security notes
 
 - **There is no login.** The dashboard is meant for `localhost` only. Don't expose it to a network.
-- **The agent no longer acts with your push and `gh` rights.** It commits in its worktree and writes a result file. Foreman reads that file, then pushes the branch and opens the PR itself. The agent's environment has no push URL, no git credential helper and no GitHub tokens, and the default **allowed tools** list has no `gh` and no `git push`. Review the list before widening it. See [Guardrails](docs/guardrails.md#foreman-pushes-not-the-agent).
-- **Setup scripts run unsandboxed.** They run as your user in each worktree.
+- **The agent doesn't act with your push and `gh` rights.** It commits in its worktree and writes a result file. Foreman reads that file, then pushes the branch and opens the PR itself. The agent's environment has no push URL, no git credential helper and no GitHub tokens, and the default **allowed tools** list has no `gh` and no `git push`. Review the list before widening it. See [Guardrails](docs/guardrails.md#foreman-pushes-not-the-agent).
+- **Setup and verify scripts run unsandboxed.** They run as your user in each worktree. The [Sandbox](docs/repository-settings.md#sandbox) setting covers only the agent's shell commands.
 
 ---
 
 ## Development
 
 ```bash
-composer run dev     # web server, queue, logs and Vite with hot reload
+composer run dev     # web server, queue, logs and Vite with hot reload (no scheduler, no runs queue)
 composer test        # run the test suite
 ./vendor/bin/pint    # format PHP
 ```
+
+`composer run dev` is for working on the UI. It has no scheduler, and its queue worker doesn't listen on the `runs` queue, so no runs happen. Use `composer run foreman` to run Foreman for real.
 
 Run a single poll by hand with `php artisan foreman:poll`. Add `--repo=<id>` to check one repository and `--force` to ignore its poll interval.
 
