@@ -8,6 +8,7 @@ use App\Support\IssueSanitiser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
+use Throwable;
 
 /**
  * Everything Foreman needs from GitHub, via the gh CLI you're already
@@ -215,7 +216,14 @@ class GitHub
     /** Opens a PR for a branch that is already pushed. Returns its URL. */
     public function openPullRequest(Repository $repo, string $branch, string $title, string $body): string
     {
-        $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body]);
+        try {
+            $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body]);
+        } catch (Throwable $e) {
+            // gh can fail or hang after GitHub has already opened the PR, so look before failing the run
+            $existing = trim($this->gh($repo, ['pr', 'list', '--head', $branch, '--state', 'open', '--json', 'url', '--jq', '.[0].url'], allowFailure: true));
+
+            return $existing !== '' ? $existing : throw $e;
+        }
 
         return trim(collect(explode("\n", trim($output)))->last());
     }
