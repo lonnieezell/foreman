@@ -40,6 +40,12 @@ Stop starting runs for this repository once today's spend reaches this amount. E
 
 Spend is the cost Claude Code reports for each run. On a subscription it's an estimate, but it's still useful for comparing runs. There's also a limit across all repositories. See [Global settings](global-settings.md#spend).
 
+### Limit per run (USD)
+
+The most a single run may spend. Empty means no limit. Passed to `claude --max-budget-usd`.
+
+The cap counts sub-agents too. It may also overshoot by one response, because Claude checks it between responses. A run that hits the cap stops and usually ends as Failed.
+
 ### Model
 
 Haiku, Sonnet, Opus or Fable. Default: Sonnet. Passed to `claude --model`.
