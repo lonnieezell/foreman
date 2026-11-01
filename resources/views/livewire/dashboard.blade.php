@@ -118,7 +118,7 @@
                 <div>
                     <h2 class="line-name"><a href="{{ route('repositories.edit', $repo) }}" wire:navigate>{{ $repo->name }}</a></h2>
                     {{-- data-next sits outside the ignored countdown so each re-render can move it --}}
-                    <p class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->modelLabel() }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
+                    <div class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->modelLabel() }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
                         <span title="Merges into {{ $repo->base_branch }}">{{ $repo->github_repo }}</span>
                         {{-- The data attributes feed the popover's draft; the popover itself is wire:ignore'd so the poll can't close it --}}
                         <span x-data="claudeSettings({{ $repo->id }})" data-model="{{ $repo->model }}" data-effort="{{ $repo->effort }}">
@@ -147,7 +147,7 @@
                         @if ($running)
                             <span class="line-countdown" title="Next check for ready issues, every {{ $repo->poll_interval_minutes }} min" wire:ignore x-data="countdown"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.5V8l2.25 1.5" /></svg><span x-text="text"></span></span>
                         @endif
-                    </p>
+                    </div>
                 </div>
 
                 <div class="line-controls">
