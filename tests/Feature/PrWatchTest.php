@@ -504,6 +504,20 @@ class PrWatchTest extends TestCase
             ->assertDontSee('Start over');
     }
 
+    public function test_continuing_a_handed_over_pr_from_the_run_page_does_nothing(): void
+    {
+        $run = $this->watchedRun(['status' => RunStatus::NeedsHuman]);
+        $github = Mockery::mock(GitHub::class);
+        $github->expects('reclaim')->never();
+        $this->app->instance(GitHub::class, $github);
+        Queue::fake();
+
+        Livewire::test(RunDetail::class, ['run' => $run])->call('continueRun')->assertNoRedirect();
+
+        $this->assertSame(1, Run::count());
+        Queue::assertNothingPushed();
+    }
+
     public function test_the_run_page_says_why_a_pr_was_handed_over(): void
     {
         $pushed = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'stop_reason' => 'someone_pushed']);
