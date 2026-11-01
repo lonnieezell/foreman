@@ -39,6 +39,9 @@ abstract class Stack
     /** The command that formats staged files at commit time, or null when the repo has none. */
     abstract public function formatter(): ?string;
 
+    /** @return list<string> File extensions, without the dot, that the formatter handles. */
+    abstract public function formatExtensions(): array;
+
     /** @return list<string> Shell commands, each starting with a `cd` when the stack is not at the root. */
     abstract public function verifyCommands(): array;
 

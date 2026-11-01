@@ -14,6 +14,7 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
 | Check commands | Moves a run to **Running checks** when the agent runs a test, lint or type-check command. See [Runs and statuses](runs.md#the-stations). | Built for PHP, TypeScript, Rust and Python |
 | Protected files and commands | A hook that blocks edits to protected files, and commands such as `git push` and `gh`. See [Protected files and commands](#protected-files-and-commands). | Built |
+| Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
 | Everything after that | Other hooks, a check Foreman runs itself, risk tiers, review and a CI kit for your repository. | Not built yet |
 
 The agent still opens its own PR for now, as described in [Runs and statuses](runs.md#how-a-run-ends). The protected-commands hook below blocks `git push` and `gh pr create`, so until Foreman pushes and opens PRs itself, a run can't finish that way. Getting a run going is covered in [Getting started](getting-started.md).
@@ -125,3 +126,30 @@ Instead, a separate test-integrity check will fail a run that deletes tests, add
 - A `gh` or `git push` inside a quoted string can be blocked by mistake, and the agent sees the reason.
 - Edits made by a shell command, such as `sed -i` or `echo >`, are not edits to the guard. It only sees `Edit`-style tools. The next guardrail steps check the finished diff.
 - Paths are matched as written. A file reached through a symlink to a protected file isn't recognized.
+
+## Formatting at commit time
+
+When the agent runs `git commit`, Foreman first formats the staged files and stages them again. The commit then holds formatted code. This is a second `PreToolUse` hook on `Bash` calls. It runs `php artisan foreman:format-staged`, next to the guard above.
+
+For each stack, Foreman picks the formatter from the [Stack rules](#stack-rules) table. It passes the staged files that the formatter handles, such as `.php` files for Pint or `.rs` files for `rustfmt`. Then it runs `git add` on those files.
+
+| Situation | What happens |
+| --- | --- |
+| A staged file is not formatted | Foreman formats it, stages it again, and the commit goes ahead. |
+| The formatter fails, for example on a syntax error | The hook exits with code 2. The commit is blocked, and the agent sees the formatter's output. |
+| The stack's formatter is not installed | That stack is skipped. This is not a failure. |
+| The command is not a `git commit` | The hook does nothing. |
+
+### Why it runs at commit time
+
+The timing is on purpose. A formatter that ran after every edit would change files while the agent is still working on them. It would also add noise to each step. Running once at commit time lets the agent finish a change first.
+
+### Why it is not a git hook
+
+A git pre-commit hook lives in the `.git` folder. All worktrees of a repository share that folder, so the hook would also run on your own commits in the main checkout. A Claude hook is part of one run's settings file. It only runs for the agent, and it goes away with the run.
+
+### What this doesn't cover
+
+- The formatter runs from the worktree root. For a stack in a sub-folder, a formatter in that folder's own `vendor` or `node_modules` is not found, so it is skipped.
+- A file that is only partly staged gets staged in full.
+- The hook matches `git commit` as text. A commit made through `sh -c "…"` is not formatted.

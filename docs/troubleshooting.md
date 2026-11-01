@@ -45,6 +45,7 @@ A line like `Blocked by guardrail: …` means a Foreman hook refused one of the 
 | "… is locked in this repository's settings" | The path matches **Locked paths** in the [repository settings](repository-settings.md#locked-paths). |
 | "… is a lock file" | The agent tried to change a lock file. Add the `dependencies` label to the issue if it should. |
 | "git push is blocked", "gh commands are blocked", "--no-verify is blocked" | The agent tried a command the agent may not run. |
+| "commit blocked, the formatter failed" | The commit-time formatter failed on a staged file, usually a syntax error. The agent sees the output and fixes the file. See [Formatting at commit time](guardrails.md#formatting-at-commit-time). |
 | "This edit adds a skip or suppress marker" | The agent tried to silence a test or tool instead of fixing the cause. |
 
 A run that keeps hitting the same block usually can't finish. If the block is wrong for this issue, fix the cause: add the `dependencies` label, or remove the pattern from **Locked paths**, then use **Start over**. See [Guardrails](guardrails.md#protected-files-and-commands) for the full list.

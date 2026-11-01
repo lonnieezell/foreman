@@ -60,6 +60,11 @@ class TypeScript extends Stack
         return null;
     }
 
+    public function formatExtensions(): array
+    {
+        return ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'css'];
+    }
+
     public function verifyCommands(): array
     {
         $commands = [];
