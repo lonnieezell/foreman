@@ -167,6 +167,23 @@
             </div>
 
             <div class="field">
+                <div class="field-label-row">
+                    <label for="verify_script">Verify script</label>
+                    <button type="button" class="btn btn-quiet btn-icon" x-data="copyFrom('verifyScriptPrompt')" x-on:click="copy"
+                            aria-label="Copy a prompt for Claude Code to work out this script"
+                            title="Copy a prompt for Claude Code to work out this script. Paste it into claude in the project."
+                            x-bind:aria-label="copied ? 'Copied' : 'Copy a prompt for Claude Code to work out this script'"
+                            x-bind:title="copied ? 'Copied' : 'Copy a prompt for Claude Code to work out this script. Paste it into claude in the project.'">
+                        <svg x-show="! copied" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5" /></svg>
+                        <svg x-show="copied" style="display: none" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.25 3.25L13 5" /></svg>
+                    </button>
+                </div>
+                <textarea id="verify_script" rows="4" wire:model="verify_script"></textarea>
+                <span class="hint">The agent can't stop until this passes. Leave it empty to use the checks of the stacks Foreman finds.</span>
+                @error('verify_script') <span class="error">{{ $message }}</span> @enderror
+            </div>
+
+            <div class="field">
                 <label for="allowed_tools">Allowed tools</label>
                 <textarea id="allowed_tools" rows="3" wire:model="allowed_tools"></textarea>
                 <span class="hint">Passed to <code>--allowedTools</code>. Anything not listed is refused.</span>

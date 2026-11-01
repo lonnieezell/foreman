@@ -208,7 +208,7 @@ class ProcessRun implements ShouldQueue
 
     /**
      * Write the run's hook settings outside the worktree, so the agent can't edit them.
-     * The hooks are `foreman:guard` and `foreman:format-staged`, which read their rules from a file next to the settings.
+     * `foreman:guard` and `foreman:format-staged` run before tool calls, and `foreman:stop` when the agent tries to stop. All read their rules from a file next to the settings.
      */
     private function writeHookSettings(Run $run, string $worktree, bool $allowLockFiles): string
     {
@@ -221,17 +221,25 @@ class ProcessRun implements ShouldQueue
             'log' => $run->logPath(),
             'locked_paths' => $run->repository->lockedPathList(),
             'allow_lock_files' => $allowLockFiles,
+            'base' => "origin/{$run->repository->base_branch}",
+            'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
+            'stop_counter' => "{$dir}/run-{$run->id}-stops",
         ]));
+        File::delete("{$dir}/run-{$run->id}-stops");   // each start of the agent, resumes included, gets its own 3 blocks
 
-        $artisan = fn (string $name) => implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), $name, $rules]));
+        $hook = fn (string $name) => implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), $name, $rules]));
         $settings = "{$dir}/run-{$run->id}-settings.json";
-        File::put($settings, json_encode(['hooks' => ['PreToolUse' => [[
-            'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
-            'hooks' => [
-                ['type' => 'command', 'command' => $artisan('foreman:guard')],
-                ['type' => 'command', 'command' => $artisan('foreman:format-staged')],
-            ],
-        ]]]]));
+        File::put($settings, json_encode(['hooks' => [
+            'PreToolUse' => [[
+                'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
+                'hooks' => [
+                    ['type' => 'command', 'command' => $hook('foreman:guard')],
+                    ['type' => 'command', 'command' => $hook('foreman:format-staged')],
+                ],
+            ]],
+            // The checks can take a while, so the timeout (in seconds) is longer than Claude Code's default
+            'Stop' => [['hooks' => [['type' => 'command', 'command' => $hook('foreman:stop'), 'timeout' => 1800]]]],
+        ]]));
 
         return $settings;
     }
