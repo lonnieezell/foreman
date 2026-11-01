@@ -146,6 +146,10 @@ class ProcessRun implements ShouldQueue
             '--verbose',
         ];
 
+        if ($repo->max_budget_per_run !== null) {
+            array_push($command, '--max-budget-usd', $repo->max_budget_per_run);
+        }
+
         if ($run->effort) {
             array_push($command, '--effort', $run->effort);
         }

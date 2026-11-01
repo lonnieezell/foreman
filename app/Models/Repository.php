@@ -34,6 +34,7 @@ SH;
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
             'daily_budget' => 'decimal:2',
+            'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
