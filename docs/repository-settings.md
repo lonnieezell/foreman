@@ -116,7 +116,7 @@ The setup script runs as you, with no sandbox. See [Known gaps](security.md#know
 
 ### Verify script
 
-Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout.
+Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout. It runs with `CI=true`, so test runners such as Jest don't start in watch mode and wait forever.
 
 Leave it empty to use the checks Foreman finds for the stacks in the worktree. For a Laravel app with Pint, PHPStan and Pest, and a base branch of `main`, that is:
 

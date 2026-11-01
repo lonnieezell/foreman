@@ -87,6 +87,13 @@ class StopHookTest extends TestCase
         $this->assertStringNotContainsString('never-reached', $message);
     }
 
+    public function test_the_verify_script_runs_with_ci_set_so_test_runners_do_not_watch(): void
+    {
+        [$code, $message] = $this->stop('test "$CI" = true');
+
+        $this->assertSame(0, $code, $message);
+    }
+
     public function test_a_failing_integrity_check_blocks_even_when_the_verify_script_passes(): void
     {
         mkdir("{$this->dir}/work/tests");

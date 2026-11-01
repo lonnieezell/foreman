@@ -19,8 +19,14 @@ class StackSet
         Python::class => ['pyproject.toml', 'requirements*.txt', 'setup.py'],
     ];
 
-    /** Folders that hold other people's code. Dot folders are skipped too. */
-    private const SKIPPED_DIRS = ['vendor', 'node_modules', 'target', 'venv', '__pycache__'];
+    /**
+     * Folders that hold other people's code, or sample projects such as test fixtures that nothing installs.
+     * Dot folders are skipped too.
+     */
+    private const SKIPPED_DIRS = [
+        'vendor', 'node_modules', 'target', 'venv', '__pycache__',
+        'tests', 'test', '__tests__', 'fixtures', '__fixtures__', 'testdata', 'stubs', 'examples', 'example',
+    ];
 
     /** @param list<Stack> $stacks */
     public function __construct(public readonly array $stacks) {}

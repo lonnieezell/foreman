@@ -111,7 +111,7 @@ class InstallCiTest extends TestCase
     public function test_a_typescript_repo_gets_its_job(): void
     {
         $workflow = $this->install($this->repo([
-            'package.json' => '{"scripts":{"lint":"eslint .","test":"vitest run"}}',
+            'package.json' => '{"scripts":{"lint":"eslint .","test":"vitest run"},"devDependencies":{"typescript":"^5"}}',
             'package-lock.json' => '{}',
             'tsconfig.json' => '{}',
         ]));
@@ -144,13 +144,27 @@ class InstallCiTest extends TestCase
 
     public function test_a_python_repo_gets_its_job(): void
     {
-        $workflow = $this->install($this->repo(['pyproject.toml' => "[tool.mypy]\nstrict = true\n"]));
+        $workflow = $this->install($this->repo(['pyproject.toml' => self::PYTHON]));
 
         $this->assertSame(
             ['Ruff format check', 'Ruff check', 'Mypy', 'Test integrity', 'Tests', 'Dependency audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep'],
             array_slice($this->stepNames($workflow, 'python'), -9),
         );
+        $this->assertSame('pytest || [ $? -eq 5 ]', $this->step($workflow, 'python', 'Tests')['run'], 'no tests collected is not a failure');
     }
+
+    public function test_a_python_repo_without_ruff_or_pytest_gets_no_steps_for_them(): void
+    {
+        $workflow = $this->install($this->repo(['pyproject.toml' => "[project]\nname = \"app\"\n"]));
+        $names = $this->stepNames($workflow, 'python');
+
+        $this->assertNotContains('Ruff format check', $names);
+        $this->assertNotContains('Ruff check', $names);
+        $this->assertNotContains('Tests', $names);
+        $this->assertSame('pip install -e . pip-audit', $this->step($workflow, 'python', 'Install dependencies')['run']);
+    }
+
+    private const PYTHON = "[tool.mypy]\nstrict = true\n[tool.ruff]\n[tool.pytest.ini_options]\n";
 
     public function test_a_multi_stack_repo_gets_one_job_per_stack(): void
     {
@@ -304,13 +318,13 @@ class InstallCiTest extends TestCase
 
     public function test_uv_and_poetry_projects_bring_their_own_ruff_and_pytest(): void
     {
-        $uv = $this->install($this->repo(['pyproject.toml' => '', 'uv.lock' => '']));
+        $uv = $this->install($this->repo(['pyproject.toml' => self::PYTHON, 'uv.lock' => '']));
         $runs = array_column($uv['jobs']['python']['steps'], 'run');
 
         $this->assertContains('uv run --with ruff ruff format --check', $runs);
-        $this->assertContains('uv run --with pytest pytest', $runs);
+        $this->assertContains('uv run --with pytest pytest || [ $? -eq 5 ]', $runs);
 
-        $poetry = $this->install($this->repo(['pyproject.toml' => '', 'poetry.lock' => ''], 'poetry'));
+        $poetry = $this->install($this->repo(['pyproject.toml' => self::PYTHON, 'poetry.lock' => ''], 'poetry'));
         $install = $this->step($poetry, 'python', 'Install dependencies')['run'];
 
         $this->assertStringContainsString('poetry run pip install ruff pytest', $install);

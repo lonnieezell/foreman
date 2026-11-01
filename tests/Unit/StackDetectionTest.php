@@ -95,6 +95,21 @@ class StackDetectionTest extends TestCase
         $this->assertSame([], StackSet::detect($this->root)->names());
     }
 
+    public function test_marker_files_in_test_fixture_and_example_folders_are_ignored(): void
+    {
+        $this->touch('composer.json', '{}');
+        $this->touch('tests/fixtures/app/composer.json', '{}');
+        $this->touch('src/__fixtures__/web/package.json', '{}');
+        $this->touch('examples/demo/Cargo.toml');
+        $this->touch('stubs/lib/pyproject.toml');
+        $this->touch('testdata/requirements.txt');
+
+        $stacks = StackSet::detect($this->root);
+
+        $this->assertSame(['php'], $stacks->names());
+        $this->assertSame(['vendor/bin/phpunit'], $stacks->verifyCommands('origin/main'));
+    }
+
     public function test_marker_files_in_git_ignored_folders_are_ignored(): void
     {
         (new Process(['git', 'init', '--quiet'], $this->root))->mustRun();
@@ -190,7 +205,7 @@ class StackDetectionTest extends TestCase
 
     public function test_typescript_commands_follow_the_lock_file_and_scripts(): void
     {
-        $this->touch('package.json', json_encode(['scripts' => ['lint' => 'eslint .', 'test' => 'vitest'], 'devDependencies' => ['prettier' => '^3']]));
+        $this->touch('package.json', json_encode(['scripts' => ['lint' => 'eslint .', 'test' => 'vitest'], 'devDependencies' => ['prettier' => '^3', 'typescript' => '^5']]));
         $this->touch('pnpm-lock.yaml');
         $this->touch('tsconfig.json');
 
@@ -200,9 +215,22 @@ class StackDetectionTest extends TestCase
         $this->assertSame('npx prettier --write', $ts->formatter());
     }
 
+    public function test_a_typescript_check_runs_only_when_it_can_pass(): void
+    {
+        // npm init's placeholder test script always exits 1, and npx without TypeScript fetches an unrelated `tsc` package
+        $this->touch('package.json', json_encode(['scripts' => ['test' => 'echo "Error: no test specified" && exit 1']]));
+        $this->touch('tsconfig.json');
+
+        $ts = StackSet::detect($this->root)->stacks[0];
+
+        $this->assertSame([], $ts->verifyCommands('origin/main'));
+        $this->assertSame([], $ts->ciSteps()['test']);
+        $this->assertSame([], $ts->ciSteps()['lint']);
+    }
+
     public function test_python_commands_follow_the_lock_file_and_configured_tools(): void
     {
-        $this->touch('pyproject.toml', "[tool.mypy]\nstrict = true\n");
+        $this->touch('pyproject.toml', "[tool.mypy]\nstrict = true\n[tool.ruff]\nline-length = 100\n[tool.pytest.ini_options]\n");
         $this->touch('uv.lock');
 
         $py = StackSet::detect($this->root)->stacks[0];
@@ -210,10 +238,56 @@ class StackDetectionTest extends TestCase
         $commands = $py->verifyCommands('origin/main');
         [$format, $lint] = $commands;
         $this->assertStringContainsString("--merge-base 'origin/main' -- '*.py'", $format);
-        $this->assertStringEndsWith('| xargs -0 -r uv run ruff format --check --force-exclude --)', $format);
-        $this->assertStringEndsWith('| xargs -0 -r uv run ruff check --force-exclude --)', $lint);
-        $this->assertSame(['uv run mypy .', 'uv run pytest'], array_slice($commands, 2));
+        $this->assertStringEndsWith('| xargs -0 -r uv run --with ruff ruff format --check --force-exclude --)', $format);
+        $this->assertStringEndsWith('| xargs -0 -r uv run --with ruff ruff check --force-exclude --)', $lint);
+        $this->assertSame(['uv run --with mypy mypy .', 'uv run --with pytest pytest || [ $? -eq 5 ]'], array_slice($commands, 2));
         $this->assertSame('ruff format', $py->formatter());
+    }
+
+    public function test_python_runs_ruff_and_pytest_only_when_the_project_uses_them(): void
+    {
+        $this->touch('pyproject.toml', "[project]\nname = \"app\"\n");
+
+        $py = StackSet::detect($this->root)->stacks[0];
+
+        $this->assertSame([], $py->verifyCommands('origin/main'));
+        $this->assertNull($py->formatter(), 'a project without ruff is never reformatted with it');
+        $this->assertSame([], $py->ciSteps()['lint']);
+        $this->assertSame([], $py->ciSteps()['test']);
+        $this->assertStringNotContainsString('ruff', $py->ciSteps()['setup'][1]['run']);
+    }
+
+    #[DataProvider('pythonToolUses')]
+    public function test_python_tools_count_when_configured_or_declared(string $file, string $contents): void
+    {
+        $this->touch('pyproject.toml', "[project]\nname = \"app\"\n");
+        $this->touch($file, $contents);
+
+        $commands = implode("\n", StackSet::detect($this->root)->stacks[0]->verifyCommands('origin/main'));
+
+        $this->assertStringContainsString('ruff check', $commands);
+        $this->assertStringContainsString('pytest || [ $? -eq 5 ]', $commands);
+    }
+
+    public static function pythonToolUses(): array
+    {
+        return [
+            'requirements' => ['requirements-dev.txt', "ruff==0.6.0\npytest>=8\n"],
+            'pyproject dependency group' => ['pyproject.toml', "[project]\nname = \"app\"\n[dependency-groups]\ndev = [\"ruff>=0.5\", \"pytest\"]\n"],
+            'poetry' => ['pyproject.toml', "[tool.poetry.group.dev.dependencies]\nruff = \"^0.5\"\npytest = \"^8\"\n"],
+        ];
+    }
+
+    public function test_python_ruff_and_pytest_configs_count_without_a_dependency(): void
+    {
+        $this->touch('pyproject.toml', "[project]\nname = \"app\"\n");
+        $this->touch('ruff.toml');
+        $this->touch('conftest.py');
+
+        $commands = implode("\n", StackSet::detect($this->root)->stacks[0]->verifyCommands('origin/main'));
+
+        $this->assertStringContainsString('ruff check', $commands);
+        $this->assertStringContainsString('pytest || [ $? -eq 5 ]', $commands);
     }
 
     public function test_rust_runs_its_checks_in_each_cargo_folder(): void
