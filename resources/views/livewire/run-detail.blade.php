@@ -56,6 +56,22 @@
         <div class="notice">
             <p>The PR still has failing checks or open review threads that the agent couldn’t settle. It’s yours from here: see the latest comment on the PR.</p>
         </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'gate_failed')
+        <div class="notice">
+            <p>Foreman’s own checks failed before the push, so nothing was pushed. The output is in the comment on the issue. Fix it there, then choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'scope_vetoed')
+        <div class="notice">
+            <p>Foreman’s scope judge vetoed the change twice, so nothing was pushed. Its reason is in the comment on the issue. Reply there, then choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'scope_unusable')
+        <div class="notice">
+            <p>Foreman’s scope judge gave no usable answer twice, so nothing was pushed. The details are in the comment on the issue. Choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'already_done')
+        <div class="notice">
+            <p>The agent says the issue is already done, so nothing was pushed. Its explanation is in the comment on the issue. Reply there if you disagree, then choose <strong>Continue after my reply</strong> to resume with everything it already knows, or <strong>Start over</strong> for a fresh run.</p>
+        </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman)
         <div class="notice">
             <p>The agent stopped and asked for help on the issue. Reply there, then choose <strong>Continue after my reply</strong> to resume with everything it already knows, or <strong>Start over</strong> for a fresh run.</p>

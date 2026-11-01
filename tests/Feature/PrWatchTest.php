@@ -229,6 +229,7 @@ class PrWatchTest extends TestCase
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('rounds_ran_out', $run->stop_reason);
+        $this->assertNotNull($run->finished_at);
         $this->assertSame(1, Run::count());
     }
 
@@ -244,6 +245,7 @@ class PrWatchTest extends TestCase
         $pushed = $this->check($this->watchedRun());
         $this->assertSame(RunStatus::NeedsHuman, $pushed->status);
         $this->assertSame('someone_pushed', $pushed->stop_reason);
+        $this->assertNotNull($pushed->finished_at);
     }
 
     public function test_a_paused_foreman_holds_the_round_but_keeps_watching(): void
@@ -529,6 +531,26 @@ class PrWatchTest extends TestCase
         Livewire::test(RunDetail::class, ['run' => $rounds])
             ->assertSee('failing checks or open review threads')
             ->assertDontSee('Someone else pushed');
+    }
+
+    public function test_the_run_page_says_why_foreman_stopped_a_run_without_a_pr(): void
+    {
+        $notices = [
+            'agent_asked' => 'The agent stopped and asked for help',
+            'gate_failed' => 'Foreman’s own checks failed before the push',
+            'scope_vetoed' => 'scope judge vetoed the change twice',
+            'scope_unusable' => 'scope judge gave no usable answer twice',
+            'already_done' => 'the issue is already done',
+        ];
+
+        foreach ($notices as $reason => $text) {
+            $run = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'pr_url' => null, 'stop_reason' => $reason]);
+            $page = Livewire::test(RunDetail::class, ['run' => $run])->assertSee($text);
+
+            foreach (array_diff_key($notices, [$reason => 1]) as $other) {
+                $page->assertDontSee($other);
+            }
+        }
     }
 
     public function test_the_repository_form_saves_the_watch_setting(): void
