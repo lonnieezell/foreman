@@ -32,6 +32,8 @@ class Settings extends Component
     // Empty means no limit
     public string $global_daily_budget = '';
 
+    public bool $trust_bot_labels = false;
+
     // Saved as soon as it's toggled, since the browser asks for permission at the same moment
     public bool $desktop_notifications = false;
 
@@ -47,6 +49,7 @@ class Settings extends Component
         }
 
         $this->global_daily_budget = (string) (Setting::globalBudget() ?? '');
+        $this->trust_bot_labels = Setting::trustBotLabels();
     }
 
     public function updatedDesktopNotifications(): void
@@ -74,6 +77,7 @@ class Settings extends Component
         }
 
         Setting::put('global_daily_budget', $this->global_daily_budget === '' ? null : $this->global_daily_budget);
+        Setting::put('trust_bot_labels', $this->trust_bot_labels ? 1 : 0);
         Setting::applyToConfig();
 
         $this->flash = 'Settings saved.';

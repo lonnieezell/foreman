@@ -20,7 +20,7 @@ Click **Add repository** to save. Foreman creates its three labels on GitHub if 
 
 Choose a small issue with a clear spec. The issue body *is* the spec. The agent stays strictly inside it and doesn't refactor anything else.
 
-Add the `ready-for-agent` label to the issue. Only labels added by people with write access to the repository count. Foreman skips a label added by a bot or by someone without write access. It also skips an issue that was edited after the label was added, so add the label last. See [Intake gate](guardrails.md#intake-gate).
+Add the `ready-for-agent` label to the issue. Only labels added by people with write access to the repository count. Foreman skips a label added by a bot (unless you trust bots on the Settings page) or by someone without write access. It also skips an issue that was edited after the label was added, so add the label last. See [Intake gate](guardrails.md#intake-gate).
 
 Foreman also skips issues that are blocked by other open issues. It takes ready issues oldest first.
 

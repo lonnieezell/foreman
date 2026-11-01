@@ -24,6 +24,17 @@
         </section>
 
         <section class="fieldset">
+            <h2>Intake gate</h2>
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" wire:model="trust_bot_labels">
+                    Trust ready labels added by bots
+                </label>
+                <span class="hint">Off by default. When on, an issue a bot marked as ready is picked up without a person approving it. Edits after the label still skip the issue.</span>
+            </div>
+        </section>
+
+        <section class="fieldset">
             <h2>Notifications</h2>
             <div class="field" x-data="desktopNotifications">
                 <label class="check">

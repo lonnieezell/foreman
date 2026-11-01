@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Livewire\Dashboard;
 use App\Models\Repository;
+use App\Models\Setting;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -73,6 +74,19 @@ class IntakeGateTest extends TestCase
         $this->assertSame([2], array_column($issues, 'number'));
         $this->assertSame([['number' => 1, 'reason' => 'the ready label was added by a bot (some-bot)']], $repo->fresh()->intake_skips);
         Process::assertNotRan(fn (PendingProcess $p) => str_contains(implode(' ', $p->command), 'collaborators/some-bot'));
+    }
+
+    public function test_an_issue_labelled_by_a_bot_is_picked_up_when_bot_labels_are_trusted(): void
+    {
+        Setting::put('trust_bot_labels', 1);
+        $this->fakeGitHub([$this->issue(1, 'some-bot', 'Bot'), $this->issue(2, 'other-bot', 'Bot', editedAt: '2026-11-01T10:05:00Z')]);
+        $repo = $this->repo();
+
+        $issues = app(GitHub::class)->readyIssues($repo, 5);
+
+        $this->assertSame([1], array_column($issues, 'number'));
+        $this->assertSame([['number' => 2, 'reason' => 'the issue was edited after the ready label was added']], $repo->fresh()->intake_skips);
+        Process::assertNotRan(fn (PendingProcess $p) => str_contains(implode(' ', $p->command), 'collaborators/'));
     }
 
     public function test_an_issue_labelled_by_someone_without_write_access_is_skipped(): void

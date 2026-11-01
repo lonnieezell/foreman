@@ -28,6 +28,15 @@ Changes on the Settings page reach running workers before their next job. You do
 
 "Today" starts at midnight in the app's timezone. A run's cost counts toward the day the run was queued.
 
+### Intake gate
+
+**Trust ready labels added by bots.** Off by default. When on, Foreman picks up an issue that a bot marked as ready, with no person approving it. It applies to every repository.
+
+- A bot's label skips the write-access check. GitHub only lets a bot add labels if its app was given access to the repository.
+- An issue edited after the label was added is still skipped.
+
+Turn this on only if you trust every bot that can label issues in your repositories. See [Intake gate](guardrails.md#intake-gate).
+
 ### Notifications
 
 **Desktop notifications.** Get a browser notification when an issue needs your reply, fails, or is ready for review. Click the notification to open the run.

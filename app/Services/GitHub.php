@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Repository;
+use App\Models\Setting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -62,7 +63,7 @@ class GitHub
 
     /**
      * Why the intake gate refuses an issue, or null when it's trusted. Only a person with write
-     * access counts, and only if the issue hasn't changed since they added the label.
+     * access counts (or a bot, if the setting allows), and only if the issue hasn't changed since the label was added.
      *
      * @param  array<string,bool>  $writeAccess  per-poll cache of who has write access
      */
@@ -78,13 +79,14 @@ class GitHub
             return 'GitHub has no record of who added the ready label';
         }
 
-        if ($labeled['actor']['__typename'] === 'Bot') {
+        $isBot = $labeled['actor']['__typename'] === 'Bot';
+
+        if ($isBot && ! Setting::trustBotLabels()) {
             return "the ready label was added by a bot ({$login})";
         }
 
-        $writeAccess[$login] ??= $this->hasWriteAccess($repo, $login);
-
-        if (! $writeAccess[$login]) {
+        // A trusted bot skips the access check: GitHub's collaborator API doesn't know app bots
+        if (! $isBot && ! ($writeAccess[$login] ??= $this->hasWriteAccess($repo, $login))) {
             return "the ready label was added by {$login}, who doesn’t have write access";
         }
 
