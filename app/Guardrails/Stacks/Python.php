@@ -6,6 +6,9 @@ use App\Guardrails\Stack;
 
 class Python extends Stack
 {
+    /** pytest exits 5 when it collects no tests, which a project without tests yet shouldn't fail on. */
+    private const PYTEST = 'pytest || [ $? -eq 5 ]';
+
     public function name(): string
     {
         return 'python';
@@ -52,7 +55,13 @@ class Python extends Stack
 
     public function formatter(): ?string
     {
-        return 'ruff format';
+        foreach ($this->dirs as $dir) {
+            if ($this->usesRuff($dir)) {
+                return 'ruff format';
+            }
+        }
+
+        return null;
     }
 
     public function formatExtensions(): array
@@ -65,12 +74,16 @@ class Python extends Stack
         $commands = [];
 
         foreach ($this->dirs as $dir) {
-            $run = $this->has($dir, 'uv.lock') ? 'uv run ' : ($this->has($dir, 'poetry.lock') ? 'poetry run ' : '');
-            // Explicit files skip ruff's excludes unless `--force-exclude` is set
-            $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff format --check --force-exclude"));
-            $commands[] = $this->inDir($dir, $this->onChangedFiles($base, "{$run}ruff check --force-exclude"));
-            foreach ([...array_values($this->typeCheckers($dir)), 'pytest'] as $step) {
-                $commands[] = $this->inDir($dir, $run.$step);
+            if ($this->usesRuff($dir)) {
+                // Explicit files skip ruff's excludes unless `--force-exclude` is set
+                $commands[] = $this->inDir($dir, $this->onChangedFiles($base, $this->run($dir, 'ruff', 'ruff format --check --force-exclude')));
+                $commands[] = $this->inDir($dir, $this->onChangedFiles($base, $this->run($dir, 'ruff', 'ruff check --force-exclude')));
+            }
+            foreach ($this->typeCheckers($dir) as $tool => $command) {
+                $commands[] = $this->inDir($dir, $this->run($dir, $tool, $command));
+            }
+            if ($this->usesPytest($dir)) {
+                $commands[] = $this->inDir($dir, $this->run($dir, 'pytest', self::PYTEST));
             }
         }
 
@@ -83,13 +96,11 @@ class Python extends Stack
         $uv = $this->has($dir, 'uv.lock');
         $poetry = $this->has($dir, 'poetry.lock');
         $types = $this->typeCheckers($dir);
+        $ruff = $this->usesRuff($dir);
+        $pytest = $this->usesPytest($dir);
         // The project may not list these tools itself, so each install path brings them
-        $tools = ['ruff', 'pytest', ...array_keys($types), 'pip-audit'];
-        $run = fn (string $tool, string $command) => match (true) {
-            $uv => "uv run --with {$tool} {$command}",
-            $poetry => "poetry run {$command}",
-            default => $command,
-        };
+        $tools = [...($ruff ? ['ruff'] : []), ...($pytest ? ['pytest'] : []), ...array_keys($types), 'pip-audit'];
+        $run = fn (string $tool, string $command) => $this->run($dir, $tool, $command);
 
         // setup-python fails when caching is on and it finds no requirements file
         $requirements = collect(['requirements.txt', 'pyproject.toml'])->first(fn (string $file) => $this->has($dir, $file));
@@ -110,18 +121,54 @@ class Python extends Stack
                 ['name' => 'Install dependencies', 'run' => $install],
             ],
             'lint' => [
-                ['name' => 'Ruff format check', 'run' => $run('ruff', 'ruff format --check')],
-                ['name' => 'Ruff check', 'run' => $run('ruff', 'ruff check')],
+                ...($ruff ? [
+                    ['name' => 'Ruff format check', 'run' => $run('ruff', 'ruff format --check')],
+                    ['name' => 'Ruff check', 'run' => $run('ruff', 'ruff check')],
+                ] : []),
                 ...array_map(fn (string $tool, string $command) => ['name' => ucfirst($tool), 'run' => $run($tool, $command)], array_keys($types), $types),
             ],
-            'test' => [
-                ['name' => 'Tests', 'run' => $run('pytest', 'pytest')],
-            ],
+            'test' => $pytest ? [['name' => 'Tests', 'run' => $run('pytest', self::PYTEST)]] : [],
             'audit' => [
                 ['name' => 'Dependency audit', 'run' => $run('pip-audit', 'pip-audit')],
                 ...$this->codeqlOrSemgrep('python', 'p/python'),
             ],
         ];
+    }
+
+    /** `$command` run with the folder's tool runner. uv adds `$tool` for the run, since the project may not list it. */
+    private function run(string $dir, string $tool, string $command): string
+    {
+        return match (true) {
+            $this->has($dir, 'uv.lock') => "uv run --with {$tool} {$command}",
+            $this->has($dir, 'poetry.lock') => "poetry run {$command}",
+            default => $command,
+        };
+    }
+
+    private function usesRuff(string $dir): bool
+    {
+        return $this->configures($dir, 'ruff', ['ruff.toml', '.ruff.toml']) || $this->declares($dir, 'ruff');
+    }
+
+    private function usesPytest(string $dir): bool
+    {
+        return $this->configures($dir, 'pytest', ['pytest.ini', 'conftest.py']) || $this->declares($dir, 'pytest');
+    }
+
+    /** True when pyproject.toml or a requirements file lists `$tool` as a dependency, in any of their formats. */
+    private function declares(string $dir, string $tool): bool
+    {
+        $files = ['pyproject.toml', ...array_map('basename', glob($this->path($dir, 'requirements*.txt')) ?: [])];
+        // `"ruff>=0.5"` in a list, `ruff = "^0.5"` in a Poetry table, or `ruff==0.6.0` on a requirements line
+        $pattern = '/(^|["\'\s])'.preg_quote($tool, '/').'\s*([<>=~!\[;,"\']|$)/m';
+
+        foreach ($files as $file) {
+            if (preg_match($pattern, $this->read($dir, $file))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, string> The type checkers a folder configures, as tool => command. */

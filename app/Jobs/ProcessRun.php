@@ -735,7 +735,8 @@ class ProcessRun implements ShouldQueue
         $beat = 0;
 
         try {
-            $process = Process::path($run->worktree_path)->env(ForemanEnv::removed())->timeout($timeout)->run($command, function () use ($run, &$beat) {
+            // CI keeps test runners such as Jest and react-scripts out of watch mode
+            $process = Process::path($run->worktree_path)->env([...ForemanEnv::removed(), 'CI' => 'true'])->timeout($timeout)->run($command, function () use ($run, &$beat) {
                 if (time() - $beat >= 30) {
                     $beat = time();
                     $run->update(['heartbeat_at' => now()]);

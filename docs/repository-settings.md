@@ -116,7 +116,7 @@ The setup script runs as you, with no sandbox. See [Known gaps](security.md#know
 
 ### Verify script
 
-Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout.
+Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout. It runs with `CI=true`, so test runners such as Jest don't start in watch mode and wait forever.
 
 Leave it empty to use the checks Foreman finds for the stacks in the worktree. For a Laravel app with Pint, PHPStan and Pest, and a base branch of `main`, that is:
 
@@ -126,7 +126,7 @@ vendor/bin/phpstan analyse
 vendor/bin/pest
 ```
 
-The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](stack-rules.md#what-the-default-checks-cover).
+The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. PHPStan runs only when the repo has a `phpstan.neon`, `phpstan.neon.dist` or `phpstan.dist.neon`. Without one, PHPStan has no paths to analyse and always fails. See [What the default checks cover](stack-rules.md#what-the-default-checks-cover).
 
 When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. **Use detected checks** puts this default back in the field. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](stack-rules.md#stack-rules) table lists the default for each language.
 
