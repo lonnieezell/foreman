@@ -151,10 +151,13 @@ A [verify script](repository-settings.md#verify-script) you write yourself runs 
 
 A [fix-up round](pr-watching.md#fix-up-rounds) or a **Continue after my reply** run reuses the branch it left behind. Before the agent starts, Foreman fetches `origin` and merges `origin/<base>` into that branch. A fix that landed on the base branch in the meantime then reaches the run.
 
+When the worktree is gone and Foreman rebuilds it from the pushed branch, the merge runs before the setup script, so dependencies the base branch added get installed. A worktree that is still there is reused as it is, and the setup script doesn't run again.
+
 | Situation | What happens |
 | --- | --- |
 | The merge goes through | The run goes on from the merged branch. The run log shows `Merging origin/<base> into <branch>`. |
-| The merge conflicts | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
+| The merge conflicts, fails or takes over 5 minutes | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
+| Fetching `origin` fails | Foreman doesn't merge. The run goes on from the branch as it was, and the log line starts with `Couldn't fetch origin`. |
 | The worktree has uncommitted changes | Foreman doesn't merge, because `git merge --abort` can't always put those changes back. The run goes on from the branch as it was. |
 
 A conflict doesn't stop the run or flag a human. Most fixes on the base branch aren't needed by the run, and the checks above already ignore problems the agent didn't touch. If the branch still needs the fix, [Foreman's gate](#foremans-gate) fails and a human sees why. The branch's commits are never lost: an aborted merge leaves the branch where it was.

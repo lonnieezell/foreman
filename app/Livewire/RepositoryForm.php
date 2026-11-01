@@ -174,7 +174,9 @@ class RepositoryForm extends Component
         $data['claude_profile'] = $data['claude_profile'] ?: null;
         $data['effort'] = $data['effort'] ?: null;
         $data['locked_paths'] = trim((string) $data['locked_paths']) ?: null;
-        $data['verify_script'] = trim((string) $data['verify_script']) ?: null;
+        // Store null when it's the default, so it follows later changes to the base branch and the stacks
+        $verify = trim((string) $data['verify_script']);
+        $data['verify_script'] = $verify === '' || $verify === Repository::defaultVerifyScript($data['local_path'], "origin/{$data['base_branch']}") ? null : $verify;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
         $default = file_get_contents(resource_path('prompts/default.md'));

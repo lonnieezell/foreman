@@ -12,6 +12,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 class ResumeCatchUpTest extends TestCase
@@ -52,15 +53,24 @@ class ResumeCatchUpTest extends TestCase
         ]);
     }
 
-    /** Runs the job with git answering as given: `status` is the porcelain output, `merge` the merge's exit code. */
-    private function process(Run $run, string $status = '', int $merge = 0): Run
+    /**
+     * Runs the job with git answering as given: `status` is the porcelain output, `merge` and `fetch` the exit codes.
+     * A `merge` of -1 throws, as a timeout does.
+     */
+    private function process(Run $run, string $status = '', int $merge = 0, int $fetch = 0): Run
     {
-        Process::fake(function (PendingProcess $process) use ($status, $merge) {
+        Process::fake(function (PendingProcess $process) use ($status, $merge, $fetch) {
             $this->ran[] = $process->command;
+            $abort = $process->command === ['git', 'merge', '--abort'];
+
+            if ($merge === -1 && ! $abort && array_slice($process->command, 0, 2) === ['git', 'merge']) {
+                throw new RuntimeException('The process "git merge" exceeded the timeout of 300 seconds.');
+            }
 
             return match (array_slice($process->command, 0, 2)) {
                 ['git', 'status'] => Process::result($status),
-                ['git', 'merge'] => Process::result('', $process->command[2] === '--abort' ? '' : 'CONFLICT (content): Merge conflict in app/A.php', $process->command[2] === '--abort' ? 0 : $merge),
+                ['git', 'fetch'] => Process::result('', $fetch ? 'fatal: unable to access origin' : '', $fetch),
+                ['git', 'merge'] => Process::result('', $abort ? '' : 'CONFLICT (content): Merge conflict in app/A.php', $abort ? 0 : $merge),
                 default => Process::result(json_encode(['type' => 'result', 'num_turns' => 1])),
             };
         });
@@ -132,6 +142,37 @@ class ResumeCatchUpTest extends TestCase
         $this->assertNull($this->position(['git', 'merge', '--no-edit', 'origin/develop']));
         $this->assertNotNull($this->claudePosition());
         $this->assertStringContainsString('uncommitted changes', (string) file_get_contents($run->logPath()));
+    }
+
+    public function test_a_failed_fetch_skips_the_merge_and_the_run_goes_on(): void
+    {
+        $run = $this->process($this->makeRun(), fetch: 1);
+
+        $this->assertNull($this->position(['git', 'merge', '--no-edit', 'origin/develop']));
+        $this->assertNotNull($this->claudePosition());
+        $this->assertStringContainsString("Couldn't fetch origin", (string) file_get_contents($run->logPath()));
+    }
+
+    public function test_a_merge_that_throws_is_aborted_and_the_run_goes_on(): void
+    {
+        $run = $this->process($this->makeRun(), merge: -1);
+
+        $this->assertNotNull($this->position(['git', 'merge', '--abort']));
+        $this->assertNotNull($this->claudePosition());
+        $this->assertStringContainsString('exceeded the timeout', (string) file_get_contents($run->logPath()));
+    }
+
+    public function test_a_rebuilt_worktree_merges_before_the_setup_script_and_fetches_once(): void
+    {
+        $this->process($this->makeRun(['worktree_path' => "{$this->worktree}/gone"]));
+
+        $merge = $this->position(['git', 'merge', '--no-edit', 'origin/develop']);
+        $setup = $this->position(['bash', '-ec', 'true']);
+
+        $this->assertNotNull($merge);
+        $this->assertNotNull($setup);
+        $this->assertLessThan($setup, $merge, 'dependencies the base adds get installed');
+        $this->assertCount(1, array_filter($this->ran, fn ($c) => array_slice($c, 0, 2) === ['git', 'fetch']));
     }
 
     public function test_a_first_run_does_not_merge(): void

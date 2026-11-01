@@ -104,6 +104,21 @@ class VerifyScriptTest extends TestCase
         $this->assertNull($repo->fresh()->verify_script);
     }
 
+    public function test_saving_the_unchanged_default_stores_nothing_so_it_follows_the_base_branch(): void
+    {
+        mkdir("{$this->dir}/.git");
+        $repo = $this->repository(['verify_script' => 'make check']);
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+
+        Livewire::test(RepositoryForm::class, ['repository' => $repo])
+            ->set('base_branch', 'develop')
+            ->set('verify_script', str_replace('origin/main', 'origin/develop', self::DEFAULT))
+            ->call('save', $github)
+            ->assertHasNoErrors();
+
+        $this->assertNull($repo->fresh()->verify_script);
+    }
+
     public function test_the_form_offers_to_copy_the_verify_script_prompt(): void
     {
         Livewire::test(RepositoryForm::class)

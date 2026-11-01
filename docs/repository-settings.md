@@ -118,7 +118,7 @@ vendor/bin/pest
 
 The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](guardrails.md#what-the-default-checks-cover).
 
-When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
+When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
 
 Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
 
