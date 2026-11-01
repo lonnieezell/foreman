@@ -65,6 +65,8 @@ class ReviewPassTest extends TestCase
             'security' => ['type' => 'result', 'num_turns' => 3, 'total_cost_usd' => 0.25, 'session_id' => 'sess-1'],
             'reviewResult' => null,
             'originHead' => true,
+            'gpgsign' => 'true',
+            'pushed' => true,
         ];
 
         $run = Repository::create([
@@ -108,6 +110,22 @@ class ReviewPassTest extends TestCase
                 return Process::result('', '', $answers['originHead'] ? 0 : 1);
             }
 
+            if ($command === ['git', 'rev-parse', '--verify', '--quiet', 'origin/agent/issue-7']) {
+                return Process::result('', '', $answers['pushed'] ? 0 : 1);
+            }
+
+            if ($command === ['git', 'merge-base', 'HEAD', 'origin/main']) {
+                return Process::result("base-sha\n");
+            }
+
+            if (in_array('--git-common-dir', $command, true)) {
+                return Process::result("/repo/.git/worktrees/issue-7\n/repo/.git\n");
+            }
+
+            if ($command === ['git', 'config', '--type=bool', '--get', 'commit.gpgsign']) {
+                return Process::result("{$answers['gpgsign']}\n");
+            }
+
             if (array_slice($command, 0, 3) === ['gh', 'pr', 'create']) {
                 return Process::result("https://github.com/owner/app/pull/12\n");
             }
@@ -143,6 +161,32 @@ class ReviewPassTest extends TestCase
     private function ran(array $prefix): bool
     {
         return collect($this->commands)->contains(fn ($c) => array_slice($c, 0, count($prefix)) === $prefix);
+    }
+
+    /** A sandboxed agent can't reach gpg-agent, so Foreman signs every commit it hasn't pushed yet, outside the sandbox. */
+    public function test_a_sandboxed_run_signs_the_commits_not_yet_pushed_before_it_pushes(): void
+    {
+        $this->settle(self::TEST_DIFF, repository: ['sandbox' => true]);
+
+        $sign = array_search(['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', 'origin/agent/issue-7'], $this->commands, true);
+        $push = collect($this->commands)->search(fn ($c) => array_slice($c, 0, 2) === ['git', 'push']);
+        $this->assertNotFalse($sign, 'commits after the pushed branch are re-signed');
+        $this->assertLessThan($push, $sign);
+    }
+
+    public function test_a_branch_never_pushed_is_signed_from_where_it_left_the_base(): void
+    {
+        $this->settle(self::TEST_DIFF, ['pushed' => false], ['sandbox' => true]);
+
+        $this->assertTrue($this->ran(['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', 'base-sha']));
+    }
+
+    public function test_commits_are_not_re_signed_when_unsandboxed_or_when_signing_is_off(): void
+    {
+        $this->settle(self::TEST_DIFF);
+        $this->settle(self::TEST_DIFF, ['gpgsign' => 'false'], ['sandbox' => true]);
+
+        $this->assertFalse($this->ran(['git', 'rebase']));
     }
 
     public function test_a_tier_1_change_gets_a_low_effort_code_review_and_simplify_but_no_security_review(): void

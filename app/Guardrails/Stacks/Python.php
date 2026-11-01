@@ -17,6 +17,11 @@ class Python extends Stack
         return ['ruff.toml', '.ruff.toml', 'mypy.ini', 'pytest.ini', 'tox.ini', 'setup.cfg'];
     }
 
+    public function networkHosts(): array
+    {
+        return ['pypi.org', 'files.pythonhosted.org'];
+    }
+
     public function lockFiles(): array
     {
         return ['uv.lock', 'poetry.lock'];

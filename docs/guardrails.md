@@ -117,6 +117,7 @@ A repository can have several stacks. Its rules are the union of each stack's ru
 | **Marker file** | `composer.json` | `package.json` | `Cargo.toml` | `pyproject.toml`, `requirements*.txt`, `setup.py` |
 | **Protected config** | `phpunit.xml*`, `phpstan*.neon`, `rector.php`, `pint.json` | `tsconfig*.json`, `eslint.config.*`, `.eslintrc*`, `vitest`, `jest` and `playwright` configs, `biome.json`, `.prettierrc*` | `rustfmt.toml`, `clippy.toml`, `deny.toml`, `.cargo/config.toml`, `rust-toolchain*`, `src-tauri/capabilities/**` | `ruff.toml`, `mypy.ini`, `pytest.ini`, `tox.ini`, `setup.cfg`, and `[tool.*]` tables in `pyproject.toml` |
 | **Lock files** | `composer.lock` | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | `Cargo.lock` | `uv.lock`, `poetry.lock` |
+| **[Sandbox](repository-settings.md#sandbox) hosts** | `packagist.org`, `repo.packagist.org` | `registry.npmjs.org`, `registry.yarnpkg.com` | `crates.io`, `index.crates.io`, `static.crates.io` | `pypi.org`, `files.pythonhosted.org` |
 | **Test files** | `tests/**` | `*.test.*`, `*.spec.*`, `__tests__/**`, `e2e/**` | `tests/**`, plus inline `#[cfg(test)]` | `tests/**`, `test_*.py`, `*_test.py`, `conftest.py` |
 | **Test markers** | `test(`, `it(`, `function test` | `it(`, `test(` | `#[test]`, `#[tokio::test]` | `def test_` |
 | **Assertion markers** | `expect(`, `assert` | `expect(` | `assert!`, `assert_eq!`, `assert_ne!`, `#[should_panic]` | `assert `, `self.assert`, `pytest.raises` |
@@ -383,18 +384,18 @@ A deep review on every change costs time and money for little gain. A typo fix i
 
 ## Known gaps
 
-Foreman doesn't sandbox the agent. A *sandbox* is a limit the operating system puts on a command. It controls which files the command can write and which hosts it can call. The guardrails above check the agent's work. They don't stop the code that allowed tools run, as [Foreman pushes, not the agent](#foreman-pushes-not-the-agent) explains.
+A *sandbox* is a limit the operating system puts on a command. It controls which files the command can write and which hosts it can call. The guardrails above check the agent's work. They don't stop the code that allowed tools run, as [Foreman pushes, not the agent](#foreman-pushes-not-the-agent) explains. The [Sandbox](repository-settings.md#sandbox) setting narrows that gap, but doesn't close it. It is off by default.
 
 ### The setup script and the checks run unsandboxed
 
 The [setup script](repository-settings.md#setup-script) and the [verify script](repository-settings.md#verify-script) run as you. That includes your keychain, the macOS store that holds the `gh` and git passwords. Foreman's gate and the [definition-of-done](#definition-of-done) hook run the verify script and the integrity check. So code the agent wrote, such as a new test, runs with your access whenever the checks run.
 
-### Claude Code's sandbox was tested and left off
+### What the sandbox setting doesn't cover
 
-Claude Code has its own sandbox. Foreman tested it in a short experiment on Claude Code 2.1.316 on macOS. The experiment used headless runs, which are `claude -p` runs with no one at the keyboard, the same way Foreman starts the agent. [Issue #29](https://github.com/lonnieezell/foreman/issues/29) has the commands and results.
+The setting turns on Claude Code's own sandbox for the agent's shell commands. It was tested only on macOS, with Claude Code 2.1.316. [Issue #29](https://github.com/lonnieezell/foreman/issues/29) has the commands and results.
 
-- **It works in headless runs.** The sandbox settings in the `--settings` file took effect. The sandbox blocked a host that wasn't on the allowlist, which is the list of hosts a command may call. It also stopped a write to the home folder. The agent asked to run a command outside the sandbox, and the sandbox refused.
-- **It doesn't protect your credentials.** A sandboxed command could still run `gh auth token` and `git credential fill`, or read the `gh` token from the keychain. The allowlist must include `github.com` for git dependencies, so a script could still send the token there.
-- **It covers only the agent's shell tool.** The setup script and Foreman's gate run outside Claude, so the sandbox never applies to them. The experiment didn't test whether it covers hooks, such as the definition-of-done hook.
-
-Foreman has no sandbox setting for now. A worktree's git data and the package caches sit outside the worktree. Turning the sandbox on would probably break commits and slow down or break installs, though the experiment didn't test either one.
+- **It doesn't fully protect your credentials.** Foreman blocks reads of `~/.config/gh`, so `gh auth token` fails. But a script can still read the `gh` token straight from the keychain, for example with `security find-generic-password`. Claude Code's sandbox profile for macOS allows keychain lookups, and its settings have no way to turn that off. The *allowlist*, the hosts a sandboxed command may reach, must include GitHub for git dependencies. So a script could still send the token there.
+- **It covers only the agent's shell tool.** The setup script and Foreman's gate run outside Claude, so the sandbox never applies to them. Claude Code's hooks run outside it too. That keeps Foreman's hooks working, but the definition-of-done hook runs the checks unsandboxed.
+- **A repository can probably widen it.** Claude Code's settings code merges lists such as the allowlist from every settings file. So hosts in the repository's own `.claude/settings.json` would be allowed too. This wasn't tested. The agent can't edit that file, because the guard hook blocks it.
+- **It isn't tested on Linux or Windows.** Claude Code's sandbox works differently there. Foreman asks Claude Code to fail when no sandbox is available, but that path wasn't tested either.
+- **Some of the `.git` folder stays writable.** Commits need to write objects, refs and logs there. The hooks, the config, and the files that point a worktree at its git folder stay blocked. Those would let a script run code through Foreman's own git commands, outside the sandbox. A test on macOS confirmed that writes to the hooks, the config and those files were denied, while commits still worked.

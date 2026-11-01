@@ -222,6 +222,11 @@
                 <input type="checkbox" wire:model="cleanup_worktrees">
                 Remove the worktree once Foreman is done with the PR
             </label>
+
+            <label class="check">
+                <input type="checkbox" wire:model="sandbox">
+                Sandbox the agent's shell commands (macOS only, <a href="{{ route('docs', 'repository-settings') }}#sandbox">with limits</a>)
+            </label>
         </section>
 
         <div>

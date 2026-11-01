@@ -60,6 +60,8 @@ class RepositoryForm extends Component
 
     public bool $watch_prs = true;
 
+    public bool $sandbox = false;
+
     public function mount(?Repository $repository = null): void
     {
         if ($repository?->exists) {
@@ -67,7 +69,7 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model', 'max_turns',
-                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs',
+                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox',
             ]));
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
             $this->max_budget_per_run = (string) $repository->max_budget_per_run;
@@ -165,6 +167,7 @@ class RepositoryForm extends Component
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
             'watch_prs' => ['boolean'],
+            'sandbox' => ['boolean'],
         ], [
             'github_repo.regex' => 'Use the owner/name form, like vault-innovation/vault-app.',
         ]);

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\RunStatus;
 use App\Guardrails\RiskTier;
+use App\Guardrails\Sandbox;
 use App\Guardrails\StackSet;
 use App\Models\Repository;
 use App\Models\Run;
@@ -240,7 +241,7 @@ class ProcessRun implements ShouldQueue
         $this->result = null;
 
         $process = Process::path($worktree)
-            ->env([...$repo->claudeEnv(), ...self::agentEnv()])
+            ->env([...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox)])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -313,8 +314,7 @@ class ProcessRun implements ShouldQueue
         File::delete("{$dir}/run-{$run->id}-stops");   // each start of the agent, resumes included, gets its own 3 blocks
 
         $hook = fn (string $name) => implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), $name, $rules]));
-        $settings = "{$dir}/run-{$run->id}-settings.json";
-        File::put($settings, json_encode(['hooks' => [
+        $config = ['hooks' => [
             'PreToolUse' => [[
                 'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
                 'hooks' => [
@@ -324,7 +324,14 @@ class ProcessRun implements ShouldQueue
             ]],
             // The checks can take a while, so the timeout (in seconds) is longer than Claude Code's default
             'Stop' => [['hooks' => [['type' => 'command', 'command' => $hook('foreman:stop'), 'timeout' => 1800]]]],
-        ]]));
+        ]];
+
+        if ($run->repository->sandbox) {
+            $config['sandbox'] = Sandbox::settings($worktree);
+        }
+
+        $settings = "{$dir}/run-{$run->id}-settings.json";
+        File::put($settings, json_encode($config));
 
         return $settings;
     }
@@ -615,23 +622,53 @@ class ProcessRun implements ShouldQueue
     /** Foreman's own push, with the agent's restrictions left off. */
     private function push(Run $run): void
     {
+        if ($run->repository->sandbox) {
+            $this->signUnpushedCommits($run);
+        }
+
         $this->step($run, "Pushing {$run->branch}", ['git', 'push', '--set-upstream', 'origin', $run->branch], $run->worktree_path);
+    }
+
+    /** A sandboxed agent can't reach gpg-agent, so it commits unsigned. Sign what isn't pushed yet, here outside the sandbox. */
+    private function signUnpushedCommits(Run $run): void
+    {
+        $git = Process::path($run->worktree_path);
+
+        if (trim($git->run(['git', 'config', '--type=bool', '--get', 'commit.gpgsign'])->output()) !== 'true') {
+            return;
+        }
+
+        $from = $git->run(['git', 'rev-parse', '--verify', '--quiet', "origin/{$run->branch}"])->successful()
+            ? "origin/{$run->branch}"
+            : trim($git->run(['git', 'merge-base', 'HEAD', "origin/{$run->repository->base_branch}"])->output());
+        $this->step($run, 'Signing the agent\'s commits', ['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', $from], $run->worktree_path);
     }
 
     /**
      * Environment that stops the agent pushing: origin's push URL goes nowhere, no credential helper
-     * answers, and GitHub tokens are dropped. A false value removes the variable.
+     * answers, and GitHub tokens are dropped. A false value removes the variable. A sandboxed agent
+     * also gets the Sandbox's git settings and environment.
      *
      * @return array<string,string|false>
      */
-    public static function agentEnv(): array
+    public static function agentEnv(bool $sandboxed = false): array
     {
+        $config = [
+            'remote.origin.pushurl' => '/nonexistent/foreman-agents-cannot-push',
+            'credential.helper' => '',
+            ...($sandboxed ? Sandbox::gitConfig() : []),
+        ];
+        $git = ['GIT_CONFIG_COUNT' => (string) count($config)];
+        $i = 0;
+        foreach ($config as $key => $value) {
+            $git["GIT_CONFIG_KEY_{$i}"] = $key;
+            $git["GIT_CONFIG_VALUE_{$i}"] = $value;
+            $i++;
+        }
+
         return [
-            'GIT_CONFIG_COUNT' => '2',
-            'GIT_CONFIG_KEY_0' => 'remote.origin.pushurl',
-            'GIT_CONFIG_VALUE_0' => '/nonexistent/foreman-agents-cannot-push',
-            'GIT_CONFIG_KEY_1' => 'credential.helper',
-            'GIT_CONFIG_VALUE_1' => '',
+            ...$git,
+            ...($sandboxed ? Sandbox::env() : []),
             'GIT_TERMINAL_PROMPT' => '0',
             'GH_TOKEN' => false,
             'GITHUB_TOKEN' => false,

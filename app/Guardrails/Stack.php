@@ -22,6 +22,9 @@ abstract class Stack
     /** Files that carry the stack's tool settings. The agent may not edit them. */
     abstract public function protectedConfig(): array;
 
+    /** Package registry hosts the sandbox lets the agent's shell reach. */
+    abstract public function networkHosts(): array;
+
     /** Lock files. Editing them is allowed when the issue carries a `dependencies` label. */
     abstract public function lockFiles(): array;
 
@@ -56,7 +59,7 @@ abstract class Stack
 
     /** The rule tables a stack always fills, by method name. */
     public const RULES = [
-        'protectedConfig', 'lockFiles', 'testFiles', 'testMarkers', 'assertionMarkers',
+        'protectedConfig', 'lockFiles', 'networkHosts', 'testFiles', 'testMarkers', 'assertionMarkers',
         'skipMarkers', 'tier3Paths', 'riskyCode',
     ];
 

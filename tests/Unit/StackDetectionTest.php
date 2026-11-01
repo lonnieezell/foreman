@@ -258,6 +258,9 @@ class StackDetectionTest extends TestCase
         $this->assertContains('Cargo.lock', (new Rust($this->root, ['']))->lockFiles());
         $this->assertContains('#[ignore]', (new Rust($this->root, ['']))->skipMarkers());
         $this->assertContains('.skip(', (new TypeScript($this->root, ['']))->skipMarkers());
+        $this->assertContains('registry.npmjs.org', (new TypeScript($this->root, ['']))->networkHosts());
+        $this->assertContains('static.crates.io', (new Rust($this->root, ['']))->networkHosts());
+        $this->assertContains('files.pythonhosted.org', (new Python($this->root, ['']))->networkHosts());
         $this->assertContains('pytest.mark.xfail', (new Python($this->root, ['']))->skipMarkers());
         $this->assertContains('conftest.py', (new Python($this->root, ['']))->testFiles());
         $this->assertContains('def test_', (new Python($this->root, ['']))->testMarkers());

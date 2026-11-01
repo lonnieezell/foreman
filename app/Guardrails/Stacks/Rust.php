@@ -19,6 +19,11 @@ class Rust extends Stack
         ];
     }
 
+    public function networkHosts(): array
+    {
+        return ['crates.io', 'index.crates.io', 'static.crates.io'];
+    }
+
     public function lockFiles(): array
     {
         return ['Cargo.lock'];

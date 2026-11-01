@@ -37,6 +37,11 @@ class Php extends Stack
         return ['phpunit.xml*', 'phpstan*.neon', 'rector.php', 'pint.json'];
     }
 
+    public function networkHosts(): array
+    {
+        return ['packagist.org', 'repo.packagist.org'];
+    }
+
     public function lockFiles(): array
     {
         return ['composer.lock'];
