@@ -59,7 +59,9 @@ class DocsTest extends TestCase
             ->assertSee('The pipeline at a glance')
             ->assertSee('id="stack-rules"', false)
             ->assertSee('<table', false)
-            ->assertSee('src-tauri/capabilities/**');
+            ->assertSee('src-tauri/capabilities/**')
+            ->assertSee('id="known-gaps"', false)
+            ->assertSee('The setup script and the checks run unsandboxed');
     }
 
     public function test_the_guardrails_links_to_other_pages_resolve(): void

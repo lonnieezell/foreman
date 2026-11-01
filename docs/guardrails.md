@@ -80,7 +80,7 @@ Both cases started the same way: untrusted text reached an agent that could run 
 - The agent still writes the PR's title and body, and the comment on the issue. Foreman posts them as written.
 - Code the agent commits is still pushed. A bad change can reach a PR, which is why the other guardrails and your review still matter.
 - Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
-- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
+- The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands. See [Known gaps](#known-gaps).
 - The agent can still reach the network through allowed tools such as `npm` and `composer`.
 
 ### Rounds and resumes follow the same rules
@@ -119,6 +119,7 @@ A repository can have several stacks. Its rules are the union of each stack's ru
 | **Marker file** | `composer.json` | `package.json` | `Cargo.toml` | `pyproject.toml`, `requirements*.txt`, `setup.py` |
 | **Protected config** | `phpunit.xml*`, `phpstan*.neon`, `rector.php`, `pint.json` | `tsconfig*.json`, `eslint.config.*`, `.eslintrc*`, `vitest`, `jest` and `playwright` configs, `biome.json`, `.prettierrc*` | `rustfmt.toml`, `clippy.toml`, `deny.toml`, `.cargo/config.toml`, `rust-toolchain*`, `src-tauri/capabilities/**` | `ruff.toml`, `mypy.ini`, `pytest.ini`, `tox.ini`, `setup.cfg`, and `[tool.*]` tables in `pyproject.toml` |
 | **Lock files** | `composer.lock` | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` | `Cargo.lock` | `uv.lock`, `poetry.lock` |
+| **[Sandbox](repository-settings.md#sandbox) hosts** | `packagist.org`, `repo.packagist.org` | `registry.npmjs.org`, `registry.yarnpkg.com` | `crates.io`, `index.crates.io`, `static.crates.io` | `pypi.org`, `files.pythonhosted.org` |
 | **Test files** | `tests/**` | `*.test.*`, `*.spec.*`, `__tests__/**`, `e2e/**` | `tests/**`, plus inline `#[cfg(test)]` | `tests/**`, `test_*.py`, `*_test.py`, `conftest.py` |
 | **Test markers** | `test(`, `it(`, `function test` | `it(`, `test(` | `#[test]`, `#[tokio::test]` | `def test_` |
 | **Assertion markers** | `expect(`, `assert` | `expect(` | `assert!`, `assert_eq!`, `assert_ne!`, `#[should_panic]` | `assert `, `self.assert`, `pytest.raises` |
@@ -484,3 +485,21 @@ Writing the workflow is not enough. **Without branch protection, nothing stops a
 - It does not read your CI secrets or tune the tools. A repo with its own Rector, PHPStan or ESLint rules keeps them.
 - It only adds a step when it can see the tool in the repo. A tool that is installed some other way is skipped.
 - It can't confirm the workflow passes on your repo. Read the first run, and expect to adjust install steps for unusual setups.
+
+## Known gaps
+
+A *sandbox* is a limit the operating system puts on a command. It controls which files the command can write and which hosts it can call. The guardrails above check the agent's work. They don't stop the code that allowed tools run, as [Foreman pushes, not the agent](#foreman-pushes-not-the-agent) explains. The [Sandbox](repository-settings.md#sandbox) setting narrows that gap, but doesn't close it. It is off by default.
+
+### The setup script and the checks run unsandboxed
+
+The [setup script](repository-settings.md#setup-script) and the [verify script](repository-settings.md#verify-script) run as you. That includes your keychain, the macOS store that holds the `gh` and git passwords. Foreman's gate and the [definition-of-done](#definition-of-done) hook run the verify script and the integrity check. So code the agent wrote, such as a new test, runs with your access whenever the checks run.
+
+### What the sandbox setting doesn't cover
+
+The setting turns on Claude Code's own sandbox for the agent's shell commands. It was tested only on macOS, with Claude Code 2.1.316. [Issue #29](https://github.com/lonnieezell/foreman/issues/29) has the commands and results.
+
+- **It doesn't fully protect your credentials.** Foreman blocks reads of `~/.config/gh`, so `gh auth token` fails. But a script can still read the `gh` token straight from the keychain, for example with `security find-generic-password`. Claude Code's sandbox profile for macOS allows keychain lookups, and its settings have no way to turn that off. The *allowlist*, the hosts a sandboxed command may reach, must include GitHub for git dependencies. So a script could still send the token there.
+- **It covers only the agent's shell tool.** The setup script and Foreman's gate run outside Claude, so the sandbox never applies to them. Claude Code's hooks run outside it too. That keeps Foreman's hooks working, but the definition-of-done hook runs the checks unsandboxed.
+- **A repository can probably widen it.** Claude Code's settings code merges lists such as the allowlist from every settings file. So hosts in the repository's own `.claude/settings.json` would be allowed too. This wasn't tested. The agent can't edit that file, because the guard hook blocks it.
+- **It isn't tested on Linux or Windows.** Claude Code's sandbox works differently there. Foreman asks Claude Code to fail when no sandbox is available, but that path wasn't tested either.
+- **Some of the `.git` folder stays writable.** Commits need to write objects, refs and logs there. The hooks, the config, and the files that point a worktree at its git folder stay blocked. Those would let a script run code through Foreman's own git commands, outside the sandbox. A test on macOS confirmed that writes to the hooks, the config and those files were denied, while commits still worked.

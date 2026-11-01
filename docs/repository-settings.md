@@ -102,7 +102,7 @@ npm run build --silent
 
 The code icon (`< >`) next to the label copies a prompt for Claude Code. Paste it into `claude` in the project, and Claude works out a script that fits. The prompt uses what's in the form now, including unsaved edits.
 
-The setup script runs as you, with no sandbox. It doesn't get the variables from Foreman's own `.env`, so the worktree's `.env` decides its settings. See [Worktree processes don't get these settings](global-settings.md#worktree-processes-dont-get-these-settings).
+The setup script runs as you, with no sandbox. See [Known gaps](guardrails.md#known-gaps). It doesn't get the variables from Foreman's own `.env`, so the worktree's `.env` decides its settings. See [Worktree processes don't get these settings](global-settings.md#worktree-processes-dont-get-these-settings).
 
 ### Verify script
 
@@ -188,6 +188,23 @@ On by default. After the agent opens a PR, Foreman follows it through CI and rev
 ### Remove the worktree once Foreman is done with the PR
 
 On by default. Foreman deletes the worktree when it's finished with the PR. That's when the PR is ready, handed to you, or cancelled, or straight away if Watch PRs is off. A failed run always keeps its worktree, so you can look inside it.
+
+### Sandbox
+
+Off by default. When it's on, Foreman runs the agent's shell commands in Claude Code's sandbox. A *sandbox* is a limit the operating system puts on a command. Build scripts those commands start, such as an npm `postinstall` script, run in it too.
+
+This was tested only on macOS, with Claude Code 2.1.316. The test covered a commit, GPG signing, an npm install, Foreman's hooks, a blocked host, and the blocked writes and reads listed below. It didn't cover Composer, pip or Cargo installs, or a Mac where the sandbox isn't available.
+
+- **Writes** stay in the worktree, plus the parts of the checkout's `.git` folder that a commit writes. A script can't change your home folder, your other checkouts, or the repository's git hooks and git config.
+- **Reads** of `~/.gnupg`, `~/.ssh` and `~/.config/gh` are blocked, since they hold keys and tokens. Everything else in your home folder can still be read.
+- **Network.** Commands can reach only the hosts on the *allowlist*. That is GitHub plus the package registries, the servers packages download from, for the stacks Foreman found. They are Packagist, npm and Yarn, crates.io, and PyPI.
+- **No way out.** The agent can't ask to run a command outside the sandbox. Foreman also asks Claude Code to fail the run when the sandbox isn't available.
+- **Package caches.** Package managers keep downloaded packages in a cache folder, and the sandbox blocks yours. So the agent's installs use `storage/foreman/cache/` instead. A script in one repository then can't tamper with the caches your other projects use. Each tool's first install starts with an empty cache. Cargo is the exception: it keeps using `~/.cargo/registry` and `~/.cargo/git`.
+- **Signed commits.** Git signs commits through `gpg-agent`, a background program that holds your unlocked key. The sandbox blocks it, so the agent commits without signing. If your git config signs commits, Foreman signs every commit it hasn't pushed yet, just before it pushes.
+
+Git dependencies over SSH fail, because the agent has no SSH agent and can't read `~/.ssh`. Use HTTPS URLs for them. Turn the sandbox off for a repository that needs another host, such as a private registry.
+
+The sandbox still leaves gaps. A script can still read your `gh` token straight from the keychain, and the setup script and Foreman's checks run outside it. See [Known gaps](guardrails.md#known-gaps) before you rely on it.
 
 ## Archive and remove
 

@@ -21,6 +21,11 @@ class TypeScript extends Stack
         ];
     }
 
+    public function networkHosts(): array
+    {
+        return ['registry.npmjs.org', 'registry.yarnpkg.com'];
+    }
+
     public function lockFiles(): array
     {
         return array_keys(self::LOCK_FILES);

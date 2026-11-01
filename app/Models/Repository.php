@@ -32,12 +32,16 @@ SH;
 
     protected $guarded = ['id'];
 
+    // Matches the column default, so a repository made in code is unsandboxed before it's saved
+    protected $attributes = ['sandbox' => false];
+
     protected function casts(): array
     {
         return [
             'enabled' => 'boolean',
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
+            'sandbox' => 'boolean',
             'daily_budget' => 'decimal:2',
             'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
