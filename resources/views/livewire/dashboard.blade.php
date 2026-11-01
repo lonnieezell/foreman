@@ -279,7 +279,7 @@
                         @case(\App\Enums\RunStatus::NeedsHuman)
                             <div class="issue-actions">
                                 @if ($run->issue_url)<a class="btn btn-quiet" href="{{ $run->issue_url }}" target="_blank" rel="noopener">Open issue</a>@endif
-                                <button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
+                                @if ($run->canContinueAfterReply())<button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>@endif
                                 <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
                             </div>
                             @break

@@ -115,7 +115,7 @@ class IssueSectionsTest extends TestCase
     public function test_cards_show_their_actions(): void
     {
         $repo = $this->repository();
-        $this->makeRun($repo, 1, RunStatus::NeedsHuman);
+        $this->makeRun($repo, 1, RunStatus::NeedsHuman, ['session_id' => 'sess-1', 'worktree_path' => '/tmp/wt']);
         $this->makeRun($repo, 2, RunStatus::Failed, ['error' => 'boom']);
         $this->makeRun($repo, 3, RunStatus::PrReady, ['pr_url' => 'https://example.test/pull/3']);
         $this->makeRun($repo, 5, RunStatus::WatchingPr, ['pr_url' => 'https://example.test/pull/5']);
@@ -129,6 +129,23 @@ class IssueSectionsTest extends TestCase
             ->assertSeeHtml('href="https://example.test/pull/3"')
             ->assertDontSeeHtml('href="https://example.test/pull/5"')
             ->assertSeeHtml('wire:click="retryRun('.Run::where('issue_number', 6)->value('id').')"');
+    }
+
+    public function test_continue_after_my_reply_follows_the_run_page_rules(): void
+    {
+        $repo = $this->repository();
+        $withPr = $this->makeRun($repo, 1, RunStatus::NeedsHuman, ['session_id' => 's', 'worktree_path' => '/tmp/wt', 'pr_url' => 'https://example.test/pull/1']);
+        $noSession = $this->makeRun($repo, 2, RunStatus::NeedsHuman, ['worktree_path' => '/tmp/wt']);
+        $noWorktree = $this->makeRun($repo, 3, RunStatus::NeedsHuman, ['session_id' => 's']);
+        $ok = $this->makeRun($repo, 4, RunStatus::NeedsHuman, ['session_id' => 's', 'worktree_path' => '/tmp/wt']);
+        Process::fake();
+
+        $test = Livewire::test(Dashboard::class);
+
+        foreach ([$withPr, $noSession, $noWorktree] as $run) {
+            $test->assertDontSeeHtml('wire:click="continueRun('.$run->id.')"');
+        }
+        $test->assertSeeHtml('wire:click="continueRun('.$ok->id.')"');
     }
 
     public function test_a_card_shows_number_repository_title_reason_and_age_and_links_to_the_latest_run(): void

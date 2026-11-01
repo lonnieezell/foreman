@@ -90,6 +90,12 @@ class Run extends Model
                 ->whereRaw('coalesce(earlier.finished_at, earlier.updated_at) >= ?', [now()->startOfDay()]));
     }
 
+    /** Continuing needs a session and a worktree to resume, and a run with a PR is the human's from here. */
+    public function canContinueAfterReply(): bool
+    {
+        return $this->status === RunStatus::NeedsHuman && $this->session_id && $this->worktree_path && ! $this->pr_url;
+    }
+
     /** Resume the same Claude session in the same worktree, after the human replied on the issue. */
     public function continueAfterReply(GitHub $github): self
     {
