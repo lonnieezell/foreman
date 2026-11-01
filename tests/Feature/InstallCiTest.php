@@ -331,6 +331,46 @@ class InstallCiTest extends TestCase
         $this->assertLessThan(array_search('Tests', $names), array_search('Prepare Laravel environment', $names));
     }
 
+    public function test_php_installs_through_composer_install_which_caches_dependencies(): void
+    {
+        $root = $this->install($this->repo(['composer.json' => self::LARAVEL]));
+        $nested = $this->install($this->repo(['backend/composer.json' => self::LARAVEL], 'nested'));
+
+        $this->assertSame('ramsey/composer-install@v3', $this->step($root, 'php', 'Install dependencies')['uses']);
+        $this->assertArrayNotHasKey('with', $this->step($root, 'php', 'Install dependencies'));
+        $this->assertSame('backend', $this->step($nested, 'php', 'Install dependencies')['with']['working-directory']);
+    }
+
+    public function test_node_caches_by_its_lock_file_only_when_there_is_one(): void
+    {
+        $pnpm = $this->install($this->repo(['web/package.json' => '{}', 'web/pnpm-lock.yaml' => ''], 'pnpm'));
+        $noLock = $this->install($this->repo(['package.json' => '{}'], 'nolock'));
+
+        $this->assertSame(['node-version' => 'lts/*', 'cache' => 'pnpm', 'cache-dependency-path' => 'web/pnpm-lock.yaml'], $this->step($pnpm, 'typescript', 'Set up Node')['with']);
+        $this->assertArrayNotHasKey('cache', $this->step($noLock, 'typescript', 'Set up Node')['with']);
+    }
+
+    public function test_python_caches_for_each_install_path(): void
+    {
+        $pip = $this->install($this->repo(['api/pyproject.toml' => '', 'api/requirements.txt' => ''], 'pip'));
+        $uv = $this->install($this->repo(['pyproject.toml' => '', 'uv.lock' => ''], 'uv'));
+        $poetry = $this->install($this->repo(['pyproject.toml' => '', 'poetry.lock' => ''], 'poetry'));
+
+        $this->assertSame(['python-version' => '3.12', 'cache' => 'pip', 'cache-dependency-path' => 'api/requirements.txt'], $this->step($pip, 'python', 'Set up Python')['with']);
+        $this->assertTrue($this->step($uv, 'python', 'Set up uv')['with']['enable-cache']);
+        $this->assertSame(['path' => '~/.cache/pypoetry', 'key' => "poetry-\${{ runner.os }}-\${{ hashFiles('poetry.lock') }}"], $this->step($poetry, 'python', 'Cache Poetry')['with']);
+    }
+
+    public function test_rust_caches_its_build_in_the_stacks_folder(): void
+    {
+        $root = $this->install($this->repo(['Cargo.toml' => '[package]']));
+        $tauri = $this->install($this->repo(['package.json' => '{}', 'src-tauri/Cargo.toml' => '[package]'], 'tauri'));
+
+        $this->assertSame('Swatinem/rust-cache@v2', $this->step($root, 'rust', 'Cache Rust build')['uses']);
+        $this->assertArrayNotHasKey('with', $this->step($root, 'rust', 'Cache Rust build'));
+        $this->assertSame('src-tauri', $this->step($tauri, 'rust', 'Cache Rust build')['with']['workspaces']);
+    }
+
     public function test_a_failed_commit_puts_the_repo_back_as_it_was(): void
     {
         $dir = $this->repo(['package.json' => '{}']);

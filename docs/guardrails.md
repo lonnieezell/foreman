@@ -455,6 +455,13 @@ Each job also runs a copy of the test-integrity script. The script needs PHP, so
 
 CodeQL on a private repository needs GitHub Advanced Security. The workflow runs CodeQL only on public repos. On a private repo it runs Semgrep instead, with rules for the stack. If your private repo has Advanced Security, delete the `if` lines on the CodeQL and Semgrep steps. The workflow file says so too.
 
+Each job caches its dependencies between runs, so only the first run downloads everything:
+
+- **PHP:** `ramsey/composer-install` runs `composer install` and caches the downloads.
+- **TypeScript:** `actions/setup-node` caches by the lock file. Bun has no built-in cache, so Bun jobs install from scratch. A repo with no lock file gets no cache.
+- **Rust:** `Swatinem/rust-cache` caches the cargo registry and the build output.
+- **Python:** `actions/setup-python` caches pip by `requirements.txt`, or by `pyproject.toml` when there is none. uv uses its own cache. Poetry gets an `actions/cache` step keyed on `poetry.lock`.
+
 A stack in a sub-folder, such as a Tauri app's `src-tauri`, runs in that folder. If a stack sits in several folders, only the shallowest one gets checks.
 
 ### Why the order fails fast

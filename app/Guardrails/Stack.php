@@ -65,6 +65,12 @@ abstract class Stack
         return $dirs[0];
     }
 
+    /** `$file` in the CI folder, relative to the repo root. `uses:` steps need this, because they ignore the job's working directory. */
+    protected function ciPath(string $file): string
+    {
+        return ltrim($this->ciDir()."/{$file}", '/');
+    }
+
     /** Changes here are high risk (tier 3). */
     abstract public function tier3Paths(): array;
 

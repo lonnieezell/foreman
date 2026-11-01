@@ -104,7 +104,10 @@ class TypeScript extends Stack
             $steps[$name === 'Tests' ? 'test' : 'lint'][] = ['name' => $name, 'run' => $command];
         }
 
-        $node = ['name' => 'Set up Node', 'uses' => 'actions/setup-node@v4', 'with' => ['node-version' => 'lts/*']];
+        $lock = collect(self::LOCK_FILES)->keys()->first(fn (string $file) => $this->has($dir, $file));
+        // setup-node fails when caching is on and it finds no lock file
+        $cache = $lock === null ? [] : ['cache' => $pm, 'cache-dependency-path' => $this->ciPath($lock)];
+        $node = ['name' => 'Set up Node', 'uses' => 'actions/setup-node@v4', 'with' => ['node-version' => 'lts/*', ...$cache]];
         $setup = match ($pm) {
             // pnpm/action-setup fails without a version unless package.json names one in `packageManager`
             'pnpm' => [['name' => 'Set up pnpm', 'uses' => 'pnpm/action-setup@v4'] + (isset($package['packageManager']) ? [] : ['with' => ['version' => 'latest']]), $node, ['name' => 'Install dependencies', 'run' => 'pnpm install --frozen-lockfile']],

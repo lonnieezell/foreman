@@ -86,6 +86,10 @@ class Python extends Stack
             default => $command,
         };
 
+        // setup-python fails when caching is on and it finds no requirements file
+        $requirements = collect(['requirements.txt', 'pyproject.toml'])->first(fn (string $file) => $this->has($dir, $file));
+        $pipCache = $uv || $poetry || $requirements === null ? [] : ['cache' => 'pip', 'cache-dependency-path' => $this->ciPath($requirements)];
+
         $install = match (true) {
             $uv => 'uv sync',
             $poetry => 'pipx install poetry && poetry install && poetry run pip install '.implode(' ', $tools),
@@ -94,8 +98,10 @@ class Python extends Stack
 
         return [
             'setup' => [
-                ['name' => 'Set up Python', 'uses' => 'actions/setup-python@v5', 'with' => ['python-version' => '3.12']],
-                ...($uv ? [['name' => 'Set up uv', 'uses' => 'astral-sh/setup-uv@v5']] : []),
+                ['name' => 'Set up Python', 'uses' => 'actions/setup-python@v5', 'with' => ['python-version' => '3.12', ...$pipCache]],
+                ...($uv ? [['name' => 'Set up uv', 'uses' => 'astral-sh/setup-uv@v5', 'with' => ['enable-cache' => true]]] : []),
+                // setup-python's own Poetry cache needs Poetry installed first, and it is installed below
+                ...($poetry ? [['name' => 'Cache Poetry', 'uses' => 'actions/cache@v4', 'with' => ['path' => '~/.cache/pypoetry', 'key' => "poetry-\${{ runner.os }}-\${{ hashFiles('{$this->ciPath('poetry.lock')}') }}"]]] : []),
                 ['name' => 'Install dependencies', 'run' => $install],
             ],
             'lint' => [

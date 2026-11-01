@@ -77,6 +77,7 @@ class Rust extends Stack
         return [
             'setup' => [
                 ['name' => 'Set up Rust', 'uses' => 'dtolnay/rust-toolchain@stable', 'with' => ['components' => 'rustfmt, clippy']],
+                ['name' => 'Cache Rust build', 'uses' => 'Swatinem/rust-cache@v2'] + ($this->ciDir() === '' ? [] : ['with' => ['workspaces' => $this->ciDir()]]),
             ],
             'lint' => [
                 ['name' => 'Format check', 'run' => 'cargo fmt --check'],

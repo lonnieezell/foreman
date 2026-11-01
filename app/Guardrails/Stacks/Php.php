@@ -120,7 +120,8 @@ class Php extends Stack
 
         return [
             'setup' => [
-                ['name' => 'Install dependencies', 'run' => 'composer install --no-interaction --prefer-dist'],
+                // Runs `composer install` and caches the downloads between runs
+                ['name' => 'Install dependencies', 'uses' => 'ramsey/composer-install@v3'] + ($dir === '' ? [] : ['with' => ['working-directory' => $dir]]),
                 // Laravel tests that touch encryption, sessions or cookies need an app key
                 ...($laravel && $this->has($dir, '.env.example')
                     ? [['name' => 'Prepare Laravel environment', 'run' => "cp .env.example .env\nphp artisan key:generate"]]
