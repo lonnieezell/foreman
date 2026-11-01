@@ -55,24 +55,28 @@ class Python extends Stack
         return ['py'];
     }
 
-    public function verifyCommands(): array
+    public function verifyCommands(string $base): array
     {
         $commands = [];
 
         foreach ($this->dirs as $dir) {
             $run = $this->has($dir, 'uv.lock') ? 'uv run ' : ($this->has($dir, 'poetry.lock') ? 'poetry run ' : '');
-            $steps = ['ruff format --check', 'ruff check'];
+            // Explicit files skip ruff's excludes unless `--force-exclude` is set
+            $steps = [
+                $this->onChangedFiles($base, "{$run}ruff format --check --force-exclude"),
+                $this->onChangedFiles($base, "{$run}ruff check --force-exclude"),
+            ];
 
             if ($this->configures($dir, 'mypy', ['mypy.ini'])) {
-                $steps[] = 'mypy .';
+                $steps[] = "{$run}mypy .";
             }
             if ($this->configures($dir, 'pyright', ['pyrightconfig.json'])) {
-                $steps[] = 'pyright';
+                $steps[] = "{$run}pyright";
             }
-            $steps[] = 'pytest';
+            $steps[] = "{$run}pytest";
 
             foreach ($steps as $step) {
-                $commands[] = $this->inDir($dir, $run.$step);
+                $commands[] = $this->inDir($dir, $step);
             }
         }
 

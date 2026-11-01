@@ -55,10 +55,11 @@ class StackSet
      * The union of one rule table across all stacks.
      *
      * @param  string  $rule  A rule table method on `Stack`, such as `tier3Paths` or `verifyCommands`.
+     * @param  mixed  ...$args  Passed to the method, such as the base ref for `verifyCommands`.
      * @return list<string>
      */
-    public function rules(string $rule): array
+    public function rules(string $rule, mixed ...$args): array
     {
-        return array_values(array_unique(array_merge(...array_map(fn (Stack $stack) => $stack->{$rule}(), $this->stacks))));
+        return array_values(array_unique(array_merge(...array_map(fn (Stack $stack) => $stack->{$rule}(...$args), $this->stacks))));
     }
 }

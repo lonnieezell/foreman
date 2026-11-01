@@ -42,8 +42,11 @@ abstract class Stack
     /** @return list<string> File extensions, without the dot, that the formatter handles. */
     abstract public function formatExtensions(): array;
 
-    /** @return list<string> Shell commands, each starting with a `cd` when the stack is not at the root. */
-    abstract public function verifyCommands(): array;
+    /**
+     * @param  string  $base  The ref the work branched from, such as `origin/main`. Format checks only look at files changed since it.
+     * @return list<string> Shell commands, each starting with a `cd` when the stack is not at the root.
+     */
+    abstract public function verifyCommands(string $base): array;
 
     /** Changes here are high risk (tier 3). */
     abstract public function tier3Paths(): array;
@@ -78,6 +81,18 @@ abstract class Stack
     protected function inDir(string $dir, string $command): string
     {
         return $dir === '' ? $command : 'cd '.escapeshellarg($dir).' && '.$command;
+    }
+
+    /**
+     * Run `$command` on the files with the formatter's extensions changed since `$base`: committed, staged,
+     * unstaged and untracked, relative to the folder. Runs nothing when none changed, and fails when `$base` is unknown.
+     */
+    protected function onChangedFiles(string $base, string $command): string
+    {
+        $globs = implode(' ', array_map(fn ($ext) => escapeshellarg("*.{$ext}"), $this->formatExtensions()));
+
+        return '(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base '.escapeshellarg($base)." -- {$globs}"
+            ." && git ls-files -z --others --exclude-standard -- {$globs}; } | xargs -0 -r {$command} --)";
     }
 
     /** The decoded composer.json or package.json in `$dir`. */

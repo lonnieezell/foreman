@@ -35,7 +35,7 @@ class StopHook extends Command
             return self::SUCCESS;
         }
 
-        $verify = trim($rules['verify_script']) ?: Repository::defaultVerifyScript($rules['worktree']);
+        $verify = trim($rules['verify_script']) ?: Repository::defaultVerifyScript($rules['worktree'], $rules['base']);
         $failures = array_filter([
             $this->failure('Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base={$rules['base']}"], $rules['worktree'], 120),
             $verify === '' ? null : $this->failure('Verify script', ['bash', '-ec', $verify], $rules['worktree'], 1500),

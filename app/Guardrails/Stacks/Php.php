@@ -78,7 +78,7 @@ class Php extends Stack
         return ['php'];
     }
 
-    public function verifyCommands(): array
+    public function verifyCommands(string $base): array
     {
         $commands = [];
 
@@ -86,9 +86,9 @@ class Php extends Stack
             $requires = $this->requires($dir);
 
             if (isset($requires['laravel/pint'])) {
-                $commands[] = $this->inDir($dir, 'vendor/bin/pint --test');
+                $commands[] = $this->inDir($dir, $this->onChangedFiles($base, 'vendor/bin/pint --test'));
             } elseif (isset($requires['friendsofphp/php-cs-fixer'])) {
-                $commands[] = $this->inDir($dir, 'vendor/bin/php-cs-fixer fix --dry-run --diff');
+                $commands[] = $this->inDir($dir, $this->onChangedFiles($base, 'vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection'));
             }
             if (isset($requires['phpstan/phpstan'])) {
                 $commands[] = $this->inDir($dir, 'vendor/bin/phpstan analyse');

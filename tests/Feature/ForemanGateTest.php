@@ -38,12 +38,12 @@ class ForemanGateTest extends TestCase
         parent::tearDown();
     }
 
-    private function makeRun(): Run
+    private function makeRun(array $repository = []): Run
     {
         return Repository::create([
             'name' => 'app', 'local_path' => base_path(), 'github_repo' => 'owner/app', 'enabled' => false,
             'allowed_tools' => Repository::DEFAULT_ALLOWED_TOOLS, 'setup_script' => 'true',
-            'verify_script' => 'composer test', 'watch_prs' => false,
+            'verify_script' => 'composer test', 'watch_prs' => false, ...$repository,
         ])->runs()->create([
             'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
             'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::Queued,
@@ -56,11 +56,11 @@ class ForemanGateTest extends TestCase
      *
      * @param  array{integrity?:int,verify?:int,numstat?:string,verifyOutput?:string}  $gate
      */
-    private function settle(array $gate = []): array
+    private function settle(array $gate = [], array $repository = []): array
     {
         $gate += ['integrity' => 0, 'verify' => 0, 'numstat' => "3\t1\tapp/A.php\n", 'verifyOutput' => ''];
         $statusWhileGating = [];
-        $run = $this->makeRun();
+        $run = $this->makeRun($repository);
 
         Process::fake(function (PendingProcess $process) use ($gate, $run, &$statusWhileGating) {
             $command = $process->command;
@@ -126,6 +126,18 @@ class ForemanGateTest extends TestCase
         Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
         $this->assertStringContainsString('Test-integrity check failed (exit 1)', $comments[0]);
         $this->assertStringContainsString('> Integrity output', $comments[0]);
+    }
+
+    public function test_without_a_verify_script_the_format_check_covers_only_files_changed_since_the_base(): void
+    {
+        file_put_contents("{$this->worktree}/composer.json", json_encode(['require-dev' => ['laravel/pint' => '*']]));
+
+        $this->settle(repository: ['verify_script' => null, 'base_branch' => 'develop']);
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'bash'
+            && str_contains($p->command[2], "--merge-base 'origin/develop'")
+            && str_contains($p->command[2], 'xargs -0 -r vendor/bin/pint --test --'));
+        Process::assertDidntRun(fn (PendingProcess $p) => $p->command[0] === 'bash' && str_contains($p->command[2], "\nvendor/bin/pint --test\n"));
     }
 
     public function test_a_passing_run_goes_through_reviewing_before_the_push(): void

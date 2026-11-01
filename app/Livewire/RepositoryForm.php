@@ -73,7 +73,7 @@ class RepositoryForm extends Component
             $this->max_budget_per_run = (string) $repository->max_budget_per_run;
             $this->effort = (string) $repository->effort;
             $this->locked_paths = (string) $repository->locked_paths;
-            $this->verify_script = (string) $repository->verify_script ?: Repository::defaultVerifyScript($repository->local_path);
+            $this->verify_script = (string) $repository->verify_script ?: Repository::defaultVerifyScript($repository->local_path, "origin/{$repository->base_branch}");
             $this->claude_profile = (string) $repository->claude_profile;
             $this->prompt_template = (string) $repository->prompt_template;
         }
@@ -129,7 +129,7 @@ class RepositoryForm extends Component
         }
 
         $this->github_repo = $detected;
-        $this->verify_script = $this->verify_script ?: Repository::defaultVerifyScript($path);
+        $this->verify_script = $this->verify_script ?: Repository::defaultVerifyScript($path, "origin/{$this->base_branch}");
         $this->name = $this->name ?: str($detected)->afterLast('/')->toString();
     }
 

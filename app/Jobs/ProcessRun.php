@@ -59,6 +59,10 @@ class ProcessRun implements ShouldQueue
                 ? $run->worktree_path          // continuing: keep the agent's work in progress
                 : $this->prepareWorktree($run);
 
+            if ($run->resume_session_id || $run->pr_round) {
+                $this->catchUpWithBase($run, $worktree);
+            }
+
             $this->prepareForemanFiles($worktree);
 
             $this->runAgent($run, $worktree, $github, in_array('dependencies', $github->labels($repo, $run->issue_number), true));
@@ -109,6 +113,32 @@ class ProcessRun implements ShouldQueue
         $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900);
 
         return $worktree;
+    }
+
+    /**
+     * Merge the latest base branch into a continuing run's branch, so fixes that landed there reach it.
+     * A conflict is aborted and the run goes on from the branch as it was: the gate still catches what the base would have fixed.
+     */
+    private function catchUpWithBase(Run $run, string $worktree): void
+    {
+        $base = "origin/{$run->repository->base_branch}";
+        $this->step($run, 'Fetching origin', ['git', 'fetch', 'origin', '--quiet'], $worktree);
+
+        // `git merge --abort` can't always restore uncommitted changes, so never risk them
+        if (trim(Process::path($worktree)->run(['git', 'status', '--porcelain', '--untracked-files=no'])->output()) !== '') {
+            $run->log("Not merging {$base}: the worktree has uncommitted changes. Going on from the branch as it was.");
+
+            return;
+        }
+
+        $run->log("Merging {$base} into {$run->branch}");
+        $merge = Process::path($worktree)->timeout(300)->run(['git', 'merge', '--no-edit', $base]);
+
+        if ($merge->failed()) {
+            Process::path($worktree)->run(['git', 'merge', '--abort']);
+            $output = trim($merge->errorOutput()."\n".$merge->output());
+            $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($output)->limit(500));
+        }
     }
 
     private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300): void
@@ -385,7 +415,7 @@ class ProcessRun implements ShouldQueue
     private function review(Run $run, GitHub $github): ?string
     {
         $repo = $run->repository;
-        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path);
+        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, "origin/{$repo->base_branch}");
         $limit = (int) config('foreman.max_pr_lines');
 
         $run->moveTo(RunStatus::Reviewing);

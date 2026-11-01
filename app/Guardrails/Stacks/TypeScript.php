@@ -65,7 +65,7 @@ class TypeScript extends Stack
         return ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'css'];
     }
 
-    public function verifyCommands(): array
+    public function verifyCommands(string $base): array
     {
         $commands = [];
 

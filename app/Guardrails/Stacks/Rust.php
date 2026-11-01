@@ -55,7 +55,7 @@ class Rust extends Stack
         return ['rs'];
     }
 
-    public function verifyCommands(): array
+    public function verifyCommands(string $base): array
     {
         $commands = [];
 

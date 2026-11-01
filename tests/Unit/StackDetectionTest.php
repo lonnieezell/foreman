@@ -81,7 +81,7 @@ class StackDetectionTest extends TestCase
         $stacks = StackSet::detect($this->root);
 
         $this->assertEqualsCanonicalizing(['typescript', 'rust'], $stacks->names());
-        $this->assertContains('cd '.escapeshellarg('src-tauri').' && cargo test', $stacks->rules('verifyCommands'));
+        $this->assertContains('cd '.escapeshellarg('src-tauri').' && cargo test', $stacks->rules('verifyCommands', 'origin/main'));
     }
 
     public function test_marker_files_in_dependency_folders_are_ignored(): void
@@ -160,11 +160,18 @@ class StackDetectionTest extends TestCase
     public function test_php_commands_follow_the_installed_tools(): void
     {
         $laravel = $this->phpStack(['laravel/framework' => '^13.0'], ['laravel/pint' => '^1.0', 'phpstan/phpstan' => '^2.0', 'pestphp/pest' => '^4.0']);
-        $this->assertSame(['vendor/bin/pint --test', 'vendor/bin/phpstan analyse', 'vendor/bin/pest'], $laravel->verifyCommands());
+        $this->assertSame([
+            "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)",
+            'vendor/bin/phpstan analyse',
+            'vendor/bin/pest',
+        ], $laravel->verifyCommands('origin/main'));
         $this->assertSame('vendor/bin/pint', $laravel->formatter());
 
         $ci4 = $this->phpStack(['codeigniter4/framework' => '^4.5'], ['friendsofphp/php-cs-fixer' => '^3.0']);
-        $this->assertSame(['vendor/bin/php-cs-fixer fix --dry-run --diff', 'vendor/bin/phpunit'], $ci4->verifyCommands());
+        $this->assertSame([
+            "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/develop' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection --)",
+            'vendor/bin/phpunit',
+        ], $ci4->verifyCommands('origin/develop'));
         $this->assertSame('vendor/bin/php-cs-fixer fix', $ci4->formatter());
 
         $this->assertNull($this->phpStack(['codeigniter4/framework' => '^4.5'])->formatter());
@@ -178,7 +185,7 @@ class StackDetectionTest extends TestCase
 
         $ts = StackSet::detect($this->root)->stacks[0];
 
-        $this->assertSame(['pnpm run lint', 'npx tsc --noEmit', 'pnpm run test'], $ts->verifyCommands());
+        $this->assertSame(['pnpm run lint', 'npx tsc --noEmit', 'pnpm run test'], $ts->verifyCommands('origin/main'));
         $this->assertSame('npx prettier --write', $ts->formatter());
     }
 
@@ -190,8 +197,13 @@ class StackDetectionTest extends TestCase
         $py = StackSet::detect($this->root)->stacks[0];
 
         $this->assertSame(
-            ['uv run ruff format --check', 'uv run ruff check', 'uv run mypy .', 'uv run pytest'],
-            $py->verifyCommands(),
+            [
+                "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.py' && git ls-files -z --others --exclude-standard -- '*.py'; } | xargs -0 -r uv run ruff format --check --force-exclude --)",
+                "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.py' && git ls-files -z --others --exclude-standard -- '*.py'; } | xargs -0 -r uv run ruff check --force-exclude --)",
+                'uv run mypy .',
+                'uv run pytest',
+            ],
+            $py->verifyCommands('origin/main'),
         );
         $this->assertSame('ruff format', $py->formatter());
     }
@@ -201,7 +213,7 @@ class StackDetectionTest extends TestCase
         $this->touch('Cargo.toml');
         $this->touch('src-tauri/Cargo.toml');
 
-        $commands = StackSet::detect($this->root)->stacks[0]->verifyCommands();
+        $commands = StackSet::detect($this->root)->stacks[0]->verifyCommands('origin/main');
 
         $this->assertCount(6, $commands);
         $this->assertContains('cargo clippy --all-targets -- -D warnings', $commands);
