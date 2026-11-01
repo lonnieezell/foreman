@@ -98,6 +98,28 @@ The code icon (`< >`) next to the label copies a prompt for Claude Code. Paste i
 
 The setup script runs as you, with no sandbox.
 
+### Verify script
+
+Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout.
+
+Leave it empty to use the checks Foreman finds for the stacks in the worktree. For a Laravel app with Pint, PHPStan and Pest, that is:
+
+```bash
+vendor/bin/pint --test
+vendor/bin/phpstan analyse
+vendor/bin/pest
+```
+
+When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
+
+Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
+
+The code icon (`< >`) next to the label copies a prompt for Claude Code, like the one for the setup script. Paste it into `claude` in the project, and Claude works out a script that matches your CI.
+
+If the checks keep failing, the agent is sent back three times and then allowed to stop. See [Troubleshooting](troubleshooting.md#stop-hook-gave-up).
+
+The verify script runs as you, with no sandbox. Changes apply to new runs.
+
 ### Allowed tools
 
 The tools Claude may use, passed to `claude --allowedTools`. Anything not listed is refused. The default lets the agent:

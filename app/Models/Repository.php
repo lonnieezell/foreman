@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RunStatus;
+use App\Guardrails\StackSet;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
@@ -95,6 +96,12 @@ SH;
     public function lockedPathList(): array
     {
         return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $this->locked_paths))));
+    }
+
+    /** One line per verify command of the stacks found in `$folder`. */
+    public static function defaultVerifyScript(string $folder): string
+    {
+        return is_dir($folder) ? implode("\n", StackSet::detect($folder)->rules('verifyCommands')) : '';
     }
 
     /** Name used for per-profile state like usage-limit pauses. */

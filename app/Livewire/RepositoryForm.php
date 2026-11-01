@@ -32,6 +32,7 @@ class RepositoryForm extends Component
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
     public string $locked_paths = '';
     public string $setup_script = Repository::DEFAULT_SETUP_SCRIPT;
+    public string $verify_script = '';
     public string $prompt_template = '';
     public bool $cleanup_worktrees = true;
     public bool $watch_prs = true;
@@ -48,6 +49,7 @@ class RepositoryForm extends Component
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
             $this->effort = (string) $repository->effort;
             $this->locked_paths = (string) $repository->locked_paths;
+            $this->verify_script = (string) $repository->verify_script ?: Repository::defaultVerifyScript($repository->local_path);
             $this->claude_profile = (string) $repository->claude_profile;
             $this->prompt_template = (string) $repository->prompt_template;
         }
@@ -103,6 +105,7 @@ class RepositoryForm extends Component
         }
 
         $this->github_repo = $detected;
+        $this->verify_script = $this->verify_script ?: Repository::defaultVerifyScript($path);
         $this->name = $this->name ?: str($detected)->afterLast('/')->toString();
     }
 
@@ -133,6 +136,7 @@ class RepositoryForm extends Component
             'allowed_tools' => ['required', 'string'],
             'locked_paths' => ['nullable', 'string'],
             'setup_script' => ['required', 'string'],
+            'verify_script' => ['nullable', 'string'],
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
             'watch_prs' => ['boolean'],
@@ -144,6 +148,7 @@ class RepositoryForm extends Component
         $data['claude_profile'] = $data['claude_profile'] ?: null;
         $data['effort'] = $data['effort'] ?: null;
         $data['locked_paths'] = trim((string) $data['locked_paths']) ?: null;
+        $data['verify_script'] = trim((string) $data['verify_script']) ?: null;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
         $default = file_get_contents(resource_path('prompts/default.md'));
@@ -194,6 +199,15 @@ class RepositoryForm extends Component
             '{{base}}' => $this->base_branch,
             '{{allowed_tools}}' => $this->allowed_tools,
             '{{setup_script}}' => $this->setup_script,
+        ]);
+    }
+
+    /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */
+    public function verifyScriptPrompt(): string
+    {
+        return strtr(file_get_contents(resource_path('prompts/verify-script.md')), [
+            '{{base}}' => $this->base_branch,
+            '{{verify_script}}' => $this->verify_script,
         ]);
     }
 

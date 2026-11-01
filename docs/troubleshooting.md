@@ -51,6 +51,24 @@ A run that keeps hitting the same block usually can't finish. If the block is wr
 
 If every tool call is blocked with "Foreman guard could not read its rules", the files in `storage/foreman/hooks/` are missing or unreadable. Start the run over.
 
+## "Stop hook gave up"
+
+The run log shows `Blocked the stop (1 of 3): Verify script failed.` when the agent tried to finish while a check failed. The agent is sent back with the end of the failing output and keeps working. After the third block, the log shows `Stop hook gave up after 3 blocked stops. The checks still fail, so a human should look.` The agent is then let go, even though its work doesn't pass.
+
+Why it gives up: a failure the agent can't fix would otherwise loop until Claude Code forces a stop. See [Definition of done](guardrails.md#definition-of-done).
+
+What to do:
+
+1. Open the run and read the log lines before the last block. They name the check that failed: **Verify script** or **Test-integrity check**.
+2. Run the same check in the kept worktree. For the verify script, use the commands in the repository's [settings](repository-settings.md#verify-script).
+3. If the script is wrong, for example it needs a tool the setup script doesn't install, fix it in the settings.
+4. If the agent's work is wrong, fix it by hand or comment on the issue, then use **Start over**.
+5. If the integrity check blocked a change on purpose, such as removing a test that no longer applies, make that change yourself.
+
+The run isn't flagged for a human by this alone. Foreman's own checks after the agent finishes are meant to do that. Until they exist, watch for this line.
+
+If the log shows `Foreman stop hook could not read its rules`, the files in `storage/foreman/hooks/` are missing. The agent was allowed to stop. Start the run over.
+
 ## Runs stay on Waiting
 
 `composer run foreman` starts three workers. A run waits on **Waiting** until one is free. If all three are busy, or none are running, add a worker in another terminal:
