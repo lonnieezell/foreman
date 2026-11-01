@@ -81,13 +81,20 @@ class InstallCiTest extends TestCase
 
     public function test_a_php_repo_gets_one_php_job_in_fail_fast_order(): void
     {
-        $workflow = $this->install($this->repo(['composer.json' => self::LARAVEL]));
+        $workflow = $this->install($this->repo(['composer.json' => self::LARAVEL, 'phpstan.neon' => '']));
 
         $this->assertSame(['php'], array_keys($workflow['jobs']));
         $this->assertSame(
             ['Formatter check', 'Rector dry run', 'PHPStan', 'Test integrity', 'Tests', 'Composer audit', 'Semgrep'],
             array_slice($this->stepNames($workflow, 'php'), 3),
         );
+    }
+
+    public function test_the_php_job_skips_phpstan_when_the_repo_has_no_phpstan_config(): void
+    {
+        $workflow = $this->install($this->repo(['composer.json' => self::LARAVEL]));
+
+        $this->assertNotContains('PHPStan', $this->stepNames($workflow, 'php'));
     }
 
     public function test_the_php_job_skips_rector_and_phpstan_when_the_repo_has_neither(): void

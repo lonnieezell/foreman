@@ -95,7 +95,7 @@ class Php extends Stack
             } elseif (isset($requires['friendsofphp/php-cs-fixer'])) {
                 $commands[] = $this->inDir($dir, $this->onChangedFiles($base, 'vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection'));
             }
-            if (isset($requires['phpstan/phpstan'])) {
+            if (isset($requires['phpstan/phpstan']) && $this->hasPhpstanConfig($dir)) {
                 $commands[] = $this->inDir($dir, 'vendor/bin/phpstan analyse');
             }
             $commands[] = $this->inDir($dir, isset($requires['pestphp/pest']) ? 'vendor/bin/pest' : 'vendor/bin/phpunit');
@@ -119,7 +119,7 @@ class Php extends Stack
         if (isset($requires['rector/rector'])) {
             $lint[] = ['name' => 'Rector dry run', 'run' => 'vendor/bin/rector process --dry-run'];
         }
-        if (isset($requires['phpstan/phpstan'])) {
+        if (isset($requires['phpstan/phpstan']) && $this->hasPhpstanConfig($dir)) {
             $lint[] = ['name' => 'PHPStan', 'run' => 'vendor/bin/phpstan analyse'];
         }
 
@@ -186,6 +186,12 @@ class Php extends Stack
         return $this->hasShield()
             ? [...$patterns, '/\b(addPermission|addGroup|syncGroups|loginById)\(/']
             : $patterns;
+    }
+
+    /** Without a config, `phpstan analyse` has no paths and always fails. */
+    private function hasPhpstanConfig(string $dir): bool
+    {
+        return $this->has($dir, 'phpstan.neon') || $this->has($dir, 'phpstan.neon.dist') || $this->has($dir, 'phpstan.dist.neon');
     }
 
     /** A Vite config and a `build` script in `$dir`, so its assets can be built. */

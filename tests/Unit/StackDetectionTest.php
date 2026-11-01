@@ -39,11 +39,15 @@ class StackDetectionTest extends TestCase
     }
 
     /** A PHP stack in its own folder, so several can be compared in one test. */
-    private function phpStack(array $require, array $requireDev = []): Php
+    private function phpStack(array $require, array $requireDev = [], array $files = []): Php
     {
         $dir = $this->root.'/php-'.uniqid();
         File::ensureDirectoryExists($dir);
         file_put_contents("{$dir}/composer.json", json_encode(['require' => $require, 'require-dev' => $requireDev]));
+
+        foreach ($files as $file) {
+            file_put_contents("{$dir}/{$file}", '');
+        }
 
         return StackSet::detect($dir)->stacks[0];
     }
@@ -170,7 +174,7 @@ class StackDetectionTest extends TestCase
 
     public function test_php_commands_follow_the_installed_tools(): void
     {
-        $laravel = $this->phpStack(['laravel/framework' => '^13.0'], ['laravel/pint' => '^1.0', 'phpstan/phpstan' => '^2.0', 'pestphp/pest' => '^4.0']);
+        $laravel = $this->phpStack(['laravel/framework' => '^13.0'], ['laravel/pint' => '^1.0', 'phpstan/phpstan' => '^2.0', 'pestphp/pest' => '^4.0'], ['phpstan.neon']);
         $this->assertSame([
             "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)",
             'vendor/bin/phpstan analyse',
@@ -186,6 +190,42 @@ class StackDetectionTest extends TestCase
         $this->assertSame('vendor/bin/php-cs-fixer fix', $ci4->formatter());
 
         $this->assertNull($this->phpStack(['codeigniter4/framework' => '^4.5'])->formatter());
+    }
+
+    public function test_phpstan_runs_only_with_a_config_since_without_one_it_has_no_paths(): void
+    {
+        $noConfig = $this->phpStack([], ['phpstan/phpstan' => '^2.0']);
+        $this->assertSame(['vendor/bin/phpunit'], $noConfig->verifyCommands('origin/main'));
+        $this->assertNotContains('PHPStan', array_column($noConfig->ciSteps()['lint'], 'name'));
+
+        foreach (['phpstan.neon', 'phpstan.neon.dist', 'phpstan.dist.neon'] as $config) {
+            $stack = $this->phpStack([], ['phpstan/phpstan' => '^2.0'], [$config]);
+
+            $this->assertContains('vendor/bin/phpstan analyse', $stack->verifyCommands('origin/main'), $config);
+            $this->assertContains('PHPStan', array_column($stack->ciSteps()['lint'], 'name'), $config);
+        }
+    }
+
+    public function test_an_agent_worktree_inside_a_repo_that_ignores_it_still_finds_its_stacks(): void
+    {
+        // Foreman keeps agent worktrees under its own storage/foreman, which its .gitignore excludes
+        $foreman = "{$this->root}/foreman";
+        File::ensureDirectoryExists($foreman);
+        (new Process(['git', 'init', '--quiet'], $foreman))->mustRun();
+        file_put_contents("{$foreman}/.gitignore", "/storage/foreman\n");
+
+        $app = "{$this->root}/app";
+        File::ensureDirectoryExists($app);
+        file_put_contents("{$app}/composer.json", '{}');
+        foreach ([['init', '--quiet'], ['add', '.'], ['-c', 'user.name=T', '-c', 'user.email=t@example.test', 'commit', '--quiet', '-m', 'init']] as $args) {
+            (new Process(['git', ...$args], $app))->mustRun();
+        }
+
+        // A worktree has a .git file, not a folder, so the git root has to stop there
+        $worktree = "{$foreman}/storage/foreman/worktrees/app/issue-1";
+        (new Process(['git', 'worktree', 'add', '--quiet', '-b', 'agent/issue-1', $worktree], $app))->mustRun();
+
+        $this->assertSame(['php'], StackSet::detect($worktree)->names());
     }
 
     public function test_typescript_commands_follow_the_lock_file_and_scripts(): void
