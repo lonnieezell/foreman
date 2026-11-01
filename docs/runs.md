@@ -38,6 +38,7 @@ The agent has started running tests or static analysis. Foreman moves the run he
 - **PHP:** `pest`, `phpunit`, `phpstan`, `pint` or `artisan test`
 - **JavaScript/TypeScript:** `vitest`, `jest`, `playwright`, `eslint`, `prettier`, `biome` or `tsc`
 - **Rust:** `cargo test`, `cargo nextest`, `cargo clippy`, `cargo fmt`, `cargo check` or `rustfmt`
+- **Python:** `pytest`, `ruff`, `mypy` or `pyright`, including `uv run` and `poetry run` forms
 - **Project scripts:** `npm`, `pnpm`, `yarn`, `bun` or `composer` running a `test`, `lint`, `typecheck`, `type-check`, `check` or `format` script, such as `npm run lint` or `composer test`
 
 If your project uses other tools or script names, the run can finish without ever showing this station. That's harmless.

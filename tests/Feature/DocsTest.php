@@ -51,6 +51,37 @@ class DocsTest extends TestCase
         }
     }
 
+    public function test_the_guardrails_page_renders_with_its_sections_and_stack_table(): void
+    {
+        $this->get(route('docs', 'guardrails'))
+            ->assertOk()
+            ->assertSee('<h1', false)
+            ->assertSee('The pipeline at a glance')
+            ->assertSee('id="stack-rules"', false)
+            ->assertSee('<table', false)
+            ->assertSee('src-tauri/capabilities/**');
+    }
+
+    public function test_the_guardrails_links_to_other_pages_resolve(): void
+    {
+        $markdown = file_get_contents(base_path('docs/guardrails.md'));
+        preg_match_all('/\]\(([a-z0-9-]+)\.md(#[a-z0-9-]+)?\)/', $markdown, $links, PREG_SET_ORDER);
+
+        $this->assertNotEmpty($links);
+        foreach ($links as $link) {
+            $this->assertArrayHasKey($link[1], Docs::PAGES, "guardrails.md links to missing page {$link[1]}");
+
+            if (isset($link[2])) {
+                $this->get(route('docs', $link[1]))->assertSee('id="'.substr($link[2], 1).'"', false);
+            }
+        }
+    }
+
+    public function test_the_guardrails_page_is_in_the_readme_docs_list(): void
+    {
+        $this->assertStringContainsString('(docs/guardrails.md)', file_get_contents(base_path('README.md')));
+    }
+
     public function test_the_sidebar_links_every_page(): void
     {
         $response = $this->get(route('docs', 'runs'));

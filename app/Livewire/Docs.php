@@ -13,6 +13,7 @@ class Docs extends Component
     public const PAGES = [
         'getting-started' => 'Getting started',
         'runs' => 'Runs and statuses',
+        'guardrails' => 'Guardrails',
         'repository-settings' => 'Repository settings',
         'global-settings' => 'Global settings',
         'usage-limits' => 'Usage limits and profiles',

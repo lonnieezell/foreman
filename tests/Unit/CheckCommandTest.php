@@ -35,6 +35,19 @@ class CheckCommandTest extends TestCase
             'cargo nextest run',
             'cd src-tauri && cargo check',
             'rustfmt src/main.rs',
+            'pytest',
+            'pytest -x tests/test_api.py',
+            'python -m pytest',
+            'ruff check .',
+            'ruff format --check',
+            'mypy .',
+            'pyright',
+            'uv run pytest',
+            'uv run ruff check',
+            'uv run mypy src',
+            'poetry run pytest',
+            'poetry run pyright',
+            'cd api && uv run pytest',
         ]);
     }
 
@@ -46,6 +59,10 @@ class CheckCommandTest extends TestCase
             'npm run dev',
             'cargo build',
             'cargo run',
+            'python main.py',
+            'uv run python main.py',
+            'uv sync',
+            'poetry install',
             'git status',
         ]);
     }

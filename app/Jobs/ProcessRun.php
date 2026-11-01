@@ -21,7 +21,7 @@ class ProcessRun implements ShouldQueue
     public const REVIEW_FILE = '.foreman/review.json';
 
     /** A Bash command matching this moves the run to Checking: tests, linters, formatters, type checks. */
-    public const CHECK_COMMAND = '/\b(pest|phpunit|phpstan|pint|artisan test|vitest|jest|playwright|eslint|prettier|biome|tsc|rustfmt)\b'
+    public const CHECK_COMMAND = '/\b(pest|phpunit|phpstan|pint|artisan test|vitest|jest|playwright|eslint|prettier|biome|tsc|rustfmt|pytest|ruff|mypy|pyright)\b'
         .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
         .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
 
