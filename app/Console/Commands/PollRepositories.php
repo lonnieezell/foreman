@@ -125,7 +125,7 @@ class PollRepositories extends Command
     private function reapStaleRuns(GitHub $github): void
     {
         Run::query()
-            ->whereIn('status', [RunStatus::Preparing, RunStatus::Working, RunStatus::Checking])
+            ->whereIn('status', [RunStatus::Preparing, RunStatus::Working, RunStatus::Checking, RunStatus::Reviewing])
             ->where('heartbeat_at', '<', now()->subMinutes(5))
             ->each(function (Run $run) use ($github) {
                 $run->moveTo(RunStatus::Failed, [

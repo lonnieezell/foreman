@@ -109,7 +109,7 @@ class ForemanActsTest extends TestCase
             && ! array_key_exists('GIT_CONFIG_COUNT', $p->environment));
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create']
             && in_array('Add the thing', $p->command, true)
-            && in_array("Closes #7\n\nIt adds the thing.", $p->command, true));
+            && collect($p->command)->contains(fn ($arg) => str_starts_with($arg, "Closes #7\n\nIt adds the thing.\n\n---\n**Foreman's gate**")));
     }
 
     public function test_a_pr_that_is_watched_moves_to_watching(): void
@@ -120,7 +120,7 @@ class ForemanActsTest extends TestCase
 
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('abc1234', $run->head_sha);
-        Process::assertRan(fn (PendingProcess $p) => in_array("Closes #7\n\nDone.", $p->command, true));
+        Process::assertRan(fn (PendingProcess $p) => collect($p->command)->contains(fn ($arg) => str_starts_with($arg, "Closes #7\n\nDone.\n\n---\n**Foreman's gate**")));
     }
 
     public function test_needs_human_posts_the_comment_and_adds_the_label_without_pushing(): void

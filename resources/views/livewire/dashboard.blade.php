@@ -186,7 +186,7 @@
                                    @class([
                                        'piece',
                                        'is-waiting' => $station === \App\Enums\RunStatus::Queued,
-                                       'is-moving' => in_array($station, [\App\Enums\RunStatus::Working, \App\Enums\RunStatus::Checking], true),
+                                       'is-moving' => in_array($station, [\App\Enums\RunStatus::Working, \App\Enums\RunStatus::Checking, \App\Enums\RunStatus::Reviewing], true),
                                    ])>#{{ $run->issue_number }}</a>
                             @endforeach
                         </div>

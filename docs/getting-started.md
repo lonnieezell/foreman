@@ -30,7 +30,7 @@ A new repository starts stopped. Click **Start** on its row. Foreman checks for 
 
 ## 4. Follow the run
 
-The issue appears as a yellow tag on the repository's track. It moves through four stations: **Waiting**, **Setting up**, **Writing code** and **Running checks**. Click the tag to open the run. The run page shows a live log of what the agent is doing.
+The issue appears as a yellow tag on the repository's track. It moves through five stations: **Waiting**, **Setting up**, **Writing code**, **Running checks** and **Reviewing**. Click the tag to open the run. The run page shows a live log of what the agent is doing.
 
 See [Runs and statuses](runs.md) for what each station means.
 

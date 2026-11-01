@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\RunStatus;
+use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
 use App\Services\Usage;
@@ -353,9 +354,16 @@ class ProcessRun implements ShouldQueue
             return;
         }
 
+        $footer = $this->review($run, $github);
+
+        if ($footer === null) {
+            return;
+        }
+
         $this->push($run);
 
         $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
+        $body .= "\n\n{$footer}";
         $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body);
 
         if ($repo->watch_prs) {
@@ -368,6 +376,86 @@ class ProcessRun implements ShouldQueue
         $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
         $run->log("PR opened: {$prUrl}");
         $run->removeWorktree();
+    }
+
+    /**
+     * Foreman's own gate, outside any hook: the integrity check, the verify script and the size limit.
+     * Returns the footer for the PR body, or null after flagging the issue for a human with the output.
+     */
+    private function review(Run $run, GitHub $github): ?string
+    {
+        $repo = $run->repository;
+        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path);
+        $limit = (int) config('foreman.max_pr_lines');
+
+        $run->moveTo(RunStatus::Reviewing);
+        $run->log('Reviewing: running the integrity check and the verify script before pushing.');
+
+        $failures = array_filter([
+            $this->gateCheck($run, 'Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base=origin/{$repo->base_branch}"], 120),
+            $verify === '' ? null : $this->gateCheck($run, 'Verify script', ['bash', '-ec', $verify], 1500),
+        ]);
+
+        $lines = $this->changedLines($run);
+
+        if ($lines > $limit) {
+            $failures[] = "Size limit: the change is {$lines} changed lines (added plus deleted), over the limit of {$limit}.";
+        }
+
+        if ($failures) {
+            $quoted = collect(explode("\n", implode("\n\n", $failures)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
+            $github->flagForHuman($repo, $run->issue_number,
+                "Foreman's gate stopped this run before pushing. Nothing was pushed, and the branch is still in the worktree.\n\n{$quoted}");
+            $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+            $run->log("Foreman's gate failed. Flagged the issue for a human.");
+
+            return null;
+        }
+
+        $commands = collect(explode("\n", $verify))->map(fn ($c) => trim($c))->filter()->map(fn ($c) => "`{$c}`")->implode(', ');
+
+        return "---\n**Foreman's gate**, run by Foreman outside the agent before the push:\n\n"
+            .'- Verify script: '.($commands === '' ? 'none configured' : "passed ({$commands})")."\n"
+            ."- Test integrity: passed\n"
+            ."- Size: {$lines} changed lines (limit {$limit})";
+    }
+
+    /** The failure text when the command fails, or null when it passes. */
+    private function gateCheck(Run $run, string $label, array $command, int $timeout): ?string
+    {
+        $this->guardCancel($run);
+        $beat = 0;
+
+        try {
+            $process = Process::path($run->worktree_path)->timeout($timeout)->run($command, function () use ($run, &$beat) {
+                if (time() - $beat >= 30) {
+                    $beat = time();
+                    $run->update(['heartbeat_at' => now()]);
+                }
+            });
+        } catch (Throwable $e) {
+            return "{$label} failed: {$e->getMessage()}";
+        }
+
+        $run->update(['heartbeat_at' => now()]);
+
+        if ($process->successful()) {
+            return null;
+        }
+
+        // Failures are at the end of the output, so keep the tail
+        $output = trim((string) preg_replace('/\e\[[\d;]*m/', '', $process->output().$process->errorOutput()));
+
+        return "{$label} failed (exit {$process->exitCode()}):\n".(strlen($output) > 3000 ? '…'.substr($output, -3000) : $output);
+    }
+
+    /** Lines added plus deleted on the branch since it left the base branch. */
+    private function changedLines(Run $run): int
+    {
+        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--numstat', "origin/{$run->repository->base_branch}...HEAD"]);
+
+        return (int) collect(explode("\n", trim($diff->output())))
+            ->sum(fn ($row) => array_sum(array_map('intval', array_slice(explode("\t", $row), 0, 2))));   // binary files show "-"
     }
 
     /** Foreman's own push, with the agent's restrictions left off. */

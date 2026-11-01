@@ -17,7 +17,7 @@ Nothing is claimed while Foreman is paused, while a daily spend limit is reached
 
 ## The stations
 
-While a run is active, its issue sits on the repository's track at one of four stations.
+While a run is active, its issue sits on the repository's track at one of five stations.
 
 ### Waiting
 
@@ -43,6 +43,10 @@ The agent has started running tests or static analysis. Foreman moves the run he
 
 If your project uses other tools or script names, the run can finish without ever showing this station. That's harmless.
 
+### Reviewing
+
+The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script and the integrity check itself, then checks the size of the change. Every run that ends in a PR passes through this station. If all three pass, Foreman pushes and opens the PR with a footer that lists the checks. If not, the run ends as **Needs you**. See [Foreman's gate](guardrails.md#foremans-gate).
+
 ## How a run ends
 
 The agent finishes by writing a result file in its worktree, `.foreman/result.json`. Foreman reads it and does everything on GitHub itself. The agent can't push, open PRs or use `gh`. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent).
@@ -51,7 +55,7 @@ The file says one of three things:
 
 | Outcome | What the file holds | What Foreman does | The run ends as |
 | --- | --- | --- | --- |
-| `pr` | A title and a body | Pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body if the agent left it out. | **Watching PR**, or **PR opened** if Watch PRs is off |
+| `pr` | A title and a body | Runs [its own gate](guardrails.md#foremans-gate), then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body if the agent left it out, and its own footer at the bottom. | **Watching PR**, or **PR opened** if Watch PRs is off |
 | `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
 | `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
 
@@ -77,10 +81,12 @@ The PR was merged, or all its checks pass and no review-bot threads are open. Re
 
 ### Needs you
 
-Foreman stopped and wants a human. There are five ways to get here:
+Foreman stopped and wants a human. There are seven ways to get here:
 
 - **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when the spec is unclear or contradicts the code, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
 - **The agent thinks a test is wrong.** The reason is `test_looks_wrong`. The agent was told not to change, delete or skip the test, so it stopped and explained which test and why. Decide whether the test or the code is wrong, then reply on the issue.
+- **Foreman's gate failed.** The verify script or the integrity check failed when Foreman ran it before pushing. Nothing was pushed. Foreman commented on the issue with the output. Fix the cause or reply on the issue, then click **Continue after my reply**.
+- **The change is too big.** The branch changes more lines than the size limit (`FOREMAN_MAX_PR_LINES`, 1,000 by default). Nothing was pushed, and the comment gives the count. Reply on the issue to ask the agent to split the work, or open the PR yourself from the worktree.
 - **The issue was already done.** The result file said `already_done`. The comment says where the work is and whether its tests pass.
 - **Fix-up rounds ran out.** The PR still has failing checks or open bot threads after the last round. Foreman left a summary comment on the PR. The PR is yours from here.
 - **Someone else pushed to the PR's branch.** Foreman stops watching so it doesn't fight you over the branch.

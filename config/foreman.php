@@ -32,6 +32,12 @@ return [
     ],
 
     /*
+     * Foreman's gate before it pushes. A branch that changes more lines than this
+     * (added plus deleted, against the base branch) goes to "Needs you" instead of opening a PR.
+     */
+    'max_pr_lines' => (int) env('FOREMAN_MAX_PR_LINES', 1000),
+
+    /*
      * Watching a PR after it opens. A round starts once no check is pending and
      * review bots have been quiet for quiet_minutes, or timeout_minutes after the push.
      * A PR no bot has posted on is done after first_look_minutes instead.

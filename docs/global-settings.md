@@ -80,6 +80,7 @@ Foreman's own settings live in `.env`. The `FOREMAN_*` values are the defaults t
 | `FOREMAN_USAGE_WEEKLY_PACE_MARGIN` | `0.10` | Weekly pace margin |
 | `FOREMAN_USAGE_WEEKLY_CAP` | `0.90` | Weekly cap |
 | `FOREMAN_USAGE_PROBE_MINUTES` | `15` | Refresh usage after |
+| `FOREMAN_MAX_PR_LINES` | `1000` | none. See [Foreman's gate](guardrails.md#the-size-limit). |
 | `FOREMAN_PR_MAX_ROUNDS` | `2` | Fix-up rounds per PR |
 | `FOREMAN_PR_FIRST_LOOK_MINUTES` | `1` | none |
 | `FOREMAN_PR_QUIET_MINUTES` | `5` | Review bots quiet for |
