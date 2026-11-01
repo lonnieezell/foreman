@@ -104,7 +104,7 @@ npm run build --silent
 
 The code icon (`< >`) next to the label copies a prompt for Claude Code. Paste it into `claude` in the project, and Claude works out a script that fits. The prompt uses what's in the form now, including unsaved edits.
 
-The setup script runs as you, with no sandbox. See [Known gaps](guardrails.md#known-gaps). It doesn't get the variables from Foreman's own `.env`, so the worktree's `.env` decides its settings. See [Worktree processes don't get these settings](global-settings.md#worktree-processes-dont-get-these-settings).
+The setup script runs as you, with no sandbox. See [Known gaps](security.md#known-gaps). It doesn't get the variables from Foreman's own `.env`, so the worktree's `.env` decides its settings. See [Worktree processes don't get these settings](global-settings.md#worktree-processes-dont-get-these-settings).
 
 ### Verify script
 
@@ -118,9 +118,9 @@ vendor/bin/phpstan analyse
 vendor/bin/pest
 ```
 
-The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](guardrails.md#what-the-default-checks-cover).
+The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](stack-rules.md#what-the-default-checks-cover).
 
-When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
+When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](stack-rules.md#stack-rules) table lists the default for each language.
 
 Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
 
@@ -162,7 +162,7 @@ tests/Feature/BillingTest.php
 
 Foreman blocks the edit and tells the agent which path is locked. This is on top of the files every run protects, such as CI workflows, `CLAUDE.md` and lock files. See [Guardrails](guardrails.md#protected-files-and-commands). Changes apply to new runs.
 
-The lock covers Claude's edit tools only. A shell command on the allowed list, such as `php` or `python`, can still write a locked file. Foreman's gate doesn't check locked paths afterwards. See [Known gaps](guardrails.md#known-gaps).
+The lock covers Claude's edit tools only. A shell command on the allowed list, such as `php` or `python`, can still write a locked file. Foreman's gate doesn't check locked paths afterwards. See [Known gaps](security.md#known-gaps).
 
 ### Instructions
 
@@ -210,7 +210,7 @@ This was tested only on macOS, with Claude Code 2.1.316. The test covered a comm
 
 Git dependencies over SSH fail, because the agent has no SSH agent and can't read `~/.ssh`. Use HTTPS URLs for them. Turn the sandbox off for a repository that needs another host, such as a private registry.
 
-The sandbox still leaves gaps. A script can still read your `gh` token straight from the keychain, and the setup script and Foreman's checks run outside it. See [Known gaps](guardrails.md#known-gaps) before you rely on it.
+The sandbox still leaves gaps. A script can still read your `gh` token straight from the keychain, and the setup script and Foreman's checks run outside it. See [Known gaps](security.md#known-gaps) before you rely on it.
 
 ## Archive and remove
 

@@ -12,12 +12,17 @@ class Docs extends Component
     // Sidebar order. Also the allowlist: only these files can be loaded.
     public const PAGES = [
         'getting-started' => 'Getting started',
+        'how-foreman-works' => 'How Foreman works',
         'runs' => 'Runs and statuses',
         'guardrails' => 'Guardrails',
+        'stack-rules' => 'Stack rules',
         'repository-settings' => 'Repository settings',
         'global-settings' => 'Global settings',
         'usage-limits' => 'Usage limits and profiles',
         'pr-watching' => 'PR watching',
+        'ci-setup' => 'Setting up CI in your repo',
+        'commands' => 'Commands',
+        'security' => 'Security and known gaps',
         'troubleshooting' => 'Troubleshooting',
     ];
 
