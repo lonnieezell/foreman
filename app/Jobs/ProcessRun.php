@@ -9,6 +9,7 @@ use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
 use App\Services\Usage;
+use App\Support\ForemanEnv;
 use App\Support\IssueSanitiser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -130,7 +131,7 @@ class ProcessRun implements ShouldQueue
             $this->catchUpWithBase($run, $worktree, fetch: false);
         }
 
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900);
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::removed());
 
         return $worktree;
     }
@@ -180,12 +181,12 @@ class ProcessRun implements ShouldQueue
         $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($why)->limit(500));
     }
 
-    private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300): void
+    private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300, array $env = []): void
     {
         $run->log($label);
         $this->guardCancel($run);
 
-        $result = Process::path($cwd)->timeout($timeout)->run($command);
+        $result = Process::path($cwd)->env($env)->timeout($timeout)->run($command);
         $run->update(['heartbeat_at' => now()]);
 
         if ($result->failed()) {
@@ -251,7 +252,7 @@ class ProcessRun implements ShouldQueue
         $this->result = null;
 
         $process = Process::path($worktree)
-            ->env([...$repo->claudeEnv(), ...self::agentEnv()])
+            ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv()])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -719,7 +720,7 @@ class ProcessRun implements ShouldQueue
         $beat = 0;
 
         try {
-            $process = Process::path($run->worktree_path)->timeout($timeout)->run($command, function () use ($run, &$beat) {
+            $process = Process::path($run->worktree_path)->env(ForemanEnv::removed())->timeout($timeout)->run($command, function () use ($run, &$beat) {
                 if (time() - $beat >= 30) {
                     $beat = time();
                     $run->update(['heartbeat_at' => now()]);

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Repository;
 use App\Models\Run;
+use App\Support\ForemanEnv;
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
 
@@ -58,7 +59,7 @@ class StopHook extends Command
     /** The trimmed output when the command fails, or null when it passes. */
     private function failure(string $label, array $command, string $cwd, int $timeout): ?string
     {
-        $process = new Process($command, $cwd, timeout: $timeout);
+        $process = new Process($command, $cwd, ForemanEnv::removed(), timeout: $timeout);
 
         try {
             $process->run();
