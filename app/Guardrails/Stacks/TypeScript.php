@@ -89,10 +89,15 @@ class TypeScript extends Stack
         $scripts = $this->json($dir, 'package.json')['scripts'] ?? [];
         $pm = $this->packageManager($dir);
 
+        // Without TypeScript installed, npx fetches an unrelated package named `tsc` that always exits 1
+        $tsc = $this->has($dir, 'tsconfig.json') && $this->hasDependency($dir, 'typescript');
+        // `npm init` writes a test script that always exits 1
+        $placeholder = str_contains($scripts['test'] ?? '', 'no test specified');
+
         return array_filter([
             'Lint' => isset($scripts['lint']) ? "{$pm} run lint" : null,
-            'Typecheck' => isset($scripts['typecheck']) ? "{$pm} run typecheck" : ($this->has($dir, 'tsconfig.json') ? 'npx tsc --noEmit' : null),
-            'Tests' => isset($scripts['test']) ? "{$pm} run test" : null,
+            'Typecheck' => isset($scripts['typecheck']) ? "{$pm} run typecheck" : ($tsc ? 'npx tsc --noEmit' : null),
+            'Tests' => isset($scripts['test']) && ! $placeholder ? "{$pm} run test" : null,
         ]);
     }
 

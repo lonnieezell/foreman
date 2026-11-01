@@ -122,6 +122,13 @@ class ForemanGateTest extends TestCase
         $this->assertStringContainsString('> FAILED: FooTest::test_it', $comments[0]);
     }
 
+    public function test_the_verify_script_runs_with_ci_set_so_test_runners_do_not_watch(): void
+    {
+        $this->settle();
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'bash' && ($p->environment['CI'] ?? null) === 'true');
+    }
+
     public function test_a_failing_integrity_check_stops_the_push_and_puts_the_output_on_the_issue(): void
     {
         [$run, $comments] = $this->settle(['integrity' => 1]);

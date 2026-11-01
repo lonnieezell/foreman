@@ -59,7 +59,8 @@ class StopHook extends Command
     /** The trimmed output when the command fails, or null when it passes. */
     private function failure(string $label, array $command, string $cwd, int $timeout): ?string
     {
-        $process = new Process($command, $cwd, ForemanEnv::removed(), timeout: $timeout);
+        // CI keeps test runners such as Jest and react-scripts out of watch mode
+        $process = new Process($command, $cwd, [...ForemanEnv::removed(), 'CI' => 'true'], timeout: $timeout);
 
         try {
             $process->run();
