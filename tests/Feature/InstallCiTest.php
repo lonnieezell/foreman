@@ -331,6 +331,43 @@ class InstallCiTest extends TestCase
         $this->assertLessThan(array_search('Tests', $names), array_search('Prepare Laravel environment', $names));
     }
 
+    public function test_a_laravel_app_with_vite_builds_its_assets_before_its_tests(): void
+    {
+        $workflow = $this->install($this->repo([
+            'composer.json' => self::LARAVEL, 'vite.config.js' => '', 'package.json' => '{"scripts":{"build":"vite build"}}', 'package-lock.json' => '{}',
+        ]));
+        $names = $this->stepNames($workflow, 'php');
+
+        $this->assertSame(['node-version' => 'lts/*', 'cache' => 'npm', 'cache-dependency-path' => 'package-lock.json'], $this->step($workflow, 'php', 'Set up Node')['with']);
+        $this->assertSame('npm ci', $this->step($workflow, 'php', 'Install Node dependencies')['run']);
+        $this->assertSame('npm run build', $this->step($workflow, 'php', 'Build assets')['run']);
+        $this->assertSame('ramsey/composer-install@v3', $this->step($workflow, 'php', 'Install dependencies')['uses'], 'composer keeps its own step');
+        $this->assertLessThan(array_search('Set up Node', $names), array_search('Test integrity', $names), 'cheap checks still come first');
+        $this->assertLessThan(array_search('Tests', $names), array_search('Build assets', $names));
+    }
+
+    public function test_the_asset_build_uses_the_apps_package_manager(): void
+    {
+        $workflow = $this->install($this->repo([
+            'composer.json' => self::LARAVEL, 'vite.config.ts' => '', 'package.json' => '{"scripts":{"build":"vite build"}}', 'pnpm-lock.yaml' => '',
+        ]));
+
+        $this->assertSame('pnpm install --frozen-lockfile', $this->step($workflow, 'php', 'Install Node dependencies')['run']);
+        $this->assertSame('pnpm run build', $this->step($workflow, 'php', 'Build assets')['run']);
+    }
+
+    public function test_assets_are_not_built_without_a_vite_config_a_build_script_or_laravel(): void
+    {
+        $noVite = $this->install($this->repo(['composer.json' => self::LARAVEL, 'package.json' => '{"scripts":{"build":"tsc"}}'], 'novite'));
+        $noScript = $this->install($this->repo(['composer.json' => self::LARAVEL, 'vite.config.js' => '', 'package.json' => '{}'], 'noscript'));
+        $plainPhp = $this->install($this->repo(['composer.json' => '{}', 'vite.config.js' => '', 'package.json' => '{"scripts":{"build":"vite build"}}'], 'plain'));
+
+        foreach ([$noVite, $noScript, $plainPhp] as $workflow) {
+            $this->assertNotContains('Build assets', $this->stepNames($workflow, 'php'));
+            $this->assertNotContains('Set up Node', $this->stepNames($workflow, 'php'));
+        }
+    }
+
     public function test_php_installs_through_composer_install_which_caches_dependencies(): void
     {
         $root = $this->install($this->repo(['composer.json' => self::LARAVEL]));

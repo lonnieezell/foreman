@@ -134,6 +134,8 @@ class Php extends Stack
             ],
             'lint' => $lint,
             'test' => [
+                // Pages that use `@vite` throw without the built manifest, which a stock Laravel app keeps out of git
+                ...($laravel && $this->hasViteBuild($dir) ? (new TypeScript($this->root, [$dir]))->ciBuildSteps() : []),
                 ['name' => 'Tests', 'run' => isset($requires['pestphp/pest']) ? 'vendor/bin/pest' : 'vendor/bin/phpunit'],
             ],
             'audit' => [
@@ -183,6 +185,15 @@ class Php extends Stack
         return $this->hasShield()
             ? [...$patterns, '/\b(addPermission|addGroup|syncGroups|loginById)\(/']
             : $patterns;
+    }
+
+    /** A Vite config and a `build` script in `$dir`, so its assets can be built. */
+    private function hasViteBuild(string $dir): bool
+    {
+        $configs = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts'];
+
+        return array_filter($configs, fn (string $file) => $this->has($dir, $file))
+            && isset($this->json($dir, 'package.json')['scripts']['build']);
     }
 
     /** Composer requires and dev requires: for one folder, or for all of them. */

@@ -99,30 +99,16 @@ class TypeScript extends Stack
     public function ciSteps(): array
     {
         $dir = $this->ciDir();
-        $package = $this->json($dir, 'package.json');
         $pm = $this->packageManager($dir);
-        // Yarn 2 and later, marked by .yarnrc.yml, renamed `--frozen-lockfile` and dropped `yarn audit`
-        $berry = $pm === 'yarn' && $this->has($dir, '.yarnrc.yml');
+        $berry = $this->isBerry($dir);
         $steps = [];
 
         foreach ($this->checks($dir) as $name => $command) {
             $steps[$name === 'Tests' ? 'test' : 'lint'][] = ['name' => $name, 'run' => $command];
         }
 
-        $lock = collect(self::LOCK_FILES)->keys()->first(fn (string $file) => $this->has($dir, $file));
-        // setup-node fails when caching is on and it finds no lock file
-        $cache = $lock === null ? [] : ['cache' => $pm, 'cache-dependency-path' => $this->ciPath($lock)];
-        $node = ['name' => 'Set up Node', 'uses' => 'actions/setup-node@v4', 'with' => ['node-version' => 'lts/*', ...$cache]];
-        $setup = match ($pm) {
-            // pnpm/action-setup fails without a version unless package.json names one in `packageManager`
-            'pnpm' => [['name' => 'Set up pnpm', 'uses' => 'pnpm/action-setup@v4'] + (isset($package['packageManager']) ? [] : ['with' => ['version' => 'latest']]), $node, ['name' => 'Install dependencies', 'run' => 'pnpm install --frozen-lockfile']],
-            'yarn' => [$node, ['name' => 'Install dependencies', 'run' => $berry ? 'yarn install --immutable' : 'yarn install --frozen-lockfile']],
-            'bun' => [['name' => 'Set up Bun', 'uses' => 'oven-sh/setup-bun@v2'], ['name' => 'Install dependencies', 'run' => 'bun install --frozen-lockfile']],
-            default => [$node, ['name' => 'Install dependencies', 'run' => 'npm ci']],
-        };
-
         return [
-            'setup' => $setup,
+            'setup' => $this->installSteps('Install dependencies'),
             'lint' => $steps['lint'] ?? [],
             'test' => $steps['test'] ?? [],
             'audit' => [
@@ -130,6 +116,43 @@ class TypeScript extends Stack
                 ...$this->codeqlOrSemgrep('javascript-typescript', 'p/typescript', 'p/react'),
             ],
         ];
+    }
+
+    /** Steps that install the CI folder's Node dependencies and run its `build` script, for another stack's job that needs built assets. */
+    public function ciBuildSteps(): array
+    {
+        return [
+            ...$this->installSteps('Install Node dependencies'),
+            ['name' => 'Build assets', 'run' => $this->packageManager($this->ciDir()).' run build'],
+        ];
+    }
+
+    /** Yarn 2 and later, marked by .yarnrc.yml, renamed `--frozen-lockfile` and dropped `yarn audit`. */
+    private function isBerry(string $dir): bool
+    {
+        return $this->packageManager($dir) === 'yarn' && $this->has($dir, '.yarnrc.yml');
+    }
+
+    /** Set up the package manager and install the CI folder's dependencies, with the install step named `$installName`. */
+    private function installSteps(string $installName): array
+    {
+        $dir = $this->ciDir();
+        $package = $this->json($dir, 'package.json');
+        $pm = $this->packageManager($dir);
+        $berry = $this->isBerry($dir);
+
+        $lock = collect(self::LOCK_FILES)->keys()->first(fn (string $file) => $this->has($dir, $file));
+        // setup-node fails when caching is on and it finds no lock file
+        $cache = $lock === null ? [] : ['cache' => $pm, 'cache-dependency-path' => $this->ciPath($lock)];
+        $node = ['name' => 'Set up Node', 'uses' => 'actions/setup-node@v4', 'with' => ['node-version' => 'lts/*', ...$cache]];
+
+        return match ($pm) {
+            // pnpm/action-setup fails without a version unless package.json names one in `packageManager`
+            'pnpm' => [['name' => 'Set up pnpm', 'uses' => 'pnpm/action-setup@v4'] + (isset($package['packageManager']) ? [] : ['with' => ['version' => 'latest']]), $node, ['name' => $installName, 'run' => 'pnpm install --frozen-lockfile']],
+            'yarn' => [$node, ['name' => $installName, 'run' => $berry ? 'yarn install --immutable' : 'yarn install --frozen-lockfile']],
+            'bun' => [['name' => 'Set up Bun', 'uses' => 'oven-sh/setup-bun@v2'], ['name' => $installName, 'run' => 'bun install --frozen-lockfile']],
+            default => [$node, ['name' => $installName, 'run' => 'npm ci']],
+        };
     }
 
     public function tier3Paths(): array

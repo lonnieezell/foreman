@@ -44,6 +44,19 @@ jobs:
           git show "origin/${{ github.base_ref }}:.github/foreman/test-integrity.php" > "$RUNNER_TEMP/test-integrity.php" || cp .github/foreman/test-integrity.php "$RUNNER_TEMP/test-integrity.php"
           php "$RUNNER_TEMP/test-integrity.php" --base=origin/${{ github.base_ref }}
       -
+        name: 'Set up Node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      -
+        name: 'Install Node dependencies'
+        run: 'npm ci'
+      -
+        name: 'Build assets'
+        run: 'npm run build'
+      -
         name: Tests
         run: vendor/bin/phpunit
       -
