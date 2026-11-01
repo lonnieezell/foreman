@@ -175,7 +175,9 @@ A custom prompt that still tells the agent to run `gh issue view` skips the clea
 
 The default prompt tells the agent to commit its work and write the result file described in [How a run ends](runs.md#how-a-run-ends). It also tells the agent to use the `test_looks_wrong` reason instead of changing a test that seems wrong.
 
-The default prompt starts with `/mattpocock-skills:implement` and also uses `/simplify`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
+The default prompt starts with `/mattpocock-skills:implement`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
+
+The review pass after the gate uses `/code-review`, `/simplify` and `/security-review`, which come with Claude Code. It has its own prompt, so a custom prompt doesn't change it. See [Risk tiers](guardrails.md#risk-tiers).
 
 **Restore default** puts the default prompt back. If you save the default unchanged, Foreman stores it as "default". Then later improvements to Foreman's default prompt reach this repository on their own.
 

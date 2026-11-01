@@ -317,6 +317,13 @@ GRAPHQL;
         $this->gh($repo, ['pr', 'comment', (string) self::prNumber($url), '--body', $body], allowFailure: true);
     }
 
+    /** Creates the label when the repo lacks it, then adds it to the PR. A failure leaves the PR as it is. */
+    public function labelPullRequest(Repository $repo, string $url, string $label): void
+    {
+        $this->gh($repo, ['label', 'create', $label, '--color', 'C5DEF5'], allowFailure: true);   // fails harmlessly when it exists
+        $this->gh($repo, ['pr', 'edit', (string) self::prNumber($url), '--add-label', $label], allowFailure: true);
+    }
+
     public function addHumanLabel(Repository $repo, int $issue): void
     {
         $this->gh($repo, ['issue', 'edit', (string) $issue, '--add-label', $repo->human_label], allowFailure: true);

@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Enums\RunStatus;
+use App\Guardrails\RiskTier;
+use App\Guardrails\StackSet;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
@@ -40,6 +42,8 @@ class ProcessRun implements ShouldQueue
 
     private bool $limitReported = false;
 
+    private bool $allowLockFiles = false;
+
     public function __construct(public Run $run) {}
 
     public function handle(GitHub $github): void
@@ -64,7 +68,8 @@ class ProcessRun implements ShouldQueue
 
             $this->prepareForemanFiles($worktree);
 
-            $this->runAgent($run, $worktree, $github, in_array('dependencies', $github->labels($repo, $run->issue_number), true));
+            $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
+            $this->runAgent($run, $worktree, $github);
             $this->settle($run, $github);
         } catch (Throwable $e) {
             $run->refresh();
@@ -178,14 +183,29 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    private function runAgent(Run $run, string $worktree, GitHub $github, bool $allowLockFiles): void
+    /**
+     * @param  string|null  $followUp  A review pass's prompt. It resumes this run's own session, and its usage adds to the run's.
+     */
+    private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null): void
     {
         $repo = $run->repository;
-        $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
-        $effort = $run->effort ? "{$run->effort} effort, " : '';
-        $run->log("Starting Claude ({$run->model}, {$effort}{$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
+        $budget = $repo->max_budget_per_run;
+
+        if ($followUp === null) {
+            $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
+            $effort = $run->effort ? "{$run->effort} effort, " : '';
+            $run->log("Starting Claude ({$run->model}, {$effort}{$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
+        } elseif ($budget !== null) {
+            // The spend cap is per run, so a pass gets what the run has left
+            $budget = round((float) $budget - (float) $run->cost_usd, 2);
+
+            if ($budget <= 0) {
+                throw new RuntimeException("The run used up its spend cap of \${$repo->max_budget_per_run} before the review pass.");
+            }
+        }
 
         $prompt = match (true) {
+            $followUp !== null => $followUp,
             (bool) $run->pr_round => $this->roundPrompt($run, $github),
             (bool) $run->resume_session_id => $this->resumePrompt($run, $github),
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)),
@@ -197,23 +217,27 @@ class ProcessRun implements ShouldQueue
             '--max-turns', (string) $repo->max_turns,
             '--allowedTools', $repo->allowed_tools,
             '--permission-mode', 'dontAsk',
-            '--settings', $this->writeHookSettings($run, $worktree, $allowLockFiles),
+            '--settings', $this->writeHookSettings($run, $worktree, $this->allowLockFiles),
             '--output-format', 'stream-json',
             '--verbose',
         ];
 
-        if ($repo->max_budget_per_run !== null) {
-            array_push($command, '--max-budget-usd', $repo->max_budget_per_run);
+        if ($budget !== null) {
+            array_push($command, '--max-budget-usd', (string) $budget);
         }
 
         if ($run->effort) {
             array_push($command, '--effort', $run->effort);
         }
 
-        if ($run->resume_session_id) {
-            // Same conversation, so the agent doesn't re-explore the codebase
-            array_push($command, '--resume', $run->resume_session_id);
+        // Same conversation, so the agent doesn't re-explore the codebase
+        $resume = $followUp !== null ? $run->session_id : $run->resume_session_id;
+
+        if ($resume) {
+            array_push($command, '--resume', $resume);
         }
+
+        $this->result = null;
 
         $process = Process::path($worktree)
             ->env([...$repo->claudeEnv(), ...self::agentEnv()])
@@ -243,15 +267,22 @@ class ProcessRun implements ShouldQueue
         $result = $process->wait();
         $this->consume($run, "\n"); // flush any final partial line
 
-        $run->update([
-            'pid' => null,
+        $usage = [
             'cost_usd' => $this->result['total_cost_usd'] ?? 0,
             'num_turns' => $this->result['num_turns'] ?? null,
             'input_tokens' => $this->result['usage']['input_tokens'] ?? null,
             'output_tokens' => $this->result['usage']['output_tokens'] ?? null,
             'cache_read_tokens' => $this->result['usage']['cache_read_input_tokens'] ?? null,
             'cache_write_tokens' => $this->result['usage']['cache_creation_input_tokens'] ?? null,
-        ]);
+        ];
+
+        if ($followUp !== null) {
+            foreach ($usage as $column => $value) {
+                $usage[$column] = $value === null ? $run->{$column} : $value + $run->{$column};
+            }
+        }
+
+        $run->update(['pid' => null, ...$usage]);
 
         $this->holdIfOutOfUsage($run);
 
@@ -384,6 +415,45 @@ class ProcessRun implements ShouldQueue
         }
 
         $repo = $run->repository;
+
+        if ($this->prResult($run, $github) === null || $this->review($run, $github) === null) {
+            return;
+        }
+
+        $this->reviewPass($run, $github);
+        $result = $this->prResult($run, $github);
+        $footer = $result === null ? null : $this->review($run, $github);
+
+        if ($footer === null) {
+            return;
+        }
+
+        $this->push($run);
+
+        $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
+        $body .= "\n\n{$footer}";
+        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body);
+        $github->labelPullRequest($repo, $prUrl, "risk:tier-{$run->risk_tier}");
+
+        if ($repo->watch_prs) {
+            $this->watch($run, $github->pullRequest($repo, $prUrl)['head_sha'], ['pr_url' => $prUrl]);
+            $run->log("PR opened: {$prUrl}. Watching it for checks and review bots.");
+
+            return;
+        }
+
+        $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
+        $run->log("PR opened: {$prUrl}");
+        $run->removeWorktree();
+    }
+
+    /**
+     * The agent's `pr` result. Any other outcome is handed to a human and gives null; an unreadable result throws.
+     *
+     * @return array{outcome:string,title:string,body:string}|null
+     */
+    private function prResult(Run $run, GitHub $github): ?array
+    {
         $result = $this->readResult($run->worktree_path);
 
         if ($result === null) {
@@ -398,37 +468,69 @@ class ProcessRun implements ShouldQueue
         }
 
         if ($result['outcome'] !== 'pr') {
-            $github->flagForHuman($repo, $run->issue_number, $result['comment']);
+            $github->flagForHuman($run->repository, $run->issue_number, $result['comment']);
             $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
             $run->log($result['outcome'] === 'already_done'
                 ? 'Agent says the issue is already done. Flagged it for a human.'
                 : 'Agent asked for a human'.(($result['reason'] ?? '') !== '' ? " ({$result['reason']})" : '').'.');
 
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Rate the change's risk from its diff, then resume the agent's session to review it as deep as the tier calls for:
+     * `/code-review` (with `/simplify` above tier 1), and `/security-review` for tier 3.
+     */
+    private function reviewPass(Run $run, GitHub $github): void
+    {
+        $base = "origin/{$run->repository->base_branch}";
+        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '-U0', '--no-color', '--no-ext-diff', "{$base}...HEAD"]);
+        ['tier' => $tier, 'reason' => $reason] = RiskTier::assess(StackSet::detect($run->worktree_path), $diff->output());
+        $level = [1 => 'low', 2 => 'medium', 3 => 'high'][$tier];
+
+        $run->update(['risk_tier' => $tier]);
+        $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort".($tier > 1 ? ', then /simplify' : '').'.');
+
+        $this->runPass($run, $github, 'The review pass', strtr(file_get_contents(resource_path('prompts/review-pass.md')), [
+            '{{tier}}' => (string) $tier,
+            '{{reason}}' => $reason,
+            '{{level}}' => $level,
+            '{{base}}' => $base,
+            '{{simplify}}' => $tier > 1 ? "- Run the simplify skill on your changes and keep the cleanups it applies.\n" : '',
+        ]));
+
+        if ($tier < 3) {
             return;
         }
 
-        $footer = $this->review($run, $github);
-
-        if ($footer === null) {
-            return;
+        // /security-review diffs against origin/HEAD, and quietly reviews nothing when that ref is missing
+        if (Process::path($run->worktree_path)->run(['git', 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/HEAD'])->failed()) {
+            $this->step($run, "Pointing origin/HEAD at {$base} for /security-review",
+                ['git', 'remote', 'set-head', 'origin', $run->repository->base_branch], $run->worktree_path);
         }
 
-        $this->push($run);
+        $run->log('Security review: /security-review.');
+        $this->runPass($run, $github, '/security-review', strtr(file_get_contents(resource_path('prompts/security-review.md')), [
+            '{{reason}}' => $reason,
+            '{{base}}' => $base,
+        ]));
 
-        $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
-        $body .= "\n\n{$footer}";
-        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body);
-
-        if ($repo->watch_prs) {
-            $this->watch($run, $github->pullRequest($repo, $prUrl)['head_sha'], ['pr_url' => $prUrl]);
-            $run->log("PR opened: {$prUrl}. Watching it for checks and review bots.");
-
-            return;
+        if ((float) ($this->result['total_cost_usd'] ?? 0) === 0.0) {
+            throw new RuntimeException('/security-review ended without reviewing anything.');
         }
+    }
 
-        $run->moveTo(RunStatus::PrOpened, ['pr_url' => $prUrl, 'finished_at' => now()]);
-        $run->log("PR opened: {$prUrl}");
-        $run->removeWorktree();
+    /** Resume the agent's session with `$prompt`. Throws when it ends with an error. */
+    private function runPass(Run $run, GitHub $github, string $label, string $prompt): void
+    {
+        $this->runAgent($run, $run->worktree_path, $github, $prompt);
+
+        if ($this->result === null || ($this->result['is_error'] ?? false)) {
+            throw new RuntimeException("{$label} stopped with an error (".($this->result['subtype'] ?? 'no result').').');
+        }
     }
 
     /**

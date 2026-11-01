@@ -27,6 +27,7 @@ class Run extends Model
             'watch_started_at' => 'datetime',
             'handled_at' => 'datetime',
             'pr_feedback' => 'array',
+            'risk_tier' => 'integer',
         ];
     }
 

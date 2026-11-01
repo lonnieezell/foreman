@@ -146,7 +146,8 @@ class ForemanGateTest extends TestCase
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);
-        $this->assertSame([RunStatus::Reviewing, RunStatus::Reviewing], $statusWhileGating);
+        // The gate runs twice: before and after the review pass
+        $this->assertSame(array_fill(0, 4, RunStatus::Reviewing), $statusWhileGating);
         Process::assertRan(fn (PendingProcess $p) => $this->isPush($p));
     }
 

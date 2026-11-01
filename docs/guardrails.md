@@ -20,7 +20,8 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Definition of done | A Stop hook that sends the agent back until the verify script and the integrity check pass. See [Definition of done](#definition-of-done). | Built |
 | Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
 | Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). | Built |
-| Everything after that | Other hooks, risk tiers, review and a CI kit for your repository. | Not built yet |
+| Risk tiers and review | Rates the change from its diff, then has the agent review it as deeply as the tier calls for. The gate runs again afterwards. See [Risk tiers](#risk-tiers). | Built |
+| Everything after that | Other hooks and a CI kit for your repository. | Not built yet |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
 
@@ -125,7 +126,7 @@ A repository can have several stacks. Its rules are the union of each stack's ru
 | **High-risk paths** | See the PHP frameworks below | `middleware.ts`, `**/auth/**`, `app/api/**`, `pages/api/**` | `src-tauri/tauri.conf.json`, `src-tauri/capabilities/**`, `**/auth*` | `settings.py`, `**/middleware*.py`, `**/permissions.py`, `**/migrations/**`, `**/auth/**` |
 | **Risky code** | See the PHP frameworks below | `dangerouslySetInnerHTML`, `eval(`, `child_process`, `innerHTML` | `unsafe `, `std::process::Command`, `transmute` | `eval(`, `exec(`, `pickle`, `shell=True`, `.raw(`, `.extra(`, `yaml.load(` |
 
-A change to a high-risk path, or new risky code, marks the work as higher risk.
+A change to a high-risk path, or new risky code, makes the change [risk tier 3](#risk-tiers).
 
 ### What the default checks cover
 
@@ -175,7 +176,7 @@ When a CodeIgniter 4 repository also requires `codeigniter4/shield`, the high-ri
 
 ### What these rules don't cover
 
-- Every list is a starting point. The protected-files hook and the [test-integrity check](#test-integrity) use them. The risk lists are held but not used yet.
+- Every list is a starting point. The protected-files hook and the [test-integrity check](#test-integrity) use them. The risk lists set the [risk tier](#risk-tiers).
 - The skip markers match text. A `@phpstan-ignore` or `@ts-expect-error` is blocked even with a written reason.
 - A repository with no framework in `composer.json` gets the shared PHP rules and no high-risk paths or risky code.
 - Foreman can't see a stack that has no marker file.
@@ -312,7 +313,7 @@ When the agent says it is done with a `pr` result, Foreman doesn't push yet. The
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
 3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
 
-Only if all three pass does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result and the size. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then it runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result and the size. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
 
 ### The size limit
 
@@ -333,3 +334,49 @@ Foreman's gate runs in Foreman's own process, after the agent has finished. The 
 - It only gates the first PR of a run. Fix-up rounds on a PR that is already open still push without it.
 - It is only as good as the verify script. A repository with no script and no detected stack has nothing to run except the integrity check and the size check.
 - Counting lines is a blunt measure. A large generated file counts the same as hand-written code. Binary files count as zero.
+
+## Risk tiers
+
+After [Foreman's gate](#foremans-gate) passes the first time, Foreman rates the change. It reads the branch's diff against the base branch and gives it a tier from 1 to 3. The tier decides how deep the AI review goes.
+
+### How the tier is worked out
+
+Foreman checks the rules in this order and stops at the first match:
+
+1. **Tier 3:** a changed file matches a high-risk path of a detected stack. Or an added line matches one of its risky-code patterns. The lists are in [Stack rules](#stack-rules) and [PHP frameworks](#php-frameworks). A renamed file counts under its old path too, so moving a file out of `routes/` is still tier 3.
+2. **Tier 1:** every changed file is docs or tests, and the change is under 200 changed lines (added plus deleted). Docs are `*.md`, `*.mdx`, `*.rst` and anything under `docs/`. Tests are the stacks' test files.
+3. **Tier 2:** everything else.
+
+The run log names what set the tier, such as `Risk tier 3: touches routes/web.php.`
+
+### What changes at each tier
+
+Foreman resumes the agent's own session for the review pass. The agent keeps everything it learned while writing the change. The run stays on the **Reviewing** station.
+
+| | Tier 1 | Tier 2 | Tier 3 |
+| --- | --- | --- | --- |
+| `/code-review`, with its fixes applied | Low effort | Medium effort | High effort |
+| `/simplify` | Skipped | Yes | Yes |
+| `/security-review`, with its findings fixed | No | No | Yes, after the code review |
+
+The agent runs the checks again and commits its fixes. Then Foreman runs its whole gate a second time, so a fix from the review can't sneak past it. Foreman stores the tier on the run and shows it on the dashboard and the run page. It also adds a `risk:tier-1`, `risk:tier-2` or `risk:tier-3` label to the PR. It creates the label first if the repository doesn't have it.
+
+The review pass can end the run early:
+
+- If the agent writes a `needs_human` result during the pass, the run goes to **Needs you** and nothing is pushed.
+- If the pass stops with an error, such as running out of turns, the run fails and nothing is pushed.
+- If `/security-review` ends without reviewing anything, the run fails. That command fails silently when it can't work out the diff.
+- The pass shares the run's spend cap. It gets what the first part of the run left. If nothing is left, the run fails before the pass.
+
+### Why review depth follows risk
+
+A deep review on every change costs time and money for little gain. A typo fix in the docs doesn't need a security review. A new route or a raw SQL query does. The tier comes from rules that a program applies to the diff, not from the agent's own view of its work. So the agent can't talk its way into a lighter review. Reviews still find problems that rules miss, so every tier gets at least a low-effort code review.
+
+### What it doesn't do
+
+- The tier is only as good as the stack rules. Code that is risky but matches no pattern is tier 2.
+- Path rules match anywhere in a path. So `routes/**` also matches `resources/js/routes/`. A change can be rated higher than it should be, but not lower.
+- The tier comes from the committed diff before the review pass. The pass's own fixes don't change it.
+- Each pass gets the repository's full turn and time limits again. Only the spend cap is shared across the run.
+- `/security-review` diffs against `origin/HEAD`. When the repository has no `origin/HEAD`, Foreman points it at the base branch first, with `git remote set-head`. When `origin/HEAD` points at some other branch, Foreman leaves it alone and tells the agent which base to review against.
+- Fix-up rounds on an open PR don't get a review pass.
