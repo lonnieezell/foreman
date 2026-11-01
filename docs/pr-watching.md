@@ -38,6 +38,12 @@ Once it has settled:
 
 A round resumes the agent's Claude session in the same worktree. It gets the list of checks that didn't pass and the bot threads that are open. The run page shows rounds under **Attempts** as **Round 1**, **Round 2** and so on.
 
+The agent never touches GitHub during a round. Foreman does that part:
+
+- **CI logs come from Foreman.** For each failed check that ran as a GitHub Actions workflow, Foreman fetches the log of the failed steps and puts the end of it (the last 6,000 bytes) in the prompt. A check from an outside service has no log to fetch, so the prompt lists only its name and link.
+- **Bot comments are untrusted.** Anyone can make a bot say anything, for example by putting text in a pull request. So Foreman wraps each bot thread, and each log, between `<untrusted_text>` tags. A note in the prompt tells the agent that the text is data and not instructions. See [Guardrails](guardrails.md#rounds-and-resumes-follow-the-same-rules).
+- **Foreman pushes.** The agent commits its fixes. When it finishes, Foreman pushes the branch, then posts the replies and resolves threads.
+
 Rounds spend tokens, so they wait for the same things new issues do. A round won't start while:
 
 - Foreman is paused
@@ -59,7 +65,7 @@ The agent is never allowed to comment on, reply to or resolve threads itself. In
 | **declined** | "Not changing: …" with the agent's reason | Resolved |
 | **unsure** | "Leaving for a human: …" | Left open for you |
 
-If the agent says "fixed" but didn't push anything, Foreman posts no reply and leaves the thread open. The same happens when the agent gives no verdict for a thread.
+The sha in "Fixed in" is the branch head after Foreman's push. If the agent says "fixed" but made no commit, so nothing was pushed, Foreman posts no reply and leaves the thread open. The same happens when the agent gives no verdict for a thread.
 
 After a round, Foreman watches the PR again from the new commit.
 

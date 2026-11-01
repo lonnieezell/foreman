@@ -137,7 +137,7 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 
 The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking.
 
-During a fix-up round, Foreman also allows `gh pr checks` and `gh run view`, so the agent can read CI results. See [PR watching](pr-watching.md).
+Fix-up rounds use the same list. Foreman reads the CI results and puts them in the prompt, so the agent needs no `gh` tools. See [PR watching](pr-watching.md).
 
 #### Old tool lists
 

@@ -48,7 +48,7 @@ This lowers the risk of prompt injection. It does not remove it.
 
 - Instructions written as plain, visible text still reach the agent. The wrapper asks the agent to ignore them, but the agent may not.
 - Bare URLs stay, because they are visible text.
-- Issue comments are not cleaned. They are only read when a human replies and a run resumes, and the agent reads them itself then.
+- Issue comments, bot threads and CI logs that reach the agent in a round or a resume are wrapped as untrusted, but the sanitiser's cleanup is not applied to logs. See [Rounds and resumes follow the same rules](#rounds-and-resumes-follow-the-same-rules).
 - The rules match text patterns. A new way to hide content may get through.
 
 ## Foreman pushes, not the agent
@@ -78,7 +78,15 @@ Both cases started the same way: untrusted text reached an agent that could run 
 - Setup scripts run before the agent starts, as you, with your credentials. See [Repository settings](repository-settings.md#setup-script).
 - The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
 - The agent can still reach the network through allowed tools such as `npm` and `composer`.
-- During a fix-up round the allowed tools still include `gh pr checks` and `gh run view`, but the [protected-commands hook](#protected-files-and-commands) blocks every `gh` command. So the agent can't read CI results itself yet.
+
+### Rounds and resumes follow the same rules
+
+[Fix-up rounds](pr-watching.md#fix-up-rounds) and **Continue after my reply** resume the agent's session, and they keep every rule above.
+
+- **The agent still has no `gh` and no push.** It gets the same allowed tools as a first run. Foreman fetches the failed CI logs and the new issue comments, puts them in the prompt, and pushes the round's commits itself.
+- **Text from other people is untrusted.** Bot thread bodies, issue comments and CI logs sit between `<untrusted_text>` tags, with a note that they are data and not instructions. Thread bodies and comments get the same [cleanup as the issue](#sanitised-issue). Logs are only trimmed, so their text stays as it is.
+- **Only people with write access count.** On a resume, Foreman passes only the comments written since the run stopped, and only from users with write access to the repository. This is the same test as the [intake gate](#intake-gate). A comment from anyone else is left out. A bot's comment is left out too.
+- **Wrapping lowers the risk, it doesn't remove it.** Plain, visible text can still carry instructions that the agent may follow.
 
 ## Intake gate
 
