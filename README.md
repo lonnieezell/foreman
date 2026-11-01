@@ -132,6 +132,7 @@ The full docs are in [`docs/`](docs/). They're also built into the app: click **
 
 - [Getting started](docs/getting-started.md): from an empty dashboard to your first PR.
 - [Runs and statuses](docs/runs.md): the stations, what each status means, and the buttons.
+- [Guardrails](docs/guardrails.md): the checks Foreman runs on an agent's work, and the rules for each language stack.
 - [Repository settings](docs/repository-settings.md): every setting for a repository, including the setup script, allowed tools and prompt.
 - [Global settings](docs/global-settings.md): pause, spend limits, notifications and environment variables.
 - [Usage limits and profiles](docs/usage-limits.md): how Foreman shares your Claude subscription and when it holds runs.
