@@ -110,6 +110,17 @@ The agent acts with your `gh` and git logins. This list is what keeps it in boun
 
 During a fix-up round, Foreman also allows `gh pr checks` and `gh run view`, so the agent can read CI results. See [PR watching](pr-watching.md).
 
+### Locked paths
+
+Files the agent may not edit, one pattern per line. Optional. Patterns are relative to the repository root. `*` matches within one folder, and `**` matches across folders. A pattern ending in `/` locks the whole folder. For example:
+
+```text
+database/migrations/**
+tests/Feature/BillingTest.php
+```
+
+Foreman blocks the edit and tells the agent which path is locked. This is on top of the files every run protects, such as CI workflows, `CLAUDE.md` and lock files. See [Guardrails](guardrails.md#protected-files-and-commands). Changes apply to new runs.
+
 ### Instructions
 
 The prompt given to the agent at the start of a run. These placeholders are replaced:
