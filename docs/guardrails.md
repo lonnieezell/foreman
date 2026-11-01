@@ -21,6 +21,7 @@ This is where the guardrails are heading. The first steps are built. The others 
 | Commit-time formatting | A hook that formats the staged files when the agent runs `git commit`. See [Formatting at commit time](#formatting-at-commit-time). | Built |
 | Foreman's gate | Foreman runs the verify script and the integrity check again, outside any hook, and checks the size of the change before it pushes. See [Foreman's gate](#foremans-gate). | Built |
 | Risk tiers and review | Rates the change from its diff, then has the agent review it as deeply as the tier calls for. The gate runs again afterwards. See [Risk tiers](#risk-tiers). | Built |
+| Scope judge | A separate Haiku call with no tools reads only the issue and the diff, and vetoes changes that go beyond the issue or weaken tests. See [Scope judge](#scope-judge). | Built |
 | Everything after that | Other hooks and a CI kit for your repository. | Not built yet |
 
 Foreman pushes and opens the PR, not the agent. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). Getting a run going is covered in [Getting started](getting-started.md).
@@ -313,7 +314,7 @@ When the agent says it is done with a `pr` result, Foreman doesn't push yet. The
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
 3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
 
-If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then it runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result and the size. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then it runs all three checks again. If they pass a second time, the [scope judge](#scope-judge) has the last word. Only if it passes the change does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
 
 ### The size limit
 
@@ -380,3 +381,38 @@ A deep review on every change costs time and money for little gain. A typo fix i
 - Each pass gets the repository's full turn and time limits again. Only the spend cap is shared across the run.
 - `/security-review` diffs against `origin/HEAD`. When the repository has no `origin/HEAD`, Foreman points it at the base branch first, with `git remote set-head`. When `origin/HEAD` points at some other branch, Foreman leaves it alone and tells the agent which base to review against.
 - Fix-up rounds on an open PR don't get a review pass.
+
+## Scope judge
+
+After the review pass and the second run of [Foreman's gate](#foremans-gate), one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with three fields:
+
+- `in_scope`: whether the change sticks to what the issue asks for. Unrelated features, refactors the issue didn't mention, and leaving out most of the work all count against it.
+- `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine.
+- `reason`: one or two sentences on why.
+
+### How it works
+
+Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in an empty folder outside the repository, with no session to resume and no MCP servers. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
+
+What happens next depends on the verdict:
+
+- **Pass.** The change is in scope and leaves tests alone. Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
+- **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then it runs [Foreman's gate](#foremans-gate) and the judge again. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
+- **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, nothing is pushed. The run goes to **Needs you**, and the comment quotes what went wrong each time. Foreman never treats a missing verdict as a pass.
+
+The run log shows each question to the judge and its verdict.
+
+### Why it is a separate model call
+
+The agent can't judge its own scope fairly. It has spent the whole run building a story about why each edit was needed. A review inside the same session reads that story too, and tends to agree with it. Scope creep and weakened tests are exactly the mistakes that come with a good-sounding reason.
+
+The judge never sees that story. It gets no session, no tools and no access to the worktree, so it can't read the agent's notes or commit messages beyond the diff. It sees what a human reviewer would see first: what was asked, and what changed. The agent also can't reach the judge. Foreman makes the call in its own process, after the agent has stopped. Haiku keeps the check cheap and fast. The question is narrow, and the call is small.
+
+### What it doesn't do
+
+- It is an AI opinion, not a rule. It can pass a change that drifts, or veto one that is fine. [Test integrity](#test-integrity) is still the mechanical check for weakened tests.
+- It only sees the diff and the issue. A change that matches the issue's words but misses its intent can pass.
+- A very large diff makes the judge's job harder. The [size limit](#the-size-limit) keeps the diff in check.
+- Your user-level Claude Code settings for the repository's profile, such as a global `CLAUDE.md`, still load. Project files don't, because the judge runs outside the repository.
+- It only judges the first PR of a run. Fix-up rounds on an open PR don't get a judge.
+- The judge's cost isn't added to the run's cost or counted against the spend cap. A Haiku call on a diff under the size limit costs a few cents at most.

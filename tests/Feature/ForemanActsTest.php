@@ -58,6 +58,10 @@ class ForemanActsTest extends TestCase
         Process::fake(function (PendingProcess $process) use ($result, $lastMessage) {
             $command = $process->command;
 
+            if (in_array('--json-schema', $command, true)) {
+                return Process::result(self::SCOPE_JUDGE_PASS);
+            }
+
             if ($command[0] === 'claude') {
                 if ($result !== null) {
                     File::ensureDirectoryExists("{$this->worktree}/.foreman");

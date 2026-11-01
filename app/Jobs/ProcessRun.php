@@ -32,6 +32,17 @@ class ProcessRun implements ShouldQueue
         .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
         .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
 
+    /** The scope judge's answer. */
+    private const JUDGE_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'in_scope' => ['type' => 'boolean'],
+            'weakens_tests' => ['type' => 'boolean'],
+            'reason' => ['type' => 'string'],
+        ],
+        'required' => ['in_scope', 'weakens_tests', 'reason'],
+    ];
+
     public int $tries = 1;
 
     public int $timeout = 0;   // we enforce max_minutes ourselves so we can clean up
@@ -428,6 +439,48 @@ class ProcessRun implements ShouldQueue
             return;
         }
 
+        $verdict = $this->judge($run, $github);
+        $passed = 'passed';
+
+        if ($verdict === null) {
+            return;
+        }
+
+        if (! self::judgePasses($verdict)) {
+            $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
+            $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
+                '{{base}}' => "origin/{$repo->base_branch}",
+                '{{verdict}}' => self::describeVerdict($verdict),
+            ]));
+
+            $result = $this->prResult($run, $github);
+            $footer = $result === null ? null : $this->review($run, $github);
+
+            if ($footer === null) {
+                return;
+            }
+
+            $verdict = $this->judge($run, $github);
+
+            if ($verdict === null) {
+                return;
+            }
+
+            if (! self::judgePasses($verdict)) {
+                $github->flagForHuman($repo, $run->issue_number,
+                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n> ".self::describeVerdict($verdict));
+                $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+                $run->log("Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.");
+
+                return;
+            }
+
+            $passed = 'passed after one correction round';
+        }
+
+        $run->log("Scope judge {$passed}: {$verdict['reason']}");
+        $footer .= "\n- Scope judge: {$passed}. {$verdict['reason']}";
+
         $this->push($run);
 
         $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
@@ -520,6 +573,84 @@ class ProcessRun implements ShouldQueue
         if ((float) ($this->result['total_cost_usd'] ?? 0) === 0.0) {
             throw new RuntimeException('/security-review ended without reviewing anything.');
         }
+    }
+
+    /**
+     * Ask a separate Haiku call with no tools whether the change stays within the issue and leaves the tests alone.
+     * It sees only the cleaned-up issue and the diff, never the agent's session or reasoning.
+     * An unusable answer is asked again once. A second one flags the issue for a human and gives null.
+     *
+     * @return array{in_scope:bool,weakens_tests:bool,reason:string}|null
+     */
+    private function judge(Run $run, GitHub $github): ?array
+    {
+        $repo = $run->repository;
+        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--no-color', '--no-ext-diff', "origin/{$repo->base_branch}...HEAD"]);
+        $prompt = strtr(file_get_contents(resource_path('prompts/scope-judge.md')), [
+            '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
+            '{{issue}}' => $github->sanitisedIssue($repo, $run->issue_number),
+            '{{diff}}' => IssueSanitiser::wrapText($diff->output(), clean: false),
+        ]);
+
+        // Outside the project, so no CLAUDE.md or project settings get loaded
+        $dir = sys_get_temp_dir().'/foreman-scope-judge';
+        File::ensureDirectoryExists($dir);
+
+        $problems = [];
+
+        foreach ([1, 2] as $attempt) {
+            $this->guardCancel($run);
+            $run->log('Scope judge: asking Haiku whether the change stays within the issue'.($attempt > 1 ? ', again.' : '.'));
+
+            try {
+                $process = Process::path($dir)->env($repo->claudeEnv())->timeout(120)->run([
+                    'claude', '-p', $prompt, '--model', 'haiku', '--max-turns', '3', '--tools', '',
+                    '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json',
+                    '--json-schema', json_encode(self::JUDGE_SCHEMA),
+                ]);
+                $verdict = json_decode($process->output(), true)['structured_output'] ?? null;
+
+                if (is_array($verdict) && is_bool($verdict['in_scope'] ?? null) && is_bool($verdict['weakens_tests'] ?? null)
+                    && is_string($verdict['reason'] ?? null) && trim($verdict['reason']) !== '') {
+                    $run->update(['heartbeat_at' => now()]);
+
+                    return $verdict;
+                }
+
+                $problem = $process->failed()
+                    ? "exit {$process->exitCode()}: ".str(trim($process->errorOutput() ?: $process->output()))->limit(500)
+                    : 'an answer without in_scope, weakens_tests and reason: '.str(trim($process->output()))->limit(500);
+            } catch (Throwable $e) {
+                $problem = $e->getMessage();
+            }
+
+            $run->update(['heartbeat_at' => now()]);
+            $run->log("Scope judge gave no usable answer ({$problem}).");
+            $problems[] = "Try {$attempt}: {$problem}";
+        }
+
+        $quoted = collect(explode("\n", implode("\n\n", $problems)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
+        $github->flagForHuman($repo, $run->issue_number,
+            "Foreman's scope judge gave no usable answer twice, so nothing was pushed. The branch is still in the worktree.\n\n{$quoted}");
+        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+        $run->log('Scope judge failed twice. Flagged the issue for a human.');
+
+        return null;
+    }
+
+    private static function judgePasses(array $verdict): bool
+    {
+        return $verdict['in_scope'] && ! $verdict['weakens_tests'];
+    }
+
+    private static function describeVerdict(array $verdict): string
+    {
+        $problems = array_filter([
+            $verdict['in_scope'] ? null : 'out of scope',
+            $verdict['weakens_tests'] ? 'weakens tests' : null,
+        ]);
+
+        return ucfirst(implode(', ', $problems)).": {$verdict['reason']}";
     }
 
     /** Resume the agent's session with `$prompt`. Throws when it ends with an error. */
