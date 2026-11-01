@@ -12,7 +12,7 @@ CLAUDE_PROFILES="personal:~/.claude-personal,work:~/.claude-work"
 
 Each entry is `name:config-folder`, separated by commas. Restart Foreman after changing it.
 
-- A repository on a profile runs Claude with `CLAUDE_CONFIG_DIR` set to that folder.
+- A repository on a profile runs Claude with `CLAUDE_CONFIG_DIR` set to that folder. The exception is `~/.claude`: Foreman leaves the variable unset, because setting it makes Claude look for a separate keychain login.
 - Usage numbers, holds, gauges and token totals are all tracked per profile.
 - With profiles defined, each repository must pick one. It starts on the first.
 - With no profiles defined, every repository uses your normal `~/.claude` login. Foreman calls that the `default` profile.
@@ -36,7 +36,7 @@ A bar turns amber within 10 points of its tick, and red at or past it. **Held** 
 
 Claude Code reports usage while it works. Foreman saves the latest numbers for each profile from every run.
 
-Numbers can go stale while nothing runs. So before starting runs on a profile, Foreman checks how old its numbers are. If they're older than **Refresh usage after** (15 minutes by default), it sends a *probe*. A probe is the cheapest possible Claude call: one turn of Haiku with no tools, run outside any project. Foreman only probes when a repository on that profile actually has ready issues waiting.
+Numbers can go stale while nothing runs. So before starting runs on a profile, Foreman checks how old its numbers are. If they're older than **Refresh usage after** (15 minutes by default), it sends a *probe*. A probe is the cheapest possible Claude call: one turn of Haiku with no tools, run outside any project. Foreman only probes when it has work for that profile: a repository on it has ready issues waiting, or a fix-up round is due.
 
 ## When runs are held
 
@@ -51,7 +51,7 @@ Here's a pace example. Two days into a seven-day week, about 29% of the week has
 
 While a profile is held:
 
-- The dashboard shows a notice with the reason, like "5-hour usage at 85%, resets 3:40pm."
+- The dashboard shows a notice with the reason, like "5-hour usage at 85%, resets 3:40pm." Times are in UTC.
 - Repositories on that profile claim no new issues. Their issues stay labelled ready on GitHub.
 - Fix-up rounds on that profile wait too.
 - Runs already in progress keep going.
@@ -66,4 +66,4 @@ If Claude stops mid-run because of a usage limit, Foreman holds the profile inst
 
 ## Run anyway
 
-The hold notice has a **Run anyway** button. It lets the next check start runs on that profile, whatever the numbers say. It applies to one check only, then normal holds return. Use it when you know you have room, for example right after a window reset that Foreman hasn't seen yet.
+The hold notice has a **Run anyway** button. The next time Foreman has work for that profile, a ready issue or a due fix-up round, it starts runs whatever the numbers say. Then normal holds return. Use it when you know you have room, for example right after a window reset that Foreman hasn't seen yet.

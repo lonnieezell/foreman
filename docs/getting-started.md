@@ -14,7 +14,7 @@ Click **Add repository** on the dashboard.
 
 The **Setup script** is the one setting to check now. It runs in every fresh worktree before the agent starts. It must get the project ready to build and test, for example by copying `.env` and installing dependencies. Not sure what it needs? Click the small code icon (`< >`) next to its label. That copies a prompt you can paste into `claude` inside the project, and Claude works the script out for you.
 
-Click **Add repository** to save. Foreman creates its three labels on GitHub if they don't exist yet: `ready-for-agent`, `agent-working` and `needs-human`.
+Click **Add repository** to save. Foreman creates its three labels on GitHub: `ready-for-agent`, `agent-working` and `needs-human`. If a label already exists, Foreman updates its colour and description.
 
 ## 2. Pick an issue
 
@@ -39,7 +39,7 @@ See [Runs and statuses](runs.md) for what each station means.
 When the run ends, the issue moves to the **Issues** column on the dashboard. Usually it lands in one of these sections:
 
 - **Ready for review**: there's a PR. Click **Open PR** to review it.
-- **Needs your reply**: the agent got stuck and asked a question on the issue. Reply there, then click **Continue after my reply**.
+- **Needs your reply**: Foreman stopped and wants a person. Usually the agent got stuck and asked a question on the issue. It can also mean Foreman's own checks failed or the PR needs you. Read the comment on the issue, reply there, then click **Continue after my reply**. See [Needs you](runs.md#needs-you) for every cause.
 - **Failed**: something went wrong. Open the run to see the error. See [A run failed](troubleshooting.md#a-run-failed).
 
 By default Foreman also watches each new PR. It waits for CI and review bots, then fixes failing checks and answers bot comments. See [PR watching](pr-watching.md).

@@ -12,7 +12,7 @@ To stop just one repository, click **Stop** on its row instead.
 
 ### Run anyway
 
-Shows in the notice when a Claude profile is held for usage. The next check then starts runs on that profile, whatever the usage numbers say. It works for one check only. See [Usage limits](usage-limits.md#run-anyway).
+Shows in the notice when a Claude profile is held for usage. The next time Foreman has work for that profile, it starts runs whatever the usage numbers say. Then normal holds return. See [Usage limits](usage-limits.md#run-anyway).
 
 ### Today's spend
 
@@ -26,7 +26,7 @@ Changes on the Settings page reach running workers before their next job. You do
 
 **Daily limit across all repositories (USD).** Once today's spend reaches this, no new runs or fix-up rounds start. Empty means no limit. Each repository can also have its own limit. See [Repository settings](repository-settings.md#daily-limit-usd).
 
-"Today" starts at midnight in the app's timezone. A run's cost counts toward the day the run was queued.
+"Today" starts at midnight UTC. A run's cost counts toward the day the run was queued.
 
 ### Intake gate
 
@@ -71,7 +71,7 @@ See [PR watching](pr-watching.md).
 
 ## Environment variables
 
-Foreman's own settings live in `.env`. The `FOREMAN_*` values are the defaults the Settings page shows. A value saved on the Settings page wins over `.env`. Change `.env` only when you want a different default, then restart Foreman.
+Foreman's own settings live in `.env`. The `FOREMAN_*` values are the defaults the Settings page shows. A value saved on the Settings page wins over `.env`. Change `.env` only when you want a different default, then restart Foreman. The `FOREMAN_*` lines aren't in `.env.example`, so add the ones you want to change.
 
 | Variable | Default | Settings page field |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ Everything else in `.env` is standard Laravel.
 
 ### Worktree processes don't get these settings
 
-Processes Foreman starts in a worktree don't inherit anything from Foreman's `.env`. That covers the setup script, the agent, the verify script, the test-integrity check and the formatter. Foreman removes every variable named in its `.env` before it starts them. Other variables from your shell, such as `PATH` and `HOME`, still pass through.
+Some processes Foreman starts in a worktree don't inherit anything from Foreman's `.env`. They are the setup script, the agent, the verify script, the test-integrity check and the formatter. Foreman removes every variable named in its `.env` before it starts them. Other variables from your shell, such as `PATH` and `HOME`, still pass through.
 
 This keeps two things apart:
 
@@ -102,3 +102,8 @@ This keeps two things apart:
 - **The target repo's settings.** A real environment variable beats a `.env` value. Without this step, Foreman's `APP_ENV`, `DB_CONNECTION` and the rest would override the worktree's own `.env`. For example, `php artisan key:generate` would refuse to write a key, because `APP_KEY` was already set.
 
 So don't put a value a worktree process needs, such as an `ANTHROPIC_API_KEY`, into Foreman's `.env`. Foreman removes every variable named there, even when its value came from your shell. Delete the line from `.env` and set the value in the shell that starts Foreman instead. The hooks still work: they run `php artisan` from Foreman's folder, so Laravel loads Foreman's `.env` for them.
+
+Other processes still get Foreman's `.env`:
+
+- Foreman's own git commands in the worktree, such as fetch, merge and push, and any git hooks they trigger.
+- The [usage probe](usage-limits.md#where-the-numbers-come-from) and the [scope judge](guardrails.md#scope-judge). These run outside the worktree.

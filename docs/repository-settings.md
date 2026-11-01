@@ -66,15 +66,17 @@ Which Claude Code login to run under. The menu lists the profiles in `CLAUDE_PRO
 
 ### Max turns per issue
 
-The most turns Claude may take in one run, from 1 to 500. Default: 40. Passed to `claude --max-turns`. A *turn* is one round of Claude replying or using a tool. A run that runs out of turns usually ends as Failed.
+The most turns Claude may take each time Foreman starts the agent, from 1 to 500. Default: 40. Passed to `claude --max-turns`. A *turn* is one round of Claude replying or using a tool. A run that runs out of turns usually ends as Failed.
+
+The limit is not shared across a run. The [review pass](guardrails.md#risk-tiers), the `/security-review` pass and a [scope correction](guardrails.md#scope-judge) each start the agent again with the full limit. Only **Limit per run** is shared.
 
 ### Max minutes per issue
 
-A wall-clock limit for the agent, from 1 to 600. Default: 45. When it's reached, Foreman stops Claude and the run fails with "Hit the 45-minute limit." The setup script doesn't count toward it.
+A wall-clock limit each time Foreman starts the agent, from 1 to 600. Default: 45. When it's reached, Foreman stops Claude and the run fails with "Hit the 45-minute limit." The setup script doesn't count toward it. Like **Max turns per issue**, each pass of a run gets the full time again.
 
 ## Labels
 
-Foreman uses three GitHub labels. It creates them when you save, if they don't exist yet.
+Foreman uses three GitHub labels. It creates them when you save. If a label already exists, Foreman updates its colour and description.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -118,7 +120,7 @@ vendor/bin/pest
 
 The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](guardrails.md#what-the-default-checks-cover).
 
-When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
+When you add a repository and click **Detect** or **Browse…**, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
 
 Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
 
@@ -143,13 +145,15 @@ Fix-up rounds use the same list. Foreman reads the CI results and puts them in t
 
 #### Old tool lists
 
-A repository saved before this change may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save** to keep it. Skip it if you widened the list on purpose.
+A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice under the field suggesting **Restore default**. The button puts the new default in the field. Click **Save changes** to keep it.
 
-A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it to the field by hand and click **Save**.
+The `gh` entries do nothing now. The guard hook blocks every `gh` command and `git push`, whatever the list says. `Bash(git:*)` still matters, because it lets the agent run git commands beyond inspecting and committing. Keep it only if you need that.
+
+A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it to the field by hand and click **Save changes**.
 
 ### Locked paths
 
-Files the agent may not edit, one pattern per line. Optional. Patterns are relative to the repository root. `*` matches within one folder, and `**` matches across folders. A pattern ending in `/` locks the whole folder. For example:
+Files the agent may not edit, one pattern per line. Optional. Patterns start at the repository root. `*` matches within one folder, `**` matches across folders, and `?` matches one character. A pattern ending in `/` locks the whole folder. For example:
 
 ```text
 database/migrations/**
@@ -157,6 +161,8 @@ tests/Feature/BillingTest.php
 ```
 
 Foreman blocks the edit and tells the agent which path is locked. This is on top of the files every run protects, such as CI workflows, `CLAUDE.md` and lock files. See [Guardrails](guardrails.md#protected-files-and-commands). Changes apply to new runs.
+
+The lock covers Claude's edit tools only. A shell command on the allowed list, such as `php` or `python`, can still write a locked file. Foreman's gate doesn't check locked paths afterwards. See [Known gaps](guardrails.md#known-gaps).
 
 ### Instructions
 
@@ -171,15 +177,15 @@ The prompt given to the agent at the start of a run. These placeholders are repl
 | `{{base}}` | The base branch |
 | `{{human_label}}` | The human label |
 
-A custom prompt that still tells the agent to run `gh issue view` skips the cleanup, because the agent reads the raw issue itself. Use `{{issue_text}}` instead.
+A custom prompt must use `{{issue_text}}` to give the agent the issue. The agent can't read it with `gh issue view`, because every `gh` command is blocked.
 
 The default prompt tells the agent to commit its work and write the result file described in [How a run ends](runs.md#how-a-run-ends). It also tells the agent to use the `test_looks_wrong` reason instead of changing a test that seems wrong.
 
 The default prompt starts with `/mattpocock-skills:implement`. So it needs the `mattpocock-skills` Claude Code plugin. If you don't use that plugin, edit the instructions.
 
-The review pass after the gate uses `/code-review`, `/simplify` and `/security-review`, which come with Claude Code. It has its own prompt, so a custom prompt doesn't change it. See [Risk tiers](guardrails.md#risk-tiers).
+The review pass after the gate uses `/code-review` and `/simplify`, plus `/security-review` for [risk tier 3](guardrails.md#risk-tiers). These come with Claude Code. The pass has its own prompt, so a custom prompt doesn't change it.
 
-**Restore default** puts the default prompt back. If you save the default unchanged, Foreman stores it as "default". Then later improvements to Foreman's default prompt reach this repository on their own.
+**Restore default** puts the default prompt back. If you save the default unchanged, Foreman stores nothing. Then later improvements to Foreman's default prompt reach this repository on their own.
 
 ### Watch PRs
 
@@ -195,11 +201,11 @@ Off by default. When it's on, Foreman runs the agent's shell commands in Claude 
 
 This was tested only on macOS, with Claude Code 2.1.316. The test covered a commit, GPG signing, an npm install, Foreman's hooks, a blocked host, and the blocked writes and reads listed below. It didn't cover Composer, pip or Cargo installs, or a Mac where the sandbox isn't available.
 
-- **Writes** stay in the worktree, plus the parts of the checkout's `.git` folder that a commit writes. A script can't change your home folder, your other checkouts, or the repository's git hooks and git config.
+- **Writes** stay in the worktree, plus the parts of the checkout's `.git` folder that a commit writes, and the package caches below. A script can't change the rest of your home folder, your other checkouts, or the repository's git hooks and git config.
 - **Reads** of `~/.gnupg`, `~/.ssh` and `~/.config/gh` are blocked, since they hold keys and tokens. Everything else in your home folder can still be read.
 - **Network.** Commands can reach only the hosts on the *allowlist*. That is GitHub plus the package registries, the servers packages download from, for the stacks Foreman found. They are Packagist, npm and Yarn, crates.io, and PyPI.
 - **No way out.** The agent can't ask to run a command outside the sandbox. Foreman also asks Claude Code to fail the run when the sandbox isn't available.
-- **Package caches.** Package managers keep downloaded packages in a cache folder, and the sandbox blocks yours. So the agent's installs use `storage/foreman/cache/` instead. A script in one repository then can't tamper with the caches your other projects use. Each tool's first install starts with an empty cache. Cargo is the exception: it keeps using `~/.cargo/registry` and `~/.cargo/git`.
+- **Package caches.** Package managers keep downloaded packages in a cache folder, and the sandbox blocks yours. So the agent's installs use `storage/foreman/cache/` instead. A script in one repository then can't tamper with the caches your projects outside Foreman use. All repositories in Foreman share this one cache. Each tool's first install starts with an empty cache. Cargo is the exception: it keeps using `~/.cargo/registry` and `~/.cargo/git`.
 - **Signed commits.** Git signs commits through `gpg-agent`, a background program that holds your unlocked key. The sandbox blocks it, so the agent commits without signing. If your git config signs commits, Foreman signs every commit it hasn't pushed yet, just before it pushes.
 
 Git dependencies over SSH fail, because the agent has no SSH agent and can't read `~/.ssh`. Use HTTPS URLs for them. Turn the sandbox off for a repository that needs another host, such as a private registry.
