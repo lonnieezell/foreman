@@ -60,6 +60,8 @@ php artisan queue:work --queue=runs --timeout=0 --tries=1
 
 See [Runs stay on Waiting](troubleshooting.md#runs-stay-on-waiting).
 
+A run can take hours, so the queue gives each job 48 hours before it treats the job as lost. If you set `DB_QUEUE_RETRY_AFTER` in `.env`, keep it longer than your longest run. Otherwise a second worker picks up a run that is still going.
+
 ## The test-integrity script
 
 ```bash
