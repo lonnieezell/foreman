@@ -121,11 +121,46 @@ A repository can have several stacks. Its rules are the union of each stack's ru
 | **Assertion markers** | `expect(`, `assert` | `expect(` | `assert!`, `assert_eq!`, `assert_ne!`, `#[should_panic]` | `assert `, `self.assert`, `pytest.raises` |
 | **Skip and suppress markers** | `markTestSkipped`, `markTestIncomplete`, `->skip(`, `->todo(`, `@pest-mutate-ignore`, `@phpstan-ignore` | `.skip(`, `.only(`, `xit(`, `xdescribe(`, `.todo(`, `@ts-ignore`, `@ts-expect-error`, `eslint-disable` | `#[ignore]`, `#[allow(clippy::`, `#[allow(dead_code)]` | `pytest.mark.skip`, `skipif`, `xfail`, `unittest.skip`, `pytest.skip(`, `# type: ignore`, `# noqa` |
 | **Commit-time formatter** | Pint, or PHP CS Fixer, when the repository requires it | Biome or Prettier, when the repository has it | `rustfmt` | `ruff format` |
-| **Default verify commands** | Pint check, PHPStan, then Pest or PHPUnit. A tool runs only if the repository requires it. | The `lint`, `typecheck` and `test` scripts, using the package manager of the lock file. `npx tsc --noEmit` when there is a `tsconfig.json` and no `typecheck` script. | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, in each folder with a `Cargo.toml` | `ruff format --check`, `ruff check`, `mypy` and `pyright` when configured, then `pytest`. With `uv.lock` or `poetry.lock`, each runs through `uv run` or `poetry run`. |
+| **Default verify commands** | Pint check (or PHP CS Fixer), PHPStan, then Pest or PHPUnit. A tool runs only if the repository requires it. The format check covers only the changed files. | The `lint`, `typecheck` and `test` scripts, using the package manager of the lock file. `npx tsc --noEmit` when there is a `tsconfig.json` and no `typecheck` script. | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, in each folder with a `Cargo.toml` | `ruff format --check`, `ruff check`, `mypy` and `pyright` when configured, then `pytest`. With `uv.lock` or `poetry.lock`, each runs through `uv run` or `poetry run`. Both `ruff` checks cover only the changed files. |
 | **High-risk paths** | See the PHP frameworks below | `middleware.ts`, `**/auth/**`, `app/api/**`, `pages/api/**` | `src-tauri/tauri.conf.json`, `src-tauri/capabilities/**`, `**/auth*` | `settings.py`, `**/middleware*.py`, `**/permissions.py`, `**/migrations/**`, `**/auth/**` |
 | **Risky code** | See the PHP frameworks below | `dangerouslySetInnerHTML`, `eval(`, `child_process`, `innerHTML` | `unsafe `, `std::process::Command`, `transmute` | `eval(`, `exec(`, `pickle`, `shell=True`, `.raw(`, `.extra(`, `yaml.load(` |
 
 A change to a high-risk path, or new risky code, marks the work as higher risk.
+
+### What the default checks cover
+
+A problem that is already on the base branch is not the agent's to fix. Fixing it would break the agent's scope, and leaving it would fail every run. So the default format and lint checks look only at the files the change touches. Tests and static analysis still cover the whole repository, because a broken test or type error on the base branch is worth a human's attention.
+
+| Check | Covers |
+| --- | --- |
+| Pint, PHP CS Fixer | Changed files only |
+| `ruff format --check`, `ruff check` | Changed files only |
+| PHPStan, `mypy`, `pyright`, `tsc` | The whole project |
+| Pest, PHPUnit, `pytest`, `cargo test`, the `test` script | The whole project |
+| `cargo fmt --check` | The whole crate. `rustfmt` follows each `mod` line into other files, so a changed `lib.rs` would still check files the agent never touched. |
+| `cargo clippy` | The whole crate. Clippy can't be limited to some files. |
+| The TypeScript `lint` script | The whole project. The script is the repository's own, so Foreman can't tell which files it checks. |
+
+"Changed files" means the files with the tool's extension that differ from where the branch left `origin/<base>`. That counts committed, staged, unstaged and new files, the same as the [test-integrity check](#test-integrity). Deleted files are skipped. When nothing changed, the check passes without running the tool. When the base ref is missing, the check fails instead of passing.
+
+Foreman passes the file list itself instead of using Pint's `--diff` option. With `--diff`, Pint checks nothing at all for a project in a sub-folder.
+
+A [verify script](repository-settings.md#verify-script) you write yourself runs as written. These rules only shape the default.
+
+### Continuing runs catch up with the base branch
+
+A [fix-up round](pr-watching.md#fix-up-rounds) or a **Continue after my reply** run reuses the branch it left behind. Before the agent starts, Foreman fetches `origin` and merges `origin/<base>` into that branch. A fix that landed on the base branch in the meantime then reaches the run.
+
+When the worktree is gone and Foreman rebuilds it from the pushed branch, the merge runs before the setup script, so dependencies the base branch added get installed. A worktree that is still there is reused as it is, and the setup script doesn't run again.
+
+| Situation | What happens |
+| --- | --- |
+| The merge goes through | The run goes on from the merged branch. The run log shows `Merging origin/<base> into <branch>`. |
+| The merge conflicts, fails or takes over 2 minutes | Foreman aborts the merge and the run goes on from the branch as it was. The log line starts with `Couldn't merge origin/<base>` and shows git's output. |
+| Fetching `origin` fails | Foreman doesn't merge. The run goes on from the branch as it was, and the log line starts with `Couldn't fetch origin`. |
+| The worktree has uncommitted changes | Foreman doesn't merge, because `git merge --abort` can't always put those changes back. The run goes on from the branch as it was. |
+
+A conflict doesn't stop the run or flag a human. Most fixes on the base branch aren't needed by the run, and the checks above already ignore problems the agent didn't touch. If the branch still needs the fix, [Foreman's gate](#foremans-gate) fails and a human sees why. The branch's commits are never lost: an aborted merge leaves the branch where it was.
 
 ### PHP frameworks
 

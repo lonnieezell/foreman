@@ -108,15 +108,17 @@ The setup script runs as you, with no sandbox.
 
 Bash that decides when the agent is done. The agent can't stop until this script exits 0 and the [test-integrity check](guardrails.md#test-integrity) passes. It runs in the worktree, with `-e`, so it stops at the first failing line. It has a 25-minute timeout.
 
-Leave it empty to use the checks Foreman finds for the stacks in the worktree. For a Laravel app with Pint, PHPStan and Pest, that is:
+Leave it empty to use the checks Foreman finds for the stacks in the worktree. For a Laravel app with Pint, PHPStan and Pest, and a base branch of `main`, that is:
 
 ```bash
-vendor/bin/pint --test
+(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)
 vendor/bin/phpstan analyse
 vendor/bin/pest
 ```
 
-When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
+The first line runs Pint only on the files the branch changed, so formatting problems already on the base branch don't fail the run. See [What the default checks cover](guardrails.md#what-the-default-checks-cover).
+
+When you add a repository, or open the settings of one that has no script yet, the form fills in this default so you can see and edit it. If you save it unchanged, Foreman stores nothing, so the default keeps following the base branch and the stacks it finds. The [stack rules](guardrails.md#stack-rules) table lists the default for each language.
 
 Use check-only commands, such as `pint --test`, so the script never changes files. Match what your CI runs.
 

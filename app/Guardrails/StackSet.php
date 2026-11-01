@@ -54,11 +54,21 @@ class StackSet
     /**
      * The union of one rule table across all stacks.
      *
-     * @param  string  $rule  A rule table method on `Stack`, such as `tier3Paths` or `verifyCommands`.
+     * @param  string  $rule  A rule table method on `Stack`, such as `tier3Paths`.
      * @return list<string>
      */
     public function rules(string $rule): array
     {
         return array_values(array_unique(array_merge(...array_map(fn (Stack $stack) => $stack->{$rule}(), $this->stacks))));
+    }
+
+    /**
+     * Every stack's verify commands, with format checks limited to files changed since `$base`.
+     *
+     * @return list<string>
+     */
+    public function verifyCommands(string $base): array
+    {
+        return array_values(array_unique(array_merge(...array_map(fn (Stack $stack) => $stack->verifyCommands($base), $this->stacks))));
     }
 }

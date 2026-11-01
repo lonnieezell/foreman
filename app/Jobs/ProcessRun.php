@@ -55,9 +55,12 @@ class ProcessRun implements ShouldQueue
         $run->moveTo(RunStatus::Preparing, ['started_at' => now(), 'heartbeat_at' => now()]);
 
         try {
-            $worktree = $run->resume_session_id && $run->worktree_path && File::isDirectory($run->worktree_path)
-                ? $run->worktree_path          // continuing: keep the agent's work in progress
-                : $this->prepareWorktree($run);
+            if ($run->resume_session_id && $run->worktree_path && File::isDirectory($run->worktree_path)) {
+                $worktree = $run->worktree_path;   // continuing: keep the agent's work in progress
+                $this->catchUpWithBase($run, $worktree, fetch: true);
+            } else {
+                $worktree = $this->prepareWorktree($run);
+            }
 
             $this->prepareForemanFiles($worktree);
 
@@ -106,9 +109,59 @@ class ProcessRun implements ShouldQueue
 
         $run->update(['worktree_path' => $worktree]);
 
+        // Before the setup script, so dependencies the base branch added get installed
+        if ($pushed) {
+            $this->catchUpWithBase($run, $worktree, fetch: false);
+        }
+
         $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900);
 
         return $worktree;
+    }
+
+    /**
+     * Merge the latest base branch into a continuing run's branch, so fixes that landed there reach it.
+     * Any failure leaves the branch as it was and the run goes on: the gate still catches what the base would have fixed.
+     */
+    private function catchUpWithBase(Run $run, string $worktree, bool $fetch): void
+    {
+        $base = "origin/{$run->repository->base_branch}";
+        $this->guardCancel($run);
+
+        if ($fetch) {
+            $fetched = Process::path($worktree)->run(['git', 'fetch', 'origin', '--quiet']);
+            $run->update(['heartbeat_at' => now()]);
+
+            if ($fetched->failed()) {
+                $run->log("Couldn't fetch origin, so {$base} wasn't merged. Going on from the branch as it was: ".str(trim($fetched->errorOutput()))->limit(500));
+
+                return;
+            }
+        }
+
+        // `git merge --abort` can't always restore uncommitted changes, so never risk them
+        if (trim(Process::path($worktree)->run(['git', 'status', '--porcelain', '--untracked-files=no'])->output()) !== '') {
+            $run->log("Not merging {$base}: the worktree has uncommitted changes. Going on from the branch as it was.");
+
+            return;
+        }
+
+        $run->log("Merging {$base} into {$run->branch}");
+
+        try {
+            // Well under the 5-minute heartbeat limit, so a slow merge can't get the run reaped
+            $merge = Process::path($worktree)->timeout(120)->run(['git', 'merge', '--no-edit', $base]);
+
+            if ($merge->successful()) {
+                return;
+            }
+            $why = trim($merge->errorOutput()."\n".$merge->output());
+        } catch (Throwable $e) {
+            $why = $e->getMessage();
+        }
+
+        Process::path($worktree)->run(['git', 'merge', '--abort']);
+        $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($why)->limit(500));
     }
 
     private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300): void
@@ -385,7 +438,7 @@ class ProcessRun implements ShouldQueue
     private function review(Run $run, GitHub $github): ?string
     {
         $repo = $run->repository;
-        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path);
+        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, "origin/{$repo->base_branch}");
         $limit = (int) config('foreman.max_pr_lines');
 
         $run->moveTo(RunStatus::Reviewing);

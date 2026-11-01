@@ -104,10 +104,10 @@ SH;
         return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $this->locked_paths))));
     }
 
-    /** One line per verify command of the stacks found in `$folder`. */
-    public static function defaultVerifyScript(string $folder): string
+    /** One line per verify command of the stacks found in `$folder`. Format checks cover files changed since `$base`. */
+    public static function defaultVerifyScript(string $folder, string $base): string
     {
-        return is_dir($folder) ? implode("\n", StackSet::detect($folder)->rules('verifyCommands')) : '';
+        return is_dir($folder) ? implode("\n", StackSet::detect($folder)->verifyCommands($base)) : '';
     }
 
     /** Name used for per-profile state like usage-limit pauses. */

@@ -51,12 +51,13 @@ class VerifyScriptTest extends TestCase
         ]);
     }
 
-    private const DEFAULT = "vendor/bin/pint --test\nvendor/bin/phpstan analyse\nvendor/bin/pest\ncd 'frontend' && pnpm run lint\ncd 'frontend' && pnpm run test";
+    private const DEFAULT = "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)\nvendor/bin/phpstan analyse\nvendor/bin/pest\ncd 'frontend' && pnpm run lint\ncd 'frontend' && pnpm run test";
 
     public function test_the_default_is_built_from_the_detected_stacks(): void
     {
-        $this->assertSame(self::DEFAULT, Repository::defaultVerifyScript($this->dir));
-        $this->assertSame('', Repository::defaultVerifyScript("{$this->dir}/missing"));
+        $this->assertSame(self::DEFAULT, Repository::defaultVerifyScript($this->dir, 'origin/main'));
+        $this->assertStringContainsString("--merge-base 'origin/develop'", Repository::defaultVerifyScript($this->dir, 'origin/develop'));
+        $this->assertSame('', Repository::defaultVerifyScript("{$this->dir}/missing", 'origin/main'));
     }
 
     public function test_the_form_starts_with_the_default_for_a_repository_without_one(): void
@@ -64,6 +65,12 @@ class VerifyScriptTest extends TestCase
         Livewire::test(RepositoryForm::class, ['repository' => $this->repository()])
             ->assertSet('verify_script', self::DEFAULT)
             ->assertSeeHtml('id="verify_script"');
+    }
+
+    public function test_the_forms_default_follows_the_repositorys_base_branch(): void
+    {
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['base_branch' => 'develop'])])
+            ->assertSet('verify_script', str_replace('origin/main', 'origin/develop', self::DEFAULT));
     }
 
     public function test_detecting_the_checkout_fills_in_the_default(): void
@@ -94,6 +101,21 @@ class VerifyScriptTest extends TestCase
             ->set('verify_script', '  ')
             ->call('save', $github)
             ->assertHasNoErrors();
+        $this->assertNull($repo->fresh()->verify_script);
+    }
+
+    public function test_saving_the_unchanged_default_stores_nothing_so_it_follows_the_base_branch(): void
+    {
+        mkdir("{$this->dir}/.git");
+        $repo = $this->repository(['verify_script' => 'make check']);
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+
+        Livewire::test(RepositoryForm::class, ['repository' => $repo])
+            ->set('base_branch', 'develop')
+            ->set('verify_script', str_replace('origin/main', 'origin/develop', self::DEFAULT))
+            ->call('save', $github)
+            ->assertHasNoErrors();
+
         $this->assertNull($repo->fresh()->verify_script);
     }
 
