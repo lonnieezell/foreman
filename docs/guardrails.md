@@ -10,6 +10,7 @@ This is where the guardrails are heading. The first steps are built. The others 
 
 | Step | What it does | State |
 | --- | --- | --- |
+| Intake gate | Takes only issues that a trusted person marked as ready. See [Intake gate](#intake-gate). | Built |
 | Stack detection | Finds which languages a worktree uses, and loads each one's rules. See [Stack rules](#stack-rules). | Built |
 | Sanitised issue | Cleans the issue text and hands it to the agent as untrusted data. See [Sanitised issue](#sanitised-issue). | Built |
 | Foreman pushes | The agent can't push or use `gh`. It writes a result file, and Foreman acts on GitHub. See [Foreman pushes, not the agent](#foreman-pushes-not-the-agent). | Built |
@@ -75,6 +76,22 @@ In both, the weak point was not the model's judgement. It was that the agent hel
 - The push block is a guardrail, not a sandbox. Allowed tools such as `npm`, `composer`, `cargo` and `python` run any code, and that code could set its own git configuration. The push URL and the missing tokens stop the agent's normal commands.
 - The agent can still reach the network through allowed tools such as `npm` and `composer`.
 - During a fix-up round the allowed tools still include `gh pr checks` and `gh run view`, but the [protected-commands hook](#protected-files-and-commands) blocks every `gh` command. So the agent can't read CI results itself yet.
+
+## Intake gate
+
+Issue text is the agent's instructions, and anyone who can edit an issue can change it. So Foreman only takes an issue when a trusted person marked it as ready. On every check it skips an issue when:
+
+- the ready label was added by a bot, or
+- the ready label was added by someone without write access to the repository, or
+- the issue was edited after the label was added.
+
+To let bots mark issues as ready, turn on **Trust ready labels added by bots** on the Settings page. It's off by default. A trusted bot's label skips the write-access check, but an edit after the label still skips the issue. See [Global settings](global-settings.md#intake-gate).
+
+Admin, maintain and write access all count as write access. Foreman asks GitHub once per check for each person who added a label, however many issues they labelled.
+
+A skipped issue stays open and keeps its label. The repository's row on the dashboard shows it under **Skipped by the intake gate**, with the reason. To approve it, read the issue, then remove the label and add it again. A person with write access has to do that. If GitHub shows no record of who added the label, Foreman skips the issue too.
+
+Issues that pass are picked up as before.
 
 ## Stack rules
 

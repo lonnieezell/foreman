@@ -216,6 +216,17 @@
             </div>
             @endif
 
+            @if ($repo->intake_skips)
+                <div class="line-error">
+                    <p>Skipped by the intake gate:</p>
+                    <ul>
+                        @foreach ($repo->intake_skips as $skip)
+                            <li>#{{ $skip['number'] }}: {{ $skip['reason'] }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             @if ($repo->last_error)
                 <p class="line-error">Last check failed: {{ Str::limit($repo->last_error, 240) }}</p>
             @endif

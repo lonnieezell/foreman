@@ -40,6 +40,7 @@ SH;
             'daily_budget' => 'decimal:2',
             'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',
+            'intake_skips' => 'array',
             'archived_at' => 'datetime',
         ];
     }

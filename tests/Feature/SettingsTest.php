@@ -42,6 +42,20 @@ class SettingsTest extends TestCase
         Livewire::test(Settings::class)->assertSet('five_hour_ceiling', '70')->assertSet('weekly_cap', '');
     }
 
+    public function test_trusting_bot_labels_is_off_by_default_and_saved_with_the_form(): void
+    {
+        $this->assertFalse(Setting::trustBotLabels());
+
+        Livewire::test(Settings::class)
+            ->assertSet('trust_bot_labels', false)
+            ->set('trust_bot_labels', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertTrue(Setting::trustBotLabels());
+        Livewire::test(Settings::class)->assertSet('trust_bot_labels', true);
+    }
+
     public function test_clearing_a_field_goes_back_to_the_default(): void
     {
         Setting::put('usage.weekly_cap', 0.5);

@@ -76,6 +76,18 @@ Check these in order:
 5. Does the issue have exactly the ready label, and is it open?
 6. Is the issue blocked by another open issue? Foreman skips blocked issues.
 7. Are all the repository's slots in use?
+8. Is the issue listed as skipped on the repository's row? See [Issue skipped by intake gate](#issue-skipped-by-intake-gate).
+
+## "Issue skipped by intake gate"
+
+The repository's row lists the issue under **Skipped by the intake gate**, with a reason. Foreman only takes issues that a trusted person marked as ready. There are four reasons:
+
+- **The label was added by a bot.** Ask a person with write access to remove the label and add it again. Or, to trust all bot labels, turn on **Trust ready labels added by bots** on the Settings page.
+- **The label was added by someone without write access.** Ask a person with write access to remove it and add it again.
+- **The issue was edited after the label was added.** Read the changes. If they are fine, remove the label and add it again. That counts as a fresh approval.
+- **GitHub has no record of who added the label.** This can happen on a very old issue with a long history. Remove the label and add it again.
+
+The list clears on the next check once nothing is skipped. See [Intake gate](guardrails.md#intake-gate).
 
 ## "Saved, but the labels couldn't be created on GitHub"
 
