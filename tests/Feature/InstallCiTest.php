@@ -100,16 +100,12 @@ class InstallCiTest extends TestCase
         );
     }
 
-    public function test_laravel_repos_add_the_laravel_semgrep_rules(): void
+    public function test_laravel_repos_scan_with_the_php_rules_which_hold_the_laravel_ones(): void
     {
         $laravel = $this->install($this->repo(['composer.json' => self::LARAVEL]));
-        $plain = $this->install($this->repo(['composer.json' => '{"require":{"php":"^8.3"}}'], 'plain'));
 
-        $semgrep = fn (array $workflow) => $this->step($workflow, 'php', 'Semgrep')['run'];
-
-        $this->assertStringContainsString('--config p/laravel', $semgrep($laravel));
-        $this->assertStringContainsString('--config p/php', $semgrep($laravel));
-        $this->assertStringNotContainsString('p/laravel', $semgrep($plain));
+        // The registry has no p/laravel, and Semgrep fails the whole step on a config it can't download
+        $this->assertSame('pipx run semgrep scan --config p/php --error', $this->step($laravel, 'php', 'Semgrep')['run']);
     }
 
     public function test_a_typescript_repo_gets_its_job(): void
@@ -329,6 +325,43 @@ class InstallCiTest extends TestCase
 
         $this->assertSame("cp .env.example .env\nphp artisan key:generate", $env['run']);
         $this->assertLessThan(array_search('Tests', $names), array_search('Prepare Laravel environment', $names));
+    }
+
+    public function test_a_laravel_app_with_vite_builds_its_assets_before_its_tests(): void
+    {
+        $workflow = $this->install($this->repo([
+            'composer.json' => self::LARAVEL, 'vite.config.js' => '', 'package.json' => '{"scripts":{"build":"vite build"}}', 'package-lock.json' => '{}',
+        ]));
+        $names = $this->stepNames($workflow, 'php');
+
+        $this->assertSame(['node-version' => 'lts/*', 'cache' => 'npm', 'cache-dependency-path' => 'package-lock.json'], $this->step($workflow, 'php', 'Set up Node')['with']);
+        $this->assertSame('npm ci', $this->step($workflow, 'php', 'Install Node dependencies')['run']);
+        $this->assertSame('npm run build', $this->step($workflow, 'php', 'Build assets')['run']);
+        $this->assertSame('ramsey/composer-install@v3', $this->step($workflow, 'php', 'Install dependencies')['uses'], 'composer keeps its own step');
+        $this->assertLessThan(array_search('Set up Node', $names), array_search('Test integrity', $names), 'cheap checks still come first');
+        $this->assertLessThan(array_search('Tests', $names), array_search('Build assets', $names));
+    }
+
+    public function test_the_asset_build_uses_the_apps_package_manager(): void
+    {
+        $workflow = $this->install($this->repo([
+            'composer.json' => self::LARAVEL, 'vite.config.ts' => '', 'package.json' => '{"scripts":{"build":"vite build"}}', 'pnpm-lock.yaml' => '',
+        ]));
+
+        $this->assertSame('pnpm install --frozen-lockfile', $this->step($workflow, 'php', 'Install Node dependencies')['run']);
+        $this->assertSame('pnpm run build', $this->step($workflow, 'php', 'Build assets')['run']);
+    }
+
+    public function test_assets_are_not_built_without_a_vite_config_a_build_script_or_laravel(): void
+    {
+        $noVite = $this->install($this->repo(['composer.json' => self::LARAVEL, 'package.json' => '{"scripts":{"build":"tsc"}}'], 'novite'));
+        $noScript = $this->install($this->repo(['composer.json' => self::LARAVEL, 'vite.config.js' => '', 'package.json' => '{}'], 'noscript'));
+        $plainPhp = $this->install($this->repo(['composer.json' => '{}', 'vite.config.js' => '', 'package.json' => '{"scripts":{"build":"vite build"}}'], 'plain'));
+
+        foreach ([$noVite, $noScript, $plainPhp] as $workflow) {
+            $this->assertNotContains('Build assets', $this->stepNames($workflow, 'php'));
+            $this->assertNotContains('Set up Node', $this->stepNames($workflow, 'php'));
+        }
     }
 
     public function test_php_installs_through_composer_install_which_caches_dependencies(): void
