@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
+use App\Support\ForemanEnv;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
@@ -86,7 +87,7 @@ class WorktreeEnvTest extends TestCase
     }
 
     /** True when the process was started without the variables from Foreman's .env. */
-    private static function clean(PendingProcess $p): bool
+    private static function withoutForemansEnv(PendingProcess $p): bool
     {
         return ($p->environment['APP_KEY'] ?? null) === false
             && ($p->environment['FOREMAN_ENV_PROBE'] ?? null) === false;
@@ -96,7 +97,7 @@ class WorktreeEnvTest extends TestCase
     {
         $this->runJob();
 
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'cp .env.example .env'] && self::clean($p));
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'cp .env.example .env'] && self::withoutForemansEnv($p));
     }
 
     public function test_the_agent_runs_without_foremans_env_and_still_cannot_push(): void
@@ -104,7 +105,7 @@ class WorktreeEnvTest extends TestCase
         $this->runJob();
 
         Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude' && in_array('stream-json', $p->command, true)
-            && self::clean($p)
+            && self::withoutForemansEnv($p)
             && $p->environment['GIT_CONFIG_VALUE_0'] === '/nonexistent/foreman-agents-cannot-push'
             && $p->environment['GH_TOKEN'] === false);
     }
@@ -113,8 +114,8 @@ class WorktreeEnvTest extends TestCase
     {
         $this->runJob();
 
-        Process::assertRan(fn (PendingProcess $p) => str_contains($p->command[1] ?? '', 'test-integrity.php') && self::clean($p));
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'composer test'] && self::clean($p));
+        Process::assertRan(fn (PendingProcess $p) => str_contains($p->command[1] ?? '', 'test-integrity.php') && self::withoutForemansEnv($p));
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'composer test'] && self::withoutForemansEnv($p));
     }
 
     public function test_the_stop_hooks_checks_run_without_foremans_env(): void
@@ -139,7 +140,7 @@ class WorktreeEnvTest extends TestCase
 
         // What the agent's hooks inherit: Foreman's real .env removed, so each hook must load it again itself
         $this->app->useEnvironmentPath(base_path());
-        $env = [...ProcessRun::worktreeEnv(), ...ProcessRun::agentEnv()];
+        $env = [...ForemanEnv::removed(), ...ProcessRun::agentEnv()];
 
         foreach (['foreman:guard', 'foreman:format-staged', 'foreman:stop'] as $hook) {
             $process = new SymfonyProcess([PHP_BINARY, base_path('artisan'), $hook, $rules], "{$this->envDir}/work", $env);
