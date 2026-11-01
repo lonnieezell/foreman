@@ -51,30 +51,55 @@ class DocsTest extends TestCase
         }
     }
 
-    public function test_the_guardrails_page_renders_with_its_sections_and_stack_table(): void
+    public function test_the_guardrails_page_renders_with_its_sections(): void
     {
         $this->get(route('docs', 'guardrails'))
             ->assertOk()
             ->assertSee('<h1', false)
             ->assertSee('The pipeline at a glance')
-            ->assertSee('id="stack-rules"', false)
+            ->assertSee('id="foremans-gate"', false);
+    }
+
+    public function test_the_stack_rules_page_renders_its_table(): void
+    {
+        $this->get(route('docs', 'stack-rules'))
+            ->assertOk()
             ->assertSee('<table', false)
             ->assertSee('src-tauri/capabilities/**')
+            ->assertSee('id="php-frameworks"', false);
+    }
+
+    public function test_the_security_page_lists_the_known_gaps(): void
+    {
+        $this->get(route('docs', 'security'))
+            ->assertOk()
             ->assertSee('id="known-gaps"', false)
             ->assertSee('The setup script and the checks run unsandboxed');
     }
 
-    public function test_the_guardrails_links_to_other_pages_resolve(): void
+    public function test_links_between_pages_resolve(): void
     {
-        $markdown = file_get_contents(base_path('docs/guardrails.md'));
-        preg_match_all('/\]\(([a-z0-9-]+)\.md(#[a-z0-9-]+)?\)/', $markdown, $links, PREG_SET_ORDER);
+        foreach (array_keys(Docs::PAGES) as $page) {
+            $markdown = file_get_contents(base_path("docs/{$page}.md"));
+            preg_match_all('/\]\(([a-z0-9-]+)\.md(#[a-z0-9-]+)?\)/', $markdown, $links, PREG_SET_ORDER);
 
-        $this->assertNotEmpty($links);
-        foreach ($links as $link) {
-            $this->assertArrayHasKey($link[1], Docs::PAGES, "guardrails.md links to missing page {$link[1]}");
+            foreach ($links as $link) {
+                $this->assertArrayHasKey($link[1], Docs::PAGES, "{$page}.md links to missing page {$link[1]}");
 
-            if (isset($link[2])) {
-                $this->get(route('docs', $link[1]))->assertSee('id="'.substr($link[2], 1).'"', false);
+                if (isset($link[2])) {
+                    $this->get(route('docs', $link[1]))->assertSee('id="'.substr($link[2], 1).'"', false);
+                }
+            }
+        }
+    }
+
+    public function test_links_within_a_page_resolve(): void
+    {
+        foreach (array_keys(Docs::PAGES) as $page) {
+            preg_match_all('/\]\((#[a-z0-9-]+)\)/', file_get_contents(base_path("docs/{$page}.md")), $links);
+
+            foreach (array_unique($links[1]) as $anchor) {
+                $this->get(route('docs', $page))->assertSee('id="'.substr($anchor, 1).'"', false);
             }
         }
     }

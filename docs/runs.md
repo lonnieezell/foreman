@@ -49,19 +49,7 @@ The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script 
 
 ## How a run ends
 
-The agent finishes by writing a result file in its worktree, `.foreman/result.json`. Foreman reads it and does everything on GitHub itself. The agent can't push, open PRs or use `gh`. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent).
-
-The file says one of three things:
-
-| Outcome | What the file holds | What Foreman does | The run ends as |
-| --- | --- | --- | --- |
-| `pr` | A title and a body | Runs [its own gate](guardrails.md#foremans-gate), then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body unless the body already starts with it, and its own footer at the bottom. It also adds a `risk:tier-<n>` label to the PR. | **Watching PR**, or **PR opened** if Watch PRs is off |
-| `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
-| `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
-
-A missing file, or one that isn't valid JSON or lacks a field its outcome needs, fails the run. The agent's last message goes on the run page and in a comment on the issue.
-
-The reason on a `needs_human` result shows in the run log. One reason is `test_looks_wrong`. It gives the agent an honest way out when a test seems wrong, instead of changing or skipping the test to get green.
+The agent finishes by writing a result file in its worktree, `.foreman/result.json`. It says `pr`, `needs_human` or `already_done`. Foreman reads it and does everything on GitHub itself. A missing or unreadable file fails the run. See [How a run ends](how-foreman-works.md#how-a-run-ends) for what each outcome holds and what Foreman does with it.
 
 ## The statuses
 

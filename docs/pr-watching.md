@@ -36,7 +36,7 @@ Once it has settled:
 
 ## Fix-up rounds
 
-A round resumes the agent's Claude session in the same worktree. First Foreman merges the base branch into the PR's branch. See [Continuing runs catch up with the base branch](guardrails.md#continuing-runs-catch-up-with-the-base-branch). The agent gets the list of checks that didn't pass and the bot threads that are open. The run page shows rounds under **Attempts** as **Round 1**, **Round 2** and so on.
+A round resumes the agent's Claude session in the same worktree. First Foreman merges the base branch into the PR's branch. See [Continuing runs catch up with the base branch](how-foreman-works.md#continuing-runs-catch-up-with-the-base-branch). The agent gets the list of checks that didn't pass and the bot threads that are open. The run page shows rounds under **Attempts** as **Round 1**, **Round 2** and so on.
 
 The agent never touches GitHub during a round. Foreman does that part:
 

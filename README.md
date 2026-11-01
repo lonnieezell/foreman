@@ -55,12 +55,7 @@ Waiting ─► Setting up ─► Writing code ─► Running checks ─► Revie
         └─► Failed      (error, timeout, or no readable result file)
 ```
 
-A few design choices are worth knowing about:
-
-- **The agent never touches GitHub.** It commits in its worktree and writes a result file, `.foreman/result.json`. Foreman reads the file, runs its own checks, and then pushes, opens the PR, comments and labels. It only trusts checks it ran itself. A run with no readable result file fails, and the agent's last message goes on the issue.
-- **Polling is nearly free.** The scheduler only calls `gh`, so checking costs no tokens. The one exception is a usage probe: a one-turn Haiku call made when ready issues are waiting and the profile's usage numbers are stale. See [Usage limits](docs/usage-limits.md#where-the-numbers-come-from).
-- **Workers are plain Laravel queue workers.** `composer run foreman` starts three, so up to three runs execute at once across all repositories. Each repository's concurrency setting limits how many of those slots it can use.
-- **Dead runs are reaped.** A run whose worker stops sending heartbeats for 5 minutes is marked failed, and its issue is released. This happens when a laptop sleeps or a process is killed.
+The agent never touches GitHub. It commits in its worktree and writes a result file. Foreman runs its own checks on the work, then pushes and opens the PR itself. [How Foreman works](docs/how-foreman-works.md) explains each step and why it's there.
 
 ---
 
@@ -81,39 +76,18 @@ Every repository you add needs a local clone with a GitHub remote. It also needs
 
 ## Quickstart
 
-This walks you from a fresh clone to your first agent-opened PR.
-
-**1. Install Foreman.**
+Install Foreman, then start it from a terminal where `gh auth status` and `claude --version` both work:
 
 ```bash
 git clone https://github.com/lonnieezell/foreman.git
 cd foreman
 composer run setup
-```
-
-`setup` installs PHP and npm dependencies, creates `.env` and an app key, runs the migrations (SQLite by default), and builds the assets.
-
-**2. Start everything.**
-
-Run this from a terminal where `gh auth status` and `claude --version` both work:
-
-```bash
 composer run foreman
 ```
 
-This starts the web UI at <http://localhost:8787>, the scheduler, and three run workers, all in one terminal.
+`setup` installs dependencies, creates `.env`, runs the migrations (SQLite by default) and builds the assets. `foreman` starts the web UI at <http://localhost:8787>, the scheduler and three run workers, all in one terminal.
 
-**3. Add a repository.**
-
-Open the dashboard and click **Add repository**. Enter the path to a local clone and click **Detect** to fill in the GitHub `owner/name`. Review the defaults, then save. Foreman creates its three labels on GitHub, or updates their colour and description if they already exist.
-
-**4. Give it an issue.**
-
-Pick a small, well-specified issue and add the `ready-for-agent` label to it. The issue body is the spec, and the agent stays strictly inside it.
-
-**5. Start the repository.**
-
-Click **Start** on the repository's row. Foreman checks for ready issues straight away, and you'll see the run move through the stations. Click it to follow the log. When it finishes, there's a PR linked to the issue.
+Then follow [Getting started](docs/getting-started.md) to add a repository and get your first PR.
 
 ---
 
@@ -131,22 +105,41 @@ It installs any new dependencies, runs new migrations and rebuilds the assets. T
 
 The full docs are in [`docs/`](docs/). They're also built into the app: click **Docs** in Foreman's header.
 
+**Start here**
+
 - [Getting started](docs/getting-started.md): from an empty dashboard to your first PR.
-- [Runs and statuses](docs/runs.md): the stations, what each status means, and the buttons.
-- [Guardrails](docs/guardrails.md): the checks Foreman runs on an agent's work, and the rules for each language stack.
-- [Repository settings](docs/repository-settings.md): every setting for a repository, including the setup script, allowed tools and prompt.
-- [Global settings](docs/global-settings.md): pause, spend limits, notifications and environment variables.
+
+**Understand it**
+
+- [How Foreman works](docs/how-foreman-works.md): the path from issue to PR, and why the agent never touches GitHub.
+- [Guardrails](docs/guardrails.md): the checks Foreman runs on an agent's work, and what each one doesn't catch.
 - [Usage limits and profiles](docs/usage-limits.md): how Foreman shares your Claude subscription and when it holds runs.
 - [PR watching](docs/pr-watching.md): how Foreman follows a PR through CI and review bots.
+- [Security and known gaps](docs/security.md): what protects you, and where that protection stops.
+
+**Do a task**
+
+- [Setting up CI in your repo](docs/ci-setup.md): add Foreman's CI workflow to a repository.
 - [Troubleshooting](docs/troubleshooting.md): dashboard warnings, failed runs, and where run files live.
+
+**Look it up**
+
+- [Runs and statuses](docs/runs.md): the stations, what each status means, and the buttons.
+- [Repository settings](docs/repository-settings.md): every setting for a repository.
+- [Global settings](docs/global-settings.md): pause, spend limits, notifications and environment variables.
+- [Stack rules](docs/stack-rules.md): the rules Foreman loads for PHP, TypeScript, Rust and Python.
+- [Commands](docs/commands.md): composer scripts, artisan commands and the test-integrity script.
 
 ---
 
 ## Security notes
 
 - **There is no login.** The dashboard is meant for `localhost` only. Don't expose it to a network.
-- **The agent doesn't act with your push and `gh` rights.** It commits in its worktree and writes a result file. Foreman reads that file, then pushes the branch and opens the PR itself. The agent's environment has no push URL, no git credential helper and no GitHub tokens, and the default **allowed tools** list has no `gh` and no `git push`. Review the list before widening it. See [Guardrails](docs/guardrails.md#foreman-pushes-not-the-agent).
-- **Setup and verify scripts run unsandboxed.** They run as your user in each worktree. The [Sandbox](docs/repository-settings.md#sandbox) setting covers only the agent's shell commands.
+- **The agent doesn't act with your push and `gh` rights.** Foreman pushes and opens the PR itself. Review the **allowed tools** list before widening it.
+- **Setup and verify scripts run unsandboxed.** They run as your user in each worktree.
+- **Shell tools get past some guardrails.** An allowed tool such as `php` or `python` can write files the edit rules protect.
+
+Read [Security and known gaps](docs/security.md) before you rely on Foreman with repositories where outsiders can open issues.
 
 ---
 
@@ -160,7 +153,7 @@ composer test        # run the test suite
 
 `composer run dev` is for working on the UI. It has no scheduler, and its queue worker doesn't listen on the `runs` queue, so no runs happen. Use `composer run foreman` to run Foreman for real.
 
-Run a single poll by hand with `php artisan foreman:poll`. Add `--repo=<id>` to check one repository and `--force` to ignore its poll interval.
+Every command and its options are in [Commands](docs/commands.md).
 
 ---
 

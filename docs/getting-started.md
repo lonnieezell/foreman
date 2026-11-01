@@ -49,3 +49,5 @@ By default Foreman also watches each new PR. It waits for CI and review bots, th
 - Let more issues run at once with the **−** / **+** buttons on the repository's row.
 - Set a daily spend limit, for one repository or for all of them. See [Global settings](global-settings.md#spend).
 - On a Claude subscription, read [Usage limits and profiles](usage-limits.md). It explains why Foreman sometimes holds new runs.
+- Read [How Foreman works](how-foreman-works.md) to see what happens between the label and the PR.
+- Read [Security and known gaps](security.md) before you use Foreman on a repository where outsiders can open issues.
