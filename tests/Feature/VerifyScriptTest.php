@@ -52,7 +52,7 @@ class VerifyScriptTest extends TestCase
         ]);
     }
 
-    private const DEFAULT = "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)\nvendor/bin/phpstan analyse\nvendor/bin/pest\n(cd 'frontend' && pnpm run lint)\n(cd 'frontend' && pnpm run test)";
+    private const DEFAULT = "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)\nvendor/bin/phpstan analyse\nvendor/bin/pest --no-coverage\n(cd 'frontend' && pnpm run lint)\n(cd 'frontend' && pnpm run test)";
 
     public function test_the_default_is_built_from_the_detected_stacks(): void
     {
