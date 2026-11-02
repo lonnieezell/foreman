@@ -197,6 +197,8 @@ class ScopeJudgeTest extends TestCase
         [$run, $comments] = $this->settle([self::VETO, ['in_scope' => false, 'weakens_tests' => false, 'reason' => 'Still adds the settings page.']]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('scope_vetoed', $run->stop_reason);
+        $this->assertNotNull($run->finished_at);
         $this->assertCount(1, $comments);
         $this->assertStringContainsString('Still adds the settings page.', $comments[0]);
         $this->assertFalse($this->ran(['git', 'push']));
@@ -217,6 +219,8 @@ class ScopeJudgeTest extends TestCase
         [$run, $comments] = $this->settle([null, $missingField]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('scope_unusable', $run->stop_reason);
+        $this->assertNotNull($run->finished_at);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge'], $this->sequence);
         $this->assertStringContainsString('API Error: overloaded', $comments[0]);
         $this->assertStringContainsString('weakens_tests', $comments[0]);

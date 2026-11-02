@@ -115,6 +115,8 @@ class ForemanGateTest extends TestCase
         [$run, $comments] = $this->settle(['verify' => 1, 'verifyOutput' => 'FAILED: FooTest::test_it']);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('gate_failed', $run->stop_reason);
+        $this->assertNotNull($run->finished_at);
         Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
         Process::assertDidntRun(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create']);
         $this->assertCount(1, $comments);

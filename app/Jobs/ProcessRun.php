@@ -466,7 +466,7 @@ class ProcessRun implements ShouldQueue
             if ($corrected) {
                 $this->handToHuman($run, $github,
                     "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(self::describeVerdict($verdict)),
-                    "Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.");
+                    "Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.", 'scope_vetoed');
 
                 return;
             }
@@ -529,7 +529,10 @@ class ProcessRun implements ShouldQueue
 
         if ($result['outcome'] !== 'pr') {
             $github->flagForHuman($run->repository, $run->issue_number, $result['comment']);
-            $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+            $run->moveTo(RunStatus::NeedsHuman, [
+                'finished_at' => now(),
+                'stop_reason' => $result['outcome'] === 'already_done' ? 'already_done' : 'agent_asked',
+            ]);
             $run->log($result['outcome'] === 'already_done'
                 ? 'Agent says the issue is already done. Flagged it for a human.'
                 : 'Agent asked for a human'.(($result['reason'] ?? '') !== '' ? " ({$result['reason']})" : '').'.');
@@ -644,16 +647,16 @@ class ProcessRun implements ShouldQueue
 
         $this->handToHuman($run, $github,
             "Foreman's scope judge gave no usable answer twice, so nothing was pushed. The branch is still in the worktree.\n\n".self::quote(...$problems),
-            'Scope judge failed twice. Flagged the issue for a human.');
+            'Scope judge failed twice. Flagged the issue for a human.', 'scope_unusable');
 
         return null;
     }
 
     /** Flag the issue for a human with `$comment`, and end the run as Needs you. */
-    private function handToHuman(Run $run, GitHub $github, string $comment, string $log): void
+    private function handToHuman(Run $run, GitHub $github, string $comment, string $log, string $stopReason): void
     {
         $github->flagForHuman($run->repository, $run->issue_number, $comment);
-        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now()]);
+        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now(), 'stop_reason' => $stopReason]);
         $run->log($log);
     }
 
@@ -715,7 +718,7 @@ class ProcessRun implements ShouldQueue
         if ($failures) {
             $this->handToHuman($run, $github,
                 "Foreman's gate stopped this run before pushing. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(...$failures),
-                "Foreman's gate failed. Flagged the issue for a human.");
+                "Foreman's gate failed. Flagged the issue for a human.", 'gate_failed');
 
             return null;
         }
