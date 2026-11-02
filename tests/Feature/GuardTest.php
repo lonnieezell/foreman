@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Enums\RunStatus;
+use App\Guardrails\Guard;
+use App\Guardrails\StackSet;
 use App\Jobs\ProcessRun;
 use App\Livewire\RepositoryForm;
 use App\Models\Repository;
@@ -163,6 +165,34 @@ class GuardTest extends TestCase
         $this->assertSame(0, $this->hook($this->edit('sub/tests/Feature/BillingTest.php'), $rules)[0], 'locked paths are anchored at the repository root');
     }
 
+    public function test_foremans_hook_files_are_off_limits_to_edit_tools_and_the_shell(): void
+    {
+        $rules = ['hooks_dir' => "{$this->dir}/hooks"];
+        $file = "{$this->dir}/hooks/run-1-rules.json";
+
+        foreach (['Edit', 'Write'] as $tool) {
+            [$code, $stderr] = $this->hook(['tool_name' => $tool, 'tool_input' => ['file_path' => $file, 'content' => '{}']], $rules);
+            $this->assertSame(2, $code);
+            $this->assertStringContainsString('hook files', $stderr);
+        }
+
+        $this->assertSame(2, $this->hook($this->bash("echo 3 > {$this->dir}/hooks/run-1-stops"), $rules)[0]);
+        $this->assertSame(0, $this->hook($this->bash('git status'), $rules)[0]);
+    }
+
+    public function test_the_gate_check_finds_locked_paths_and_lock_files_in_a_list_of_changed_files(): void
+    {
+        $guard = new Guard(StackSet::detect("{$this->dir}/work"), "{$this->dir}/work", ['database/**']);
+        $changes = $guard->lockedChanges(['app/Foo.php', 'database/migrations/x.php', 'composer.lock']);
+
+        $this->assertCount(2, $changes);
+        $this->assertStringContainsString('database/migrations/x.php is locked', $changes[0]);
+        $this->assertStringContainsString('composer.lock is a lock file', $changes[1]);
+
+        $allowed = new Guard(StackSet::detect("{$this->dir}/work"), "{$this->dir}/work", [], true);
+        $this->assertSame([], $allowed->lockedChanges(['composer.lock']));
+    }
+
     public function test_a_relative_path_is_checked_too(): void
     {
         $this->assertSame(2, $this->hook(['tool_name' => 'Edit', 'tool_input' => ['file_path' => './CLAUDE.md']])[0]);
@@ -233,6 +263,7 @@ class GuardTest extends TestCase
         $rules = json_decode(file_get_contents(str_replace('-settings.json', '-rules.json', $settings)), true);
         $this->assertSame(['database/**', 'tests/Locked.php'], $rules['locked_paths']);
         $this->assertTrue($rules['allow_lock_files']);
+        $this->assertSame(dirname($settings), $rules['hooks_dir']);
         $this->assertSame($run->logPath(), $rules['log']);
 
         File::delete([$settings, str_replace('-settings.json', '-rules.json', $settings)]);
