@@ -355,18 +355,15 @@ class WorktreeTest extends TestCase
         $this->assertSame('refs/remotes/origin/main', trim($this->git($this->path, 'symbolic-ref', 'refs/remotes/origin/HEAD')));
     }
 
-    public function test_clearing_foremans_files_deletes_them_and_keeps_the_folder_out_of_git_once(): void
+    public function test_excluding_from_git_hides_the_folder_and_writes_the_entry_once(): void
     {
         $worktree = $this->prepared();
         File::ensureDirectoryExists("{$this->path}/.foreman");
         File::put("{$this->path}/.foreman/result.json", '{}');
-        File::put("{$this->path}/.foreman/keep.json", '{}');
 
-        $worktree->clearForemanFiles('.foreman/result.json');
-        $worktree->clearForemanFiles('.foreman/result.json');
+        $worktree->excludeFromGit('.foreman/');
+        $worktree->excludeFromGit('.foreman/');
 
-        $this->assertFileDoesNotExist("{$this->path}/.foreman/result.json");
-        $this->assertFileExists("{$this->path}/.foreman/keep.json");
         $this->assertSame('', trim($this->git($this->path, 'status', '--porcelain')));
         $this->assertSame(1, substr_count((string) file_get_contents("{$this->source}/.git/info/exclude"), "\n.foreman/\n"));
     }

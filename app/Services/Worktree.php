@@ -23,7 +23,7 @@ class Worktree
         public readonly string $path,
         public readonly string $branch,
         public readonly string $base,
-        public readonly ?string $source = null,
+        public readonly string $source,
     ) {}
 
     /** The base branch as a remote ref, as the diffs and merges name it. */
@@ -70,7 +70,7 @@ class Worktree
     /** Whether the branch exists on origin, as of the last fetch. */
     public function isPushed(): bool
     {
-        return $this->git(['rev-parse', '--verify', '--quiet', "origin/{$this->branch}"], $this->source ?? $this->path)->successful();
+        return $this->git(['rev-parse', '--verify', '--quiet', "origin/{$this->branch}"], $this->source)->successful();
     }
 
     /**
@@ -167,11 +167,9 @@ class Worktree
         }
     }
 
-    /** Delete Foreman's files from the worktree, and keep the folder out of git without touching .gitignore. */
-    public function clearForemanFiles(string ...$files): void
+    /** Keep `$entry` out of git without touching .gitignore, through the repository's info/exclude. */
+    public function excludeFromGit(string $entry): void
     {
-        File::delete(array_map(fn (string $file) => "{$this->path}/{$file}", $files));
-
         $exclude = trim($this->git(['rev-parse', '--git-path', 'info/exclude'])->output());
 
         if ($exclude === '') {
@@ -180,9 +178,9 @@ class Worktree
 
         $exclude = str_starts_with($exclude, '/') ? $exclude : "{$this->path}/{$exclude}";
 
-        if (! str_contains((string) @file_get_contents($exclude), "\n.foreman/\n")) {
+        if (! str_contains((string) @file_get_contents($exclude), "\n{$entry}\n")) {
             File::ensureDirectoryExists(dirname($exclude));
-            File::append($exclude, "\n.foreman/\n");
+            File::append($exclude, "\n{$entry}\n");
         }
     }
 

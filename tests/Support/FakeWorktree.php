@@ -5,7 +5,6 @@ namespace Tests\Support;
 use App\Services\Worktree;
 use Closure;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Support\Facades\File;
 use RuntimeException;
 
 /**
@@ -27,9 +26,6 @@ class FakeWorktree extends Worktree
     /** The message of the exception a diff throws, when set. */
     public ?string $diffFailure = null;
 
-    /** @var list<string> */
-    public array $changedFiles = [];
-
     public int $changedLines = 0;
 
     /** Runs when the worktree is removed, for tests that check the order against other commands. */
@@ -40,7 +36,7 @@ class FakeWorktree extends Worktree
 
     public function __construct()
     {
-        parent::__construct('', '', '');
+        parent::__construct('', '', '', '');
     }
 
     /** Makes the container hand out this fake wherever the app builds a Worktree. */
@@ -78,11 +74,6 @@ class FakeWorktree extends Worktree
         return $continuing && $this->pushed;
     }
 
-    public function isPushed(): bool
-    {
-        return $this->pushed;
-    }
-
     public function catchUpWithBase(bool $fetch, Closure $log): array
     {
         $this->calls[] = $fetch ? 'catchUp:fetch' : 'catchUp';
@@ -105,7 +96,7 @@ class FakeWorktree extends Worktree
     {
         $this->calls[] = 'changedFiles';
 
-        return $this->changedFiles;
+        return [];
     }
 
     public function changedLines(): int
@@ -125,12 +116,9 @@ class FakeWorktree extends Worktree
         $this->calls[] = 'pointOriginHead';
     }
 
-    public function clearForemanFiles(string ...$files): void
+    public function excludeFromGit(string $entry): void
     {
-        $this->calls[] = 'clearForemanFiles';
-
-        // Deleting is plain file work, so the fake does it: a stale result file must not reach the run
-        File::delete(array_map(fn (string $file) => "{$this->builtWith['path']}/{$file}", $files));
+        $this->calls[] = 'excludeFromGit';
     }
 
     public function gitDirs(): array

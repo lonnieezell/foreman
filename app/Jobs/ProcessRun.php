@@ -84,8 +84,9 @@ class ProcessRun implements ShouldQueue
                 $worktree = $this->prepareWorktree($run);
             }
 
-            // Clear the last run's result and verdicts
-            $this->worktree($run)->clearForemanFiles(self::RESULT_FILE, self::REVIEW_FILE);
+            // Clear the last run's result and verdicts, and keep them out of git
+            File::delete(["{$worktree}/".self::RESULT_FILE, "{$worktree}/".self::REVIEW_FILE]);
+            $this->worktree($run)->excludeFromGit('.foreman/');
 
             $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
             $this->runAgent($run, $worktree, $github);
@@ -291,7 +292,7 @@ class ProcessRun implements ShouldQueue
             'locked_paths' => $run->repository->lockedPathList(),
             'allow_lock_files' => $allowLockFiles,
             'hooks_dir' => $dir,
-            'base' => $run->worktree($worktree)->baseRef(),
+            'base' => $run->worktree()->baseRef(),
             'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
             'stop_counter' => "{$dir}/run-{$run->id}-stops",
         ]));
@@ -311,7 +312,7 @@ class ProcessRun implements ShouldQueue
         ]];
 
         if ($run->repository->sandbox) {
-            $config['sandbox'] = Sandbox::settings($worktree, $run->worktree($worktree)->gitDirs());
+            $config['sandbox'] = Sandbox::settings($worktree, $run->worktree()->gitDirs());
         }
 
         $settings = "{$dir}/run-{$run->id}-settings.json";

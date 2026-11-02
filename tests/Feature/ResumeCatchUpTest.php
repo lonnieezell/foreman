@@ -99,7 +99,7 @@ class ResumeCatchUpTest extends TestCase
     {
         $this->process($this->makeRun());
 
-        $this->assertSame(['catchUp:fetch', 'clearForemanFiles'], array_slice($this->beforeAgent, 0, 2));
+        $this->assertSame(['catchUp:fetch', 'excludeFromGit'], array_slice($this->beforeAgent, 0, 2));
         $this->assertSame('develop', $this->git->builtWith['base']);
     }
 
