@@ -8,11 +8,14 @@ use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyTimeoutException;
+use Symfony\Component\Process\Process as SymfonyProcess;
 use Tests\TestCase;
 
 class DockerBackedTestsTest extends TestCase
@@ -79,7 +82,7 @@ class DockerBackedTestsTest extends TestCase
 
     public function test_every_compose_file_name_counts(): void
     {
-        foreach (['compose.yaml', 'compose.yml', 'docker-compose.yaml'] as $file) {
+        foreach (['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'] as $file) {
             File::put("{$this->worktree}/{$file}", 'services: {}');
             $this->fakeProcesses();
 
@@ -129,6 +132,27 @@ class DockerBackedTestsTest extends TestCase
 
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
         $this->assertStringContainsString('daemon not running', File::get($run->logPath()));
+    }
+
+    public function test_a_compose_down_that_times_out_still_removes_the_worktree(): void
+    {
+        Process::fake(function (PendingProcess $process) {
+            if ($process->command[0] === 'docker') {
+                throw new ProcessTimedOutException(
+                    new SymfonyTimeoutException(new SymfonyProcess($process->command), SymfonyTimeoutException::TYPE_GENERAL),
+                    Process::result(),
+                );
+            }
+
+            return Process::result();
+        });
+        File::put("{$this->worktree}/compose.yaml", 'services: {}');
+        $run = $this->makeRun(['stop_docker' => true]);
+
+        $run->removeWorktree();
+
+        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertStringContainsString('docker compose down timed out', File::get($run->logPath()));
     }
 
     public function test_the_setting_can_be_turned_on_in_the_repository_settings(): void

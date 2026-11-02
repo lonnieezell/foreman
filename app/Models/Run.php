@@ -9,6 +9,7 @@ use App\Support\ForemanEnv;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -167,7 +168,14 @@ class Run extends Model
             return;
         }
 
-        $result = Process::path($this->worktree_path)->env(ForemanEnv::removed())->timeout(120)->run(['docker', 'compose', 'down', '-v']);
+        try {
+            $result = Process::path($this->worktree_path)->env(ForemanEnv::removed())->timeout(120)->run(['docker', 'compose', 'down', '-v']);
+        } catch (ProcessTimedOutException) {
+            $this->log('docker compose down timed out.');
+
+            return;
+        }
+
         $this->log($result->successful() ? 'Docker services stopped.' : 'docker compose down failed: '.trim($result->errorOutput() ?: $result->output()));
     }
 
