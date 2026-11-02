@@ -58,7 +58,7 @@
         </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'gate_failed')
         <div class="notice">
-            <p>Foreman’s own checks failed before the push, so nothing was pushed. The output is in the comment on the issue. Fix it there, then choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
+            <p>Foreman’s own checks failed before the push, so nothing was pushed. The output is in the comment on the issue. Reply there if the agent should change something, then choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
         </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'scope_vetoed')
         <div class="notice">
