@@ -136,14 +136,13 @@ class PrWatcher
             return true;
         }
 
-        $this->github->commentOnPullRequest($repo, $run->pr_url, "Auto-merged by Foreman: tier {$tier}, checks passed, no open threads.");
-
         if ($error = $this->github->mergePullRequest($repo, $run->pr_url, $repo->merge_method, $run->head_sha)) {
             $this->handBack($run, "Auto-merge failed: {$error}", "The merge failed. gh said: {$error}", 'merge_failed');
 
             return true;
         }
 
+        $this->github->commentOnPullRequest($repo, $run->pr_url, "Auto-merged by Foreman: tier {$tier}, checks passed, no open threads.");
         $this->github->labelPullRequest($repo, $run->pr_url, 'auto-merged');
         $this->finish($run, RunStatus::Merged, sprintf('Auto-merged (%s) at %s, tier %d.', $repo->merge_method, substr($run->head_sha, 0, 7), $tier));
 
@@ -209,6 +208,7 @@ class PrWatcher
             'pr_url' => $run->pr_url,
             'pr_round' => $run->pr_round + 1,
             'head_sha' => $run->head_sha,
+            'risk_tier' => $run->risk_tier,
             'pr_feedback' => ['checks' => $checks, 'threads' => $threads],
         ]);
 

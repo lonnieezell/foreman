@@ -195,9 +195,9 @@ class AutoMergeTest extends TestCase
     public function test_a_ready_tier_1_pr_is_merged(): void
     {
         $github = $this->github($this->pr(), 1);
+        $github->expects('mergePullRequest')->withArgs(fn ($repo, $url, $method, $sha) => $url === self::PR && $method === 'merge' && $sha === 'aaaaaaa1111')->andReturnNull()->ordered();
         $github->expects('commentOnPullRequest')->withArgs(fn ($repo, $url, $body) => $url === self::PR
             && $body === 'Auto-merged by Foreman: tier 1, checks passed, no open threads.')->ordered();
-        $github->expects('mergePullRequest')->withArgs(fn ($repo, $url, $method, $sha) => $url === self::PR && $method === 'merge' && $sha === 'aaaaaaa1111')->andReturnNull()->ordered();
         $github->expects('labelPullRequest')->with(Mockery::any(), self::PR, 'auto-merged')->ordered();
 
         $run = $this->check($this->watchedRun());
@@ -207,6 +207,24 @@ class AutoMergeTest extends TestCase
         $this->assertSame('good', $run->status->tone());
         $this->assertStringContainsString('Auto-merged (merge) at aaaaaaa, tier 1.', $run->tail());
         $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_a_fix_up_round_keeps_the_risk_tier(): void
+    {
+        $this->github($this->pr(['checks' => [['name' => 'tests', 'state' => 'failed', 'url' => null]]]), 1);
+
+        $this->check($this->watchedRun(2));
+
+        $this->assertSame(2, Run::latest('id')->first()->risk_tier);
+    }
+
+    public function test_a_failed_merge_leaves_no_auto_merged_comment(): void
+    {
+        $github = $this->github($this->pr(), 1);
+        $github->expects('mergePullRequest')->andReturn('not mergeable');
+        $github->expects('commentOnPullRequest')->withArgs(fn ($repo, $url, $body) => str_contains($body, 'Auto-merge failed'))->once();
+
+        $this->assertSame(RunStatus::NeedsHuman, $this->check($this->watchedRun())->status);
     }
 
     public function test_it_merges_with_the_chosen_method(): void
