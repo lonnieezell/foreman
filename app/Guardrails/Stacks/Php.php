@@ -98,7 +98,7 @@ class Php extends Stack
             if (isset($requires['phpstan/phpstan']) && $this->hasPhpstanConfig($dir)) {
                 $commands[] = $this->inDir($dir, 'vendor/bin/phpstan analyse');
             }
-            $commands[] = $this->inDir($dir, isset($requires['pestphp/pest']) ? 'vendor/bin/pest' : 'vendor/bin/phpunit');
+            $commands[] = $this->inDir($dir, (isset($requires['pestphp/pest']) ? 'vendor/bin/pest' : 'vendor/bin/phpunit').' --no-coverage');
         }
 
         return $commands;

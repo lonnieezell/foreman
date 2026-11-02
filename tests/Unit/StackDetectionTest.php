@@ -111,7 +111,7 @@ class StackDetectionTest extends TestCase
         $stacks = StackSet::detect($this->root);
 
         $this->assertSame(['php'], $stacks->names());
-        $this->assertSame(['vendor/bin/phpunit'], $stacks->verifyCommands('origin/main'));
+        $this->assertSame(['vendor/bin/phpunit --no-coverage'], $stacks->verifyCommands('origin/main'));
     }
 
     public function test_marker_files_in_git_ignored_folders_are_ignored(): void
@@ -193,7 +193,7 @@ class StackDetectionTest extends TestCase
         $this->assertSame([
             "(set -o pipefail; { git diff -z --name-only --relative --diff-filter=d --merge-base 'origin/main' -- '*.php' && git ls-files -z --others --exclude-standard -- '*.php'; } | xargs -0 -r vendor/bin/pint --test --)",
             'vendor/bin/phpstan analyse',
-            'vendor/bin/pest',
+            'vendor/bin/pest --no-coverage',
         ], $laravel->verifyCommands('origin/main'));
         $this->assertSame('vendor/bin/pint', $laravel->formatter());
 
@@ -201,7 +201,7 @@ class StackDetectionTest extends TestCase
         [$fixer, $phpunit] = $ci4->verifyCommands('origin/develop');
         $this->assertStringContainsString("--merge-base 'origin/develop' -- '*.php'", $fixer);
         $this->assertStringEndsWith('| xargs -0 -r vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=intersection --)', $fixer);
-        $this->assertSame('vendor/bin/phpunit', $phpunit);
+        $this->assertSame('vendor/bin/phpunit --no-coverage', $phpunit);
         $this->assertSame('vendor/bin/php-cs-fixer fix', $ci4->formatter());
 
         $this->assertNull($this->phpStack(['codeigniter4/framework' => '^4.5'])->formatter());
@@ -210,7 +210,7 @@ class StackDetectionTest extends TestCase
     public function test_phpstan_runs_only_with_a_config_since_without_one_it_has_no_paths(): void
     {
         $noConfig = $this->phpStack([], ['phpstan/phpstan' => '^2.0']);
-        $this->assertSame(['vendor/bin/phpunit'], $noConfig->verifyCommands('origin/main'));
+        $this->assertSame(['vendor/bin/phpunit --no-coverage'], $noConfig->verifyCommands('origin/main'));
         $this->assertNotContains('PHPStan', array_column($noConfig->ciSteps()['lint'], 'name'));
 
         foreach (['phpstan.neon', 'phpstan.neon.dist', 'phpstan.dist.neon'] as $config) {
