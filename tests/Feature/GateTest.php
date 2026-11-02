@@ -72,7 +72,7 @@ class GateTest extends TestCase
         $failures = Gate::run($this->dir, 'HEAD', 'true');
 
         $this->assertSame(['Test-integrity check'], array_keys($failures));
-        $this->assertStringContainsString('Deleted test file tests/ThingTest.php', $failures['Test-integrity check']);
+        $this->assertStringContainsString("Fewer test functions across the changed test files: 1 before, 0 now.\n  tests/ThingTest.php: 1 before, 0 now.", $failures['Test-integrity check']);
     }
 
     public function test_both_failures_come_back_together(): void

@@ -32,6 +32,10 @@ The workflow has one job per stack it found. The steps run top to bottom. A step
 
 Each job also runs a copy of the test-integrity script. The script needs PHP, so every job, whatever its stack, installs a pinned PHP version (8.3). A runner image update can't change it. The check compares the pull request with its base branch, so the jobs fetch the full git history. The job runs the base branch's copy of the script, not the pull request's. So a pull request can't weaken the check that judges it. Only the pull request that first adds the script uses its own copy.
 
+A failed integrity step doesn't stop the job. The tests, audits and scans after it still run, so you see their results. A last step, **Test integrity result**, then fails the job.
+
+A repository set up before a change to the script or the workflow keeps its old copies. To get the new ones, remove `.github/workflows/foreman-ci.yml` and run `php artisan foreman:install-ci` again. It writes both files on a new branch. If you edited the workflow by hand, carry those edits over.
+
 CodeQL on a private repository needs GitHub Advanced Security. The TypeScript, Rust and Python jobs run CodeQL only on public repos. On a private repo they run Semgrep instead, with rules for the stack. The PHP job always runs Semgrep, because CodeQL doesn't support PHP. If your private repo has Advanced Security, delete the `if` lines on the CodeQL and Semgrep steps. The workflow file says so too.
 
 Each job caches its dependencies between runs, so only the first run downloads everything:

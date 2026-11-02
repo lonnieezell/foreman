@@ -59,6 +59,9 @@ YAML;
             ...$groups['lint'],
             [
                 'name' => 'Test integrity',
+                // A failure here must not hide the later steps' results. The last step fails the job instead.
+                'id' => 'integrity',
+                'continue-on-error' => true,
                 'working-directory' => '${{ github.workspace }}',
                 // The base branch's copy, so a PR can't weaken the check that judges it. The PR that adds the script has no base copy yet.
                 'run' => 'git show "origin/${{ github.base_ref }}:'.self::SCRIPT.'" > "$RUNNER_TEMP/test-integrity.php" || cp '.self::SCRIPT." \"\$RUNNER_TEMP/test-integrity.php\"\n"
@@ -66,6 +69,11 @@ YAML;
             ],
             ...$groups['test'],
             ...$groups['audit'],
+            [
+                'name' => 'Test integrity result',
+                'if' => "\${{ steps.integrity.outcome == 'failure' }}",
+                'run' => "echo '::error::The test-integrity check failed. See the Test integrity step.'\nexit 1",
+            ],
         ];
 
         $job = ['name' => $stack->name(), 'runs-on' => 'ubuntu-latest'];

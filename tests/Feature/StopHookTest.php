@@ -117,7 +117,7 @@ class StopHookTest extends TestCase
 
         $this->assertSame(2, $code);
         $this->assertStringContainsString('Test-integrity check failed', $message);
-        $this->assertStringContainsString('Deleted test file tests/ThingTest.php', $message);
+        $this->assertStringContainsString("Fewer test functions across the changed test files: 1 before, 0 now.\n  tests/ThingTest.php: 1 before, 0 now.", $message);
         $this->assertStringNotContainsString('Verify script failed', $message);
     }
 

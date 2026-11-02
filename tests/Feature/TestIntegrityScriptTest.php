@@ -35,6 +35,7 @@ class TestIntegrityScriptTest extends TestCase
         $php = fn (string $composer) => [
             'files' => ['composer.json' => $composer, 'phpunit.xml' => '<phpunit/>', 'app/Thing.php' => '<?php class Thing {}'],
             'test' => 'tests/Feature/ThingTest.php',
+            'other' => 'tests/Feature/OtherTest.php',
             'parts' => ['<?php class ThingTest {', "\n public function test_a(): void { \$this->assertTrue(true); }", "\n public function test_b(): void { \$this->assertSame(1, 1); }", "\n public function test_b(): void { }", "\n}"],
             'skip' => '$this->markTestSkipped();',
             'config' => 'phpunit.xml',
@@ -46,6 +47,7 @@ class TestIntegrityScriptTest extends TestCase
             'typescript' => [[
                 'files' => ['package.json' => '{}', 'tsconfig.json' => '{}', 'src/thing.ts' => 'export const a = 1;'],
                 'test' => 'src/thing.test.ts',
+                'other' => 'src/other.test.ts',
                 'parts' => ['', "\ntest('a', () => { expect(1).toBe(1); });", "\ntest('b', () => { expect(2).toBe(2); });", "\ntest('b', () => {});", ''],
                 'skip' => "test.skip('c', () => {});",
                 'config' => 'tsconfig.json',
@@ -53,6 +55,7 @@ class TestIntegrityScriptTest extends TestCase
             'rust' => [[
                 'files' => ['Cargo.toml' => '[package]', 'rustfmt.toml' => '', 'src/lib.rs' => 'pub fn a() {}'],
                 'test' => 'tests/thing.rs',
+                'other' => 'tests/other.rs',
                 'parts' => ['', "\n#[test]\nfn a() { assert_eq!(1, 1); }", "\n#[test]\nfn b() { assert_eq!(2, 2); }", "\n#[test]\nfn b() {}", ''],
                 'skip' => '#[ignore]',
                 'config' => 'rustfmt.toml',
@@ -60,6 +63,7 @@ class TestIntegrityScriptTest extends TestCase
             'python' => [[
                 'files' => ['pyproject.toml' => "[project]\nname = 'x'", 'ruff.toml' => '', 'thing.py' => 'a = 1'],
                 'test' => 'tests/test_thing.py',
+                'other' => 'tests/test_other.py',
                 'parts' => ['', "\ndef test_a():\n    assert 1 == 1\n", "\ndef test_b():\n    assert 2 == 2\n", "\ndef test_b():\n    pass\n", ''],
                 'skip' => '@pytest.mark.skip',
                 'config' => 'ruff.toml',
@@ -100,7 +104,7 @@ class TestIntegrityScriptTest extends TestCase
 
         $this->change($commit, fn () => unlink("{$this->repo}/{$stack['test']}"));
 
-        $this->assertFails("Deleted test file {$stack['test']}");
+        $this->assertFails("Fewer test functions across the changed test files: 2 before, 0 now.\n  {$stack['test']}: 2 before, 0 now.");
     }
 
     #[DataProvider('stacksAndModes')]
@@ -111,7 +115,7 @@ class TestIntegrityScriptTest extends TestCase
 
         $this->change($commit, fn () => $this->write($stack['test'], $head.$a.$tail));
 
-        $this->assertFails("Fewer test functions in {$stack['test']}");
+        $this->assertFails("Fewer test functions across the changed test files: 2 before, 1 now.\n  {$stack['test']}: 2 before, 1 now.");
     }
 
     #[DataProvider('stacksAndModes')]
@@ -122,8 +126,78 @@ class TestIntegrityScriptTest extends TestCase
 
         $this->change($commit, fn () => $this->write($stack['test'], $head.$a.$bWithoutAssert.$tail));
 
-        $output = $this->assertFails("Fewer assertions in {$stack['test']}");
+        $output = $this->assertFails("Fewer assertions across the changed test files: 2 before, 1 now.\n  {$stack['test']}: 2 before, 1 now.");
         $this->assertStringNotContainsString('Fewer test functions', $output);
+    }
+
+    #[DataProvider('stacksAndModes')]
+    public function test_a_test_moved_to_another_test_file_passes(array $stack, bool $commit): void
+    {
+        $this->project($stack);
+        [$head, $a, $b, , $tail] = $stack['parts'];
+
+        $this->change($commit, function () use ($stack, $head, $a, $b, $tail) {
+            $this->write($stack['test'], $head.$a.$tail);
+            $this->write($stack['other'], $head.$b.$tail);
+        });
+
+        $this->assertPasses();
+    }
+
+    #[DataProvider('stacksAndModes')]
+    public function test_a_deleted_test_file_whose_tests_moved_passes(array $stack, bool $commit): void
+    {
+        $this->project($stack);
+        $tests = file_get_contents("{$this->repo}/{$stack['test']}");
+
+        $this->change($commit, function () use ($stack, $tests) {
+            unlink("{$this->repo}/{$stack['test']}");
+            $this->write($stack['other'], $tests);
+        });
+
+        $this->assertPasses();
+    }
+
+    #[DataProvider('stacksAndModes')]
+    public function test_a_renamed_test_file_passes(array $stack, bool $commit): void
+    {
+        $this->project($stack);
+
+        $this->change($commit, fn () => rename("{$this->repo}/{$stack['test']}", "{$this->repo}/{$stack['other']}"));
+
+        $this->assertPasses();
+    }
+
+    #[DataProvider('stacksAndModes')]
+    public function test_fewer_tests_added_than_removed_fails_and_names_only_the_file_that_lost_them(array $stack, bool $commit): void
+    {
+        $this->project($stack);
+        [$head, $a, , , $tail] = $stack['parts'];
+
+        $this->change($commit, function () use ($stack, $head, $a, $tail) {
+            $this->write($stack['test'], $head.$tail);
+            $this->write($stack['other'], $head.$a.$tail);
+        });
+
+        $output = $this->assertFails("Fewer test functions across the changed test files: 2 before, 1 now.\n  {$stack['test']}: 2 before, 0 now.");
+        $this->assertStringNotContainsString($stack['other'], $output);
+    }
+
+    public function test_a_rust_unit_test_moved_from_source_into_tests_passes(): void
+    {
+        $this->project(['files' => ['Cargo.toml' => '[package]', 'src/lib.rs' => "pub fn a() {}\n#[test]\nfn a_works() { assert_eq!(1, 1); }"]]);
+
+        $this->change(false, function () {
+            $this->write('src/lib.rs', 'pub fn a() {}');
+            $this->write('tests/lib.rs', "#[test]\nfn a_works() { assert_eq!(1, 1); }");
+        });
+
+        $this->assertPasses();
+    }
+
+    public function test_the_ci_copy_of_the_script_matches_the_one_foreman_ships(): void
+    {
+        $this->assertFileEquals($this->script(), base_path('.github/foreman/test-integrity.php'));
     }
 
     #[DataProvider('stacksAndModes')]
@@ -239,7 +313,7 @@ class TestIntegrityScriptTest extends TestCase
 
         $this->change(false, fn () => $this->write('tests/a_test.py', 'pass'));
 
-        $this->assertFails('Fewer test functions in tests/a_test.py');
+        $this->assertFails("Fewer test functions across the changed test files: 1 before, 0 now.\n  tests/a_test.py: 1 before, 0 now.");
     }
 
     public function test_it_compares_against_where_the_branch_left_the_base(): void
