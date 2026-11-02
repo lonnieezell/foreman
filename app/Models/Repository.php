@@ -30,10 +30,13 @@ SH;
     /** Effort levels for `--effort`. No effort at all (null) is the "Default" choice. */
     public const EFFORTS = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'xhigh' => 'XHigh', 'max' => 'Max'];
 
+    /** `gh pr merge` flags for the auto-merge "Merge method" setting. */
+    public const MERGE_METHODS = ['merge' => 'Merge', 'squash' => 'Squash', 'rebase' => 'Rebase'];
+
     protected $guarded = ['id'];
 
-    // Matches the column default, so a repository made in code is unsandboxed before it's saved
-    protected $attributes = ['sandbox' => false];
+    // Match the column defaults, so a repository made in code is unsandboxed and merges with "merge" before it's saved
+    protected $attributes = ['sandbox' => false, 'merge_method' => 'merge'];
 
     protected function casts(): array
     {
@@ -41,6 +44,7 @@ SH;
             'enabled' => 'boolean',
             'cleanup_worktrees' => 'boolean',
             'watch_prs' => 'boolean',
+            'auto_merge_max_tier' => 'integer',
             'sandbox' => 'boolean',
             'daily_budget' => 'decimal:2',
             'max_budget_per_run' => 'decimal:2',

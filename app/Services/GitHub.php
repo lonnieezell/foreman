@@ -235,6 +235,7 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       state
+      isDraft
       headRefOid
       commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
         __typename
@@ -246,7 +247,7 @@ query($owner: String!, $name: String!, $number: Int!) {
         comments(first: 1) { nodes { author { __typename login } body url } }
       } }
       comments(last: 50) { nodes { author { __typename } updatedAt } }
-      reviews(last: 50) { nodes { author { __typename } submittedAt } }
+      reviews(last: 50) { nodes { author { __typename login } state submittedAt } }
     }
   }
 }
@@ -254,8 +255,10 @@ GRAPHQL;
 
     /**
      * What the PR watcher needs: state, head, checks, unresolved bot threads, and when a bot last posted.
+     * For auto-merge it also reports a draft PR, unresolved threads started by people, and whether a
+     * person's latest verdict (approval, changes requested or dismissal) is "Changes requested".
      *
-     * @return array{state:string,head_sha:string,checks:list<array{name:string,state:string,url:?string}>,threads:list<array{id:string,path:?string,line:?int,author:string,body:string,url:string}>,bot_activity_at:?Carbon}
+     * @return array{state:string,is_draft:bool,head_sha:string,checks:list<array{name:string,state:string,url:?string}>,threads:list<array{id:string,path:?string,line:?int,author:string,body:string,url:string}>,human_threads:int,changes_requested:bool,bot_activity_at:?Carbon}
      */
     public function pullRequest(Repository $repo, string $url): array
     {
@@ -299,11 +302,24 @@ GRAPHQL;
             ->filter()
             ->max();
 
+        $humanThreads = collect($pr['reviewThreads']['nodes'])
+            ->filter(fn (array $t) => ! $t['isResolved'] && ! $isBot($t['comments']['nodes'][0]['author'] ?? null))
+            ->count();
+
+        // A plain comment review doesn't lift a "Changes requested", so only these states count as a person's verdict
+        $changesRequested = collect($pr['reviews']['nodes'])
+            ->filter(fn (array $r) => ! $isBot($r['author']) && in_array($r['state'] ?? null, ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'], true))
+            ->groupBy(fn (array $r) => $r['author']['login'] ?? '')
+            ->contains(fn ($reviews) => $reviews->last()['state'] === 'CHANGES_REQUESTED');
+
         return [
             'state' => $pr['state'],
+            'is_draft' => (bool) ($pr['isDraft'] ?? false),
             'head_sha' => $pr['headRefOid'],
             'checks' => $checks,
             'threads' => $threads,
+            'human_threads' => $humanThreads,
+            'changes_requested' => $changesRequested,
             'bot_activity_at' => $botActivity ? Carbon::parse($botActivity) : null,
         ];
     }
@@ -332,6 +348,33 @@ GRAPHQL;
     {
         $this->gh($repo, ['label', 'create', $label, '--color', 'C5DEF5'], allowFailure: true);   // fails harmlessly when it exists
         $this->gh($repo, ['pr', 'edit', (string) self::prNumber($url), '--add-label', $label], allowFailure: true);
+    }
+
+    /** The PR's whole diff against its base, as `gh pr diff` prints it. */
+    public function pullRequestDiff(Repository $repo, string $url): string
+    {
+        return $this->gh($repo, ['pr', 'diff', (string) self::prNumber($url), '--color', 'never']);
+    }
+
+    /** Swaps a label on the PR. A failure leaves the PR as it is. */
+    public function swapPullRequestLabel(Repository $repo, string $url, string $old, string $new): void
+    {
+        $this->labelPullRequest($repo, $url, $new);
+        $this->gh($repo, ['pr', 'edit', (string) self::prNumber($url), '--remove-label', $old], allowFailure: true);
+    }
+
+    /**
+     * Merges the PR with `gh pr merge`, only if its head is still $sha. Never `--admin` and never `--delete-branch`.
+     *
+     * @param  'merge'|'squash'|'rebase'  $method
+     * @return ?string null when merged, otherwise the text gh printed
+     */
+    public function mergePullRequest(Repository $repo, string $url, string $method, string $sha): ?string
+    {
+        $result = Process::path($repo->local_path)->timeout(60)
+            ->run(['gh', 'pr', 'merge', (string) self::prNumber($url), "--{$method}", '--match-head-commit', $sha, '--repo', $repo->github_repo]);
+
+        return $result->successful() ? null : (trim($result->errorOutput().' '.$result->output()) ?: 'gh pr merge failed.');
     }
 
     public function addHumanLabel(Repository $repo, int $issue): void

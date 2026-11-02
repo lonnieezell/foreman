@@ -203,7 +203,7 @@
                     <span class="hint">Nothing yet.</span>
                 @else
                     <dl>
-                        @foreach (['pr_ready', 'watching_pr', 'pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
+                        @foreach (['pr_ready', 'merged', 'watching_pr', 'pr_opened', 'needs_human', 'failed', 'cancelled'] as $value)
                             @if ($finishedToday->get($value))
                                 <div>
                                     <dt class="tone-{{ \App\Enums\RunStatus::from($value)->tone() }}">{{ $finishedToday->get($value) }}</dt>

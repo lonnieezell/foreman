@@ -307,6 +307,7 @@ A deep review on every change costs time and money for little gain. A typo fix i
 - Each pass gets the repository's full turn and time limits again. Only the spend cap is shared across the run.
 - `/security-review` diffs against `origin/HEAD`. When the repository has no `origin/HEAD`, Foreman points it at the base branch first, with `git remote set-head`. When `origin/HEAD` points at some other branch, Foreman leaves it alone and tells the agent which base to review against.
 - Fix-up rounds on an open PR don't get a review pass.
+- Before an [auto-merge](pr-watching.md#auto-merge), Foreman rates the PR's final diff again. Later commits can change the tier. If it rose above the repository's auto-merge setting, Foreman updates the tier on the run and the `risk:tier-N` label, and hands the PR to you. This only happens when auto-merge is on.
 
 ## Scope judge
 

@@ -62,6 +62,11 @@ class RepositoryForm extends Component
 
     public bool $watch_prs = true;
 
+    /** '' is Off, '1' is Tier 1 only, '2' is Tiers 1 and 2. */
+    public string $auto_merge_max_tier = '';
+
+    public string $merge_method = 'merge';
+
     public bool $sandbox = false;
 
     /** Names of the stacks found in the checkout, for the Scripts section. */
@@ -78,8 +83,9 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model', 'max_turns',
-                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox',
+                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'merge_method',
             ]));
+            $this->auto_merge_max_tier = (string) $repository->auto_merge_max_tier;
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
             $this->max_budget_per_run = (string) $repository->max_budget_per_run;
             $this->effort = (string) $repository->effort;
@@ -179,11 +185,18 @@ class RepositoryForm extends Component
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
             'watch_prs' => ['boolean'],
+            'auto_merge_max_tier' => ['nullable', Rule::in(['1', '2']), function ($attr, $value, $fail) {
+                if ($value !== '' && $value !== null && ! $this->watch_prs) {
+                    $fail('Auto-merge needs Watch PRs.');
+                }
+            }],
+            'merge_method' => ['required', Rule::in(array_keys(Repository::MERGE_METHODS))],
             'sandbox' => ['boolean'],
         ], [
             'github_repo.regex' => 'Use the owner/name form, like vault-innovation/vault-app.',
         ]);
 
+        $data['auto_merge_max_tier'] = $data['auto_merge_max_tier'] === '' || $data['auto_merge_max_tier'] === null ? null : (int) $data['auto_merge_max_tier'];
         $data['daily_budget'] = $data['daily_budget'] === '' ? null : $data['daily_budget'];
         $data['max_budget_per_run'] = $data['max_budget_per_run'] === '' ? null : $data['max_budget_per_run'];
         $data['claude_profile'] = $data['claude_profile'] ?: null;
