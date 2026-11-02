@@ -233,6 +233,10 @@ Off by default. A choice of **Off**, **Tier 1 only** or **Tiers 1 and 2**. When 
 
 On by default. Foreman deletes the worktree when it's finished with the PR. That's when the PR is ready, handed to you, or cancelled, or straight away if Watch PRs is off. A failed run always keeps its worktree, so you can look inside it.
 
+### Stop Docker services with the worktree
+
+Off by default. When it's on, Foreman runs `docker compose down -v` in the worktree just before it removes it. It does this only when the worktree has a `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml`, and only when **Remove the worktree when done** is on. The `-v` also deletes the volumes, so the database inside the containers goes too. If the command fails, Foreman logs the error and still removes the worktree. A failed run keeps its worktree, so its containers stay up until you clean up. See [Docker-backed tests](#docker-backed-tests).
+
 ### Sandbox
 
 Off by default. When it's on, Foreman runs the agent's shell commands in Claude Code's sandbox. A *sandbox* is a limit the operating system puts on a command. Build scripts those commands start, such as an npm `postinstall` script, run in it too.
@@ -249,6 +253,77 @@ This was tested only on macOS, with Claude Code 2.1.316. The test covered a comm
 Git dependencies over SSH fail, because the agent has no SSH agent and can't read `~/.ssh`. Use HTTPS URLs for them. Turn the sandbox off for a repository that needs another host, such as a private registry.
 
 The sandbox still leaves gaps. A script can still read your `gh` token straight from the keychain, and the setup script and Foreman's checks run outside it. See [Known gaps](security.md#known-gaps) before you rely on it.
+
+## Docker-backed tests
+
+Some repositories need Docker to run their tests, for services such as MySQL or Redis. Foreman has no separate mode for them. You use the settings above, and the setup script, the verify script and the allowed tools run `docker compose` like any other command. The default checks Foreman detects run on the host, so replace the verify script for these repositories.
+
+Docker must be running on your machine before a run starts.
+
+### Compose project
+
+Setup script. It starts the services and waits until their health checks pass:
+
+```bash
+cp .env.example .env
+echo "COMPOSE_PROJECT_NAME=myapp-$(basename "$PWD")" >> .env
+docker compose up -d --wait
+docker compose exec -T app composer install --no-interaction --quiet
+docker compose exec -T app php artisan key:generate --quiet
+```
+
+Verify script. It runs the checks inside the container:
+
+```bash
+docker compose exec -T app vendor/bin/pint --test
+docker compose exec -T app vendor/bin/phpunit --no-coverage
+```
+
+Add `Bash(docker compose:*)` to the **allowed tools**, so the agent can run the same commands while it works. Use `-T` on every `exec`. The scripts have no terminal, and without `-T` the command fails.
+
+### Sail project
+
+Setup script:
+
+```bash
+cp .env.example .env
+echo "COMPOSE_PROJECT_NAME=myapp-$(basename "$PWD")" >> .env
+composer install --no-interaction --quiet
+./vendor/bin/sail up -d --wait
+./vendor/bin/sail artisan key:generate --quiet
+```
+
+Verify script:
+
+```bash
+./vendor/bin/sail exec -T laravel.test vendor/bin/pint --test
+./vendor/bin/sail exec -T laravel.test vendor/bin/phpunit --no-coverage
+```
+
+Add `Bash(./vendor/bin/sail:*)` to the **allowed tools**. `laravel.test` is Sail's default service name. Use the name in your `docker-compose.yml` if it differs. The first `composer install` runs on the host, because `vendor/bin/sail` doesn't exist until Composer has installed it.
+
+### Turn the sandbox off
+
+Docker-backed repositories need the [Sandbox](#sandbox) setting off. The sandbox limits the agent's network and file access, and the Docker socket (`~/.docker/run/docker.sock` for Docker Desktop, another path for OrbStack or Colima) is outside what it allows. Access to that socket is root-equivalent on your machine, so Foreman doesn't allow it from inside the sandbox. This is the expected result from how the sandbox works. It hasn't been tested against every Docker setup.
+
+The setup and verify scripts run outside the sandbox either way. Only the agent's own `docker compose` commands need it off. If you keep the sandbox on, leave `docker compose` off the allowed tools. The agent then can't run the tests itself, but the verify script still runs them when the agent tries to stop.
+
+### Two worktrees of one repository
+
+Compose names a project after its folder, and every worktree has its own folder, such as `issue-41` and `issue-42`. So their containers don't share names. Two things can still clash:
+
+- **The project name.** Two repositories can both have an `issue-41` folder. The `COMPOSE_PROJECT_NAME` line in the setup scripts above makes the name unique per repository and per issue. Compose reads it from the worktree's `.env`, so `docker compose down` in the worktree stops the right containers.
+- **Host ports.** If `docker-compose.yml` publishes a fixed port such as `3306:3306`, the second `docker compose up` fails because the port is taken. Publish no host ports and run the tests inside the container, or take the port from the environment, for example `"${DB_PORT:-3306}:3306"`, and set a different `DB_PORT` per worktree in the setup script.
+
+Foreman doesn't pick a project name for you. It sets no environment for compose, so the setup script must do it.
+
+### Who stops the containers
+
+Foreman doesn't, unless you turn on [Stop Docker services with the worktree](#stop-docker-services-with-the-worktree). Without it, containers keep running after the worktree is gone. A failed run keeps its worktree and its containers. Stop them yourself with `docker compose down -v` in the worktree, or remove them with `docker compose -p <name> down -v`.
+
+Foreman's cleanup also doesn't cover a worktree it replaces when you re-run the same issue. Stop the old containers first.
+
+Docker-backed checks give the agent's code access to the Docker daemon. See [Known gaps](security.md#docker-backed-checks-reach-the-docker-daemon).
 
 ## Archive and remove
 

@@ -19,6 +19,10 @@ A *sandbox* is a limit the operating system puts on a command. It controls which
 
 The [setup script](repository-settings.md#setup-script) and the [verify script](repository-settings.md#verify-script) run as you. That includes your keychain, the macOS store that holds the `gh` and git passwords. Foreman's gate and the [definition-of-done](guardrails.md#definition-of-done) hook run the verify script and the integrity check. So code the agent wrote, such as a new test, runs with your access whenever the checks run.
 
+### Docker-backed checks reach the Docker daemon
+
+A repository whose tests run in [Docker](repository-settings.md#docker-backed-tests) needs `docker compose` in its scripts, and often in its allowed tools. The Docker socket gives root-equivalent access to your machine. A container can mount any folder, run as root and read your files. So code the agent wrote, such as a test, gets the same reach whenever the verify script runs it, and so does any `docker compose` command the agent runs itself. The sandbox can't contain this. Docker-backed repositories need the [Sandbox](repository-settings.md#sandbox) setting off for the agent's own commands. Use this only on repositories whose issues you trust, and review the PR's compose files and tests with this in mind.
+
 ### Shell tools get past the edit rules
 
 The [guard](guardrails.md#protected-files-and-commands) only checks Claude's edit tools. An allowed shell tool, such as `php`, `python` or an npm script, can write any file you can write while the sandbox is off. With the sandbox on, it can still write anywhere in the worktree. This means:

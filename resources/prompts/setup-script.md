@@ -22,6 +22,15 @@ The current script, as a starting point:
    licence file, `auth.json`), copy it from the main checkout, which the script can
    find with `"$(git rev-parse --path-format=absolute --git-common-dir)/.."`.
    Never write secret values into the script: Foreman stores it and shows it on screen.
+   If the project has a `docker-compose.yml`, `compose.yaml` or similar file, or uses
+   Laravel Sail, its tests probably need services from Docker. Then the script must
+   start them and wait until they are ready: `docker compose up -d --wait`, or
+   `./vendor/bin/sail up -d --wait` for Sail. Foreman may run several worktrees of
+   this project at once, so also give each its own compose project name, for example
+   `echo "COMPOSE_PROJECT_NAME=<app>-$(basename "$PWD")" >> .env`. Host ports must not
+   be fixed in the compose file, or the second worktree can't start. Never use
+   `docker compose down` in the script. Foreman does that when it removes the worktree,
+   if the repository's "Stop Docker services" setting is on.
 3. Verify it: run `git fetch origin`, then create a detached worktree from
    `origin/{{base}}` in a temporary directory. Run the script there exactly as
    Foreman does, then run the project's own checks (prefer its composer or
@@ -36,6 +45,9 @@ Under it, note briefly:
 - how long the script took, against the 15-minute limit
 - which checks you ran and whether they passed
 - any command the checks need that the allowed tools above don't permit, with the
-  exact entry to add, such as `Bash(pnpm:*)`
+  exact entry to add, such as `Bash(pnpm:*)`. For a Docker-backed project that is
+  `Bash(docker compose:*)`, or `Bash(./vendor/bin/sail:*)` for Sail
+- for a Docker-backed project: whether the services came up, and that the Sandbox
+  setting must be off, because the agent can't reach the Docker socket from inside it
 
 If it still fails after 3 attempts, say what's blocking instead.

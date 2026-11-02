@@ -69,6 +69,8 @@ class RepositoryForm extends Component
 
     public bool $sandbox = false;
 
+    public bool $stop_docker = false;
+
     /** Names of the stacks found in the checkout, for the Scripts section. */
     #[Locked]
     public array $stacks = [];
@@ -83,7 +85,7 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model', 'max_turns',
-                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'merge_method',
+                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
             ]));
             $this->auto_merge_max_tier = (string) $repository->auto_merge_max_tier;
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
@@ -192,6 +194,7 @@ class RepositoryForm extends Component
             }],
             'merge_method' => ['required', Rule::in(array_keys(Repository::MERGE_METHODS))],
             'sandbox' => ['boolean'],
+            'stop_docker' => ['boolean'],
         ], [
             'github_repo.regex' => 'Use the owner/name form, like vault-innovation/vault-app.',
         ]);

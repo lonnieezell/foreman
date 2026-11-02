@@ -21,6 +21,13 @@ The current script, as a starting point:
 2. Use check-only forms (`pint --test`, `prettier --check`, `cargo fmt --check`), so
    the script never changes files. Prefer the project's own composer or package.json
    scripts.
+   If the project has a `docker-compose.yml`, `compose.yaml` or similar file, or uses
+   Laravel Sail, its tests run in a container. Then run the checks there, with the
+   container commands CI uses, such as
+   `docker compose exec -T app vendor/bin/phpunit --no-coverage`, or
+   `./vendor/bin/sail test` or `./vendor/bin/sail exec -T laravel.test vendor/bin/phpunit`
+   for Sail. Use `-T`, because the script has no terminal. The setup script has already
+   started the services, so the verify script must not start or stop them.
 3. Don't add checks CI doesn't run, and don't leave out checks CI does run.
 4. Verify it: run `git fetch origin`, then create a detached worktree from
    `origin/{{base}}` in a temporary directory, run the project's setup, then run the
