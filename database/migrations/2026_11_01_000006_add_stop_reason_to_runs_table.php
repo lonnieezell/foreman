@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('runs', function (Blueprint $table) {
-            $table->string('stop_reason')->nullable()->after('error');   // why a watched PR was handed to a human: 'rounds_ran_out' or 'someone_pushed'
+            $table->string('stop_reason')->nullable()->after('error');   // why a run was handed to a human: rounds_ran_out, someone_pushed, agent_asked, already_done, gate_failed, scope_vetoed, scope_unusable
         });
     }
 

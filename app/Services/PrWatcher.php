@@ -132,7 +132,7 @@ class PrWatcher
 
     private function finish(Run $run, RunStatus $status, string $message, ?string $stopReason = null): void
     {
-        $run->moveTo($status, ['stop_reason' => $stopReason]);
+        $run->moveTo($status, ['stop_reason' => $stopReason, 'finished_at' => now()]);
         $run->log($message);
         $run->removeWorktree();
     }

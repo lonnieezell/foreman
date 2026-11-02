@@ -134,6 +134,7 @@ class ForemanActsTest extends TestCase
         $run = $this->settle($this->makeRun());
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('agent_asked', $run->stop_reason);
         $this->assertRanCommand(['gh', 'issue', 'comment', '7', '--body', 'FooTest asserts the wrong thing.']);
         Process::assertRan(fn (PendingProcess $p) => in_array('--add-label', $p->command, true) && in_array('needs-human', $p->command, true));
         $this->assertDidntRunCommand(['git', 'push']);
@@ -148,6 +149,7 @@ class ForemanActsTest extends TestCase
         $run = $this->settle($this->makeRun());
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('already_done', $run->stop_reason);
         $this->assertRanCommand(['gh', 'issue', 'comment', '7', '--body', 'Done in abc123.']);
         $this->assertDidntRunCommand(['git', 'push']);
     }
