@@ -16,6 +16,7 @@ use Livewire\Livewire;
 use Mockery;
 use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyTimeoutException;
 use Symfony\Component\Process\Process as SymfonyProcess;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class DockerBackedTestsTest extends TestCase
@@ -24,6 +25,8 @@ class DockerBackedTestsTest extends TestCase
 
     private string $worktree;
 
+    private FakeWorktree $git;
+
     /** @var list<string> The first words of each command Foreman ran, in order. */
     private array $ran = [];
 
@@ -31,6 +34,8 @@ class DockerBackedTestsTest extends TestCase
     {
         parent::setUp();
 
+        $this->git = FakeWorktree::install($this->app);
+        $this->git->onRemove = fn () => $this->ran[] = 'worktree remove';
         $this->worktree = sys_get_temp_dir().'/foreman-docker-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
         $this->fakeProcesses();
@@ -77,7 +82,7 @@ class DockerBackedTestsTest extends TestCase
         $this->makeRun(['stop_docker' => true])->removeWorktree();
 
         Process::assertRan(fn (PendingProcess $p) => $p->command === ['docker', 'compose', 'down', '-v'] && $p->path === $this->worktree);
-        $this->assertSame(['docker compose down', 'git worktree remove'], $this->ran);
+        $this->assertSame(['docker compose down', 'worktree remove'], $this->ran);
     }
 
     public function test_every_compose_file_name_counts(): void
@@ -102,7 +107,7 @@ class DockerBackedTestsTest extends TestCase
         $this->makeRun()->removeWorktree();
 
         Process::assertDidntRun(fn (PendingProcess $p) => ($p->command[0] ?? null) === 'docker');
-        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertTrue($this->git->ran('remove'));
     }
 
     public function test_compose_is_skipped_when_the_worktree_has_no_compose_file(): void
@@ -110,7 +115,7 @@ class DockerBackedTestsTest extends TestCase
         $this->makeRun(['stop_docker' => true])->removeWorktree();
 
         Process::assertDidntRun(fn (PendingProcess $p) => ($p->command[0] ?? null) === 'docker');
-        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertTrue($this->git->ran('remove'));
     }
 
     public function test_nothing_runs_when_the_worktree_is_kept(): void
@@ -120,6 +125,7 @@ class DockerBackedTestsTest extends TestCase
         $this->makeRun(['stop_docker' => true, 'cleanup_worktrees' => false])->removeWorktree();
 
         Process::assertNothingRan();
+        $this->assertFalse($this->git->ran('remove'));
     }
 
     public function test_a_failed_compose_down_still_removes_the_worktree(): void
@@ -130,7 +136,7 @@ class DockerBackedTestsTest extends TestCase
 
         $run->removeWorktree();
 
-        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertTrue($this->git->ran('remove'));
         $this->assertStringContainsString('daemon not running', File::get($run->logPath()));
     }
 
@@ -151,7 +157,7 @@ class DockerBackedTestsTest extends TestCase
 
         $run->removeWorktree();
 
-        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertTrue($this->git->ran('remove'));
         $this->assertStringContainsString('docker compose down timed out', File::get($run->logPath()));
     }
 

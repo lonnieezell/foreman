@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Services\GitHub;
+use App\Services\Worktree;
 use App\Support\ForemanEnv;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -150,8 +151,19 @@ class Run extends Model
 
         $this->stopDockerServices();
 
-        Process::path($this->repository->local_path)->run(['git', 'worktree', 'remove', '--force', $this->worktree_path]);
+        $this->worktree()->remove();
         $this->log('Worktree removed.');
+    }
+
+    /** This run's worktree, at `$path` when it isn't where the run says it is yet. */
+    public function worktree(?string $path = null): Worktree
+    {
+        return app(Worktree::class, [
+            'path' => $path ?? $this->worktree_path,
+            'branch' => $this->branch,
+            'base' => $this->repository->base_branch,
+            'source' => $this->repository->local_path,
+        ]);
     }
 
     /** Stops the compose services the setup script started, when the repository opted in and the worktree has a compose file. */

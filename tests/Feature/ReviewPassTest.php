@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class ReviewPassTest extends TestCase
@@ -35,9 +36,13 @@ class ReviewPassTest extends TestCase
     /** @var list<list<string>> Every command the job ran. */
     private array $commands = [];
 
+    private FakeWorktree $git;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->git = FakeWorktree::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-review-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -55,7 +60,7 @@ class ReviewPassTest extends TestCase
     /**
      * Runs the job to a `pr` result against faked commands.
      *
-     * @param  array{review?:array,security?:array,reviewResult?:array,originHead?:bool}  $answers  What the passes answer with.
+     * @param  array{review?:array,security?:array,reviewResult?:array}  $answers  What the passes answer with.
      * @return array{0:Run,1:list<string>} The run and the comments flagged for a human.
      */
     private function settle(string $diff, array $answers = [], array $repository = []): array
@@ -64,10 +69,9 @@ class ReviewPassTest extends TestCase
             'review' => ['type' => 'result', 'num_turns' => 2, 'total_cost_usd' => 0.5, 'session_id' => 'sess-1'],
             'security' => ['type' => 'result', 'num_turns' => 3, 'total_cost_usd' => 0.25, 'session_id' => 'sess-1'],
             'reviewResult' => null,
-            'originHead' => true,
-            'gpgsign' => 'true',
-            'pushed' => true,
         ];
+
+        $this->git->diff = $diff;
 
         $run = Repository::create([
             'name' => 'app', 'local_path' => base_path(), 'github_repo' => 'owner/app', 'enabled' => false,
@@ -79,7 +83,7 @@ class ReviewPassTest extends TestCase
             'resume_session_id' => 'abc', 'worktree_path' => $this->worktree,
         ]);
 
-        Process::fake(function (PendingProcess $process) use ($diff, $answers) {
+        Process::fake(function (PendingProcess $process) use ($answers) {
             $command = $this->commands[] = $process->command;
 
             if (self::isScopeJudge($process)) {
@@ -104,30 +108,6 @@ class ReviewPassTest extends TestCase
 
             if ($command[0] === 'bash') {
                 $this->sequence[] = 'gate';
-            }
-
-            if (array_slice($command, 0, 3) === ['git', 'diff', '-U0']) {
-                return Process::result($diff);
-            }
-
-            if (array_slice($command, 0, 3) === ['git', 'rev-parse', '--verify'] && end($command) === 'refs/remotes/origin/HEAD') {
-                return Process::result('', '', $answers['originHead'] ? 0 : 1);
-            }
-
-            if ($command === ['git', 'rev-parse', '--verify', '--quiet', 'origin/agent/issue-7']) {
-                return Process::result('', '', $answers['pushed'] ? 0 : 1);
-            }
-
-            if ($command === ['git', 'merge-base', 'HEAD', 'origin/main']) {
-                return Process::result("base-sha\n");
-            }
-
-            if (in_array('--git-common-dir', $command, true)) {
-                return Process::result("/repo/.git/worktrees/issue-7\n/repo/.git\n");
-            }
-
-            if ($command === ['git', 'config', '--type=bool', '--get', 'commit.gpgsign']) {
-                return Process::result("{$answers['gpgsign']}\n");
             }
 
             if (array_slice($command, 0, 3) === ['gh', 'pr', 'create']) {
@@ -167,30 +147,20 @@ class ReviewPassTest extends TestCase
         return collect($this->commands)->contains(fn ($c) => array_slice($c, 0, count($prefix)) === $prefix);
     }
 
-    /** A sandboxed agent can't reach gpg-agent, so Foreman signs every commit it hasn't pushed yet, outside the sandbox. */
-    public function test_a_sandboxed_run_signs_the_commits_not_yet_pushed_before_it_pushes(): void
+    /** A sandboxed agent can't reach gpg-agent, so Foreman signs what it hasn't pushed yet, outside the sandbox. */
+    public function test_a_sandboxed_run_pushes_with_signing(): void
     {
         $this->settle(self::TEST_DIFF, repository: ['sandbox' => true]);
 
-        $sign = array_search(['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', 'origin/agent/issue-7'], $this->commands, true);
-        $push = collect($this->commands)->search(fn ($c) => array_slice($c, 0, 2) === ['git', 'push']);
-        $this->assertNotFalse($sign, 'commits after the pushed branch are re-signed');
-        $this->assertLessThan($push, $sign);
+        $this->assertTrue($this->git->ran('push:sign'));
     }
 
-    public function test_a_branch_never_pushed_is_signed_from_where_it_left_the_base(): void
-    {
-        $this->settle(self::TEST_DIFF, ['pushed' => false], ['sandbox' => true]);
-
-        $this->assertTrue($this->ran(['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', 'base-sha']));
-    }
-
-    public function test_commits_are_not_re_signed_when_unsandboxed_or_when_signing_is_off(): void
+    public function test_an_unsandboxed_run_pushes_without_signing(): void
     {
         $this->settle(self::TEST_DIFF);
-        $this->settle(self::TEST_DIFF, ['gpgsign' => 'false'], ['sandbox' => true]);
 
-        $this->assertFalse($this->ran(['git', 'rebase']));
+        $this->assertTrue($this->git->ran('push'));
+        $this->assertFalse($this->git->ran('push:sign'));
     }
 
     public function test_a_tier_1_change_gets_a_low_effort_code_review_and_simplify_but_no_security_review(): void
@@ -202,6 +172,16 @@ class ReviewPassTest extends TestCase
         $this->assertStringContainsString('`low --fix origin/main`', $this->prompt('code-review skill'));
         $this->assertStringContainsString('simplify skill', $this->prompt('code-review skill'));
         $this->assertSame(['issue', 'gate', 'review', 'gate'], $this->sequence);
+    }
+
+    public function test_a_risk_diff_that_fails_is_assessed_as_tier_1_instead_of_failing_the_run(): void
+    {
+        $this->git->diffFailure = 'fatal: bad revision';
+
+        [$run] = $this->settle(self::TEST_DIFF);
+
+        $this->assertSame(1, $run->risk_tier);
+        $this->assertStringContainsString('`low --fix origin/main`', $this->prompt('code-review skill'));
     }
 
     public function test_a_tier_2_change_gets_a_medium_code_review_and_simplify(): void
@@ -258,7 +238,7 @@ class ReviewPassTest extends TestCase
         $this->assertSame(RunStatus::Failed, $run->status);
         $this->assertSame(['issue', 'gate'], $this->sequence);
         $this->assertStringContainsString('spend cap', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_the_tier_is_added_as_a_pr_label(): void
@@ -275,7 +255,7 @@ class ReviewPassTest extends TestCase
 
         $this->assertSame(RunStatus::Failed, $run->status);
         $this->assertStringContainsString('error_max_turns', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_a_security_review_that_does_nothing_stops_the_push(): void
@@ -284,21 +264,21 @@ class ReviewPassTest extends TestCase
 
         $this->assertSame(RunStatus::Failed, $run->status);
         $this->assertStringContainsString('/security-review', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
-    public function test_a_missing_origin_head_is_pointed_at_the_base_before_the_security_review(): void
-    {
-        $this->settle(self::ROUTE_DIFF, ['originHead' => false], ['base_branch' => 'develop']);
-
-        $this->assertTrue($this->ran(['git', 'remote', 'set-head', 'origin', 'develop']));
-    }
-
-    public function test_an_existing_origin_head_is_left_alone(): void
+    public function test_origin_head_is_pointed_at_the_base_for_the_security_review(): void
     {
         $this->settle(self::ROUTE_DIFF);
 
-        $this->assertFalse($this->ran(['git', 'remote', 'set-head']));
+        $this->assertTrue($this->git->ran('pointOriginHead'));
+    }
+
+    public function test_origin_head_is_left_alone_when_there_is_no_security_review(): void
+    {
+        $this->settle(self::CODE_DIFF);
+
+        $this->assertFalse($this->git->ran('pointOriginHead'));
     }
 
     public function test_a_pass_that_asks_for_a_human_is_flagged_and_not_pushed(): void
@@ -307,7 +287,7 @@ class ReviewPassTest extends TestCase
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame(['Need a call on X.'], $comments);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_the_tier_shows_on_the_dashboard_and_the_run_page(): void

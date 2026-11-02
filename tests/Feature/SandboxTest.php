@@ -8,6 +8,7 @@ use App\Jobs\ProcessRun;
 use App\Livewire\RepositoryForm;
 use App\Models\Repository;
 use App\Services\GitHub;
+use App\Services\Worktree;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
@@ -73,7 +74,7 @@ class SandboxTest extends TestCase
         $repo = realpath($repo);
         $worktree = realpath($worktree);
 
-        $sandbox = Sandbox::settings($worktree);
+        $sandbox = Sandbox::settings($worktree, (new Worktree($worktree, 'agent/issue-1', 'main', $repo))->gitDirs());
         $writes = $sandbox['filesystem']['allowWrite'];
 
         foreach (['objects', 'refs', 'logs', 'packed-refs', 'worktrees/wt'] as $path) {

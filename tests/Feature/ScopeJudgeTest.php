@@ -12,6 +12,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class ScopeJudgeTest extends TestCase
@@ -45,9 +46,13 @@ class ScopeJudgeTest extends TestCase
 
     private bool $gateFails = false;
 
+    private FakeWorktree $git;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->git = FakeWorktree::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-judge-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -79,6 +84,9 @@ class ScopeJudgeTest extends TestCase
             'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::Queued,
             'resume_session_id' => 'abc', 'worktree_path' => $this->worktree,
         ]);
+
+        $this->git->diff = self::DIFF;
+        $this->git->diffFailure = $this->diffFails ? 'fatal: bad revision' : null;
 
         Process::fake(function (PendingProcess $process) use (&$verdicts) {
             $command = $this->commands[] = $process->command;
@@ -116,12 +124,6 @@ class ScopeJudgeTest extends TestCase
                 if ($this->gateFails && count(array_keys($this->sequence, 'gate', true)) > 1) {
                     return Process::result('FAILED: FooTest', '', 1);
                 }
-            }
-
-            if (array_slice($command, 0, 2) === ['git', 'diff'] && ! in_array('--numstat', $command, true)) {
-                return $this->diffFails && ! in_array('-U0', $command, true)
-                    ? Process::result('', 'fatal: bad revision', 128)
-                    : Process::result(self::DIFF);
             }
 
             if (array_slice($command, 0, 3) === ['gh', 'pr', 'create']) {
@@ -207,7 +209,7 @@ class ScopeJudgeTest extends TestCase
         $this->assertNotNull($run->finished_at);
         $this->assertCount(1, $comments);
         $this->assertStringContainsString('Still adds the settings page.', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_an_unusable_answer_is_retried_once(): void
@@ -227,7 +229,7 @@ class ScopeJudgeTest extends TestCase
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge', 'gate'], $this->sequence);
-        $this->assertTrue($this->ran(['git', 'push']));
+        $this->assertTrue($this->git->didPush());
         $this->assertTrue(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)));
         $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:unchecked']));
         $this->assertStringContainsString('- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.', $this->prBodies[0]);
@@ -241,7 +243,7 @@ class ScopeJudgeTest extends TestCase
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('gate_failed', $run->stop_reason);
         $this->assertStringContainsString('FAILED: FooTest', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_an_unusable_answer_after_the_correction_round_also_opens_a_draft(): void
@@ -275,6 +277,6 @@ class ScopeJudgeTest extends TestCase
         $this->assertSame(RunStatus::Failed, $run->status);
         $this->assertNotContains('judge', $this->sequence);
         $this->assertStringContainsString('fatal: bad revision', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertFalse($this->git->didPush());
     }
 }

@@ -2,8 +2,6 @@
 
 namespace App\Guardrails;
 
-use Illuminate\Support\Facades\Process;
-
 /**
  * Claude Code's sandbox for the agent's shell commands and the build scripts they start, when a repository
  * turns it on. Tested only on macOS. See docs/repository-settings.md#sandbox for what it doesn't cover.
@@ -16,11 +14,14 @@ class Sandbox
     /** Folders under your home that hold keys and tokens. The keychain stays readable. */
     private const SECRET_DIRS = ['.gnupg', '.ssh', '.config/gh'];
 
-    /** The `sandbox` block for the run's settings file. */
-    public static function settings(string $worktree): array
+    /**
+     * The `sandbox` block for the run's settings file.
+     *
+     * @param  array{0:string,1:string}  $gitDirs  The worktree's git folder and the common one, from `Worktree::gitDirs()`.
+     */
+    public static function settings(string $worktree, array $gitDirs): array
     {
-        [$gitDir, $commonDir] = explode("\n", trim(Process::path($worktree)
-            ->run(['git', 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'])->throw()->output()));
+        [$gitDir, $commonDir] = $gitDirs;
         $home = rtrim((string) getenv('HOME'), '/');
         $cargo = getenv('CARGO_HOME') ?: "{$home}/.cargo";
 

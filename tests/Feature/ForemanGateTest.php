@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class ForemanGateTest extends TestCase
@@ -22,9 +23,13 @@ class ForemanGateTest extends TestCase
 
     private string $worktree;
 
+    private FakeWorktree $git;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->git = FakeWorktree::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-gate-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -54,11 +59,12 @@ class ForemanGateTest extends TestCase
     /**
      * Runs the agent to a `pr` result, with the gate's commands answering as given.
      *
-     * @param  array{integrity?:int,verify?:int,numstat?:string,verifyOutput?:string}  $gate
+     * @param  array{integrity?:int,verify?:int,lines?:int,verifyOutput?:string}  $gate
      */
     private function settle(array $gate = [], array $repository = []): array
     {
-        $gate += ['integrity' => 0, 'verify' => 0, 'numstat' => "3\t1\tapp/A.php\n", 'verifyOutput' => ''];
+        $gate += ['integrity' => 0, 'verify' => 0, 'lines' => 4, 'verifyOutput' => ''];
+        $this->git->changedLines = $gate['lines'];
         $statusWhileGating = [];
         $run = $this->makeRun($repository);
 
@@ -83,10 +89,6 @@ class ForemanGateTest extends TestCase
                 return Process::result($integrity ? 'Integrity output' : $gate['verifyOutput'], '', $integrity ? $gate['integrity'] : $gate['verify']);
             }
 
-            if (array_slice($command, 0, 3) === ['git', 'diff', '--numstat']) {
-                return Process::result($gate['numstat']);
-            }
-
             if (array_slice($command, 0, 3) === ['gh', 'pr', 'create']) {
                 return Process::result("https://github.com/owner/app/pull/12\n");
             }
@@ -105,11 +107,6 @@ class ForemanGateTest extends TestCase
         return [$run->fresh(), $comments ?? [], $statusWhileGating];
     }
 
-    private function isPush(PendingProcess $p): bool
-    {
-        return array_slice($p->command, 0, 2) === ['git', 'push'];
-    }
-
     public function test_a_failing_verify_script_stops_the_push_and_puts_the_output_on_the_issue(): void
     {
         [$run, $comments] = $this->settle(['verify' => 1, 'verifyOutput' => 'FAILED: FooTest::test_it']);
@@ -117,7 +114,7 @@ class ForemanGateTest extends TestCase
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('gate_failed', $run->stop_reason);
         $this->assertNotNull($run->finished_at);
-        Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
+        $this->assertFalse($this->git->didPush());
         Process::assertDidntRun(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create']);
         $this->assertCount(1, $comments);
         $this->assertStringContainsString('Verify script failed (exit 1)', $comments[0]);
@@ -136,7 +133,7 @@ class ForemanGateTest extends TestCase
         [$run, $comments] = $this->settle(['integrity' => 1]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
-        Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
+        $this->assertFalse($this->git->didPush());
         $this->assertStringContainsString('Test-integrity check failed (exit 1)', $comments[0]);
         $this->assertStringContainsString('> Integrity output', $comments[0]);
     }
@@ -161,7 +158,7 @@ class ForemanGateTest extends TestCase
         $this->assertSame([], $comments);
         // The gate runs twice: before and after the review pass
         $this->assertSame(array_fill(0, 4, RunStatus::Reviewing), $statusWhileGating);
-        Process::assertRan(fn (PendingProcess $p) => $this->isPush($p));
+        $this->assertTrue($this->git->didPush());
     }
 
     public function test_the_reviewing_station_shows_on_the_dashboard_track(): void
@@ -181,11 +178,11 @@ class ForemanGateTest extends TestCase
     {
         config(['foreman.max_pr_lines' => 10]);
 
-        [$run, $comments] = $this->settle(['numstat' => "6\t4\tapp/A.php\n3\t0\tapp/B.php\n-\t-\timage.png\n"]);
+        [$run, $comments] = $this->settle(['lines' => 13]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);
-        Process::assertRan(fn (PendingProcess $p) => $this->isPush($p));
+        $this->assertTrue($this->git->didPush());
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $p->command, true)
             && collect($p->command)->contains(fn ($arg) => str_contains($arg, '- Size: 13 changed lines, over the limit of 10. Opened as a draft.')));
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 5) === ['gh', 'pr', 'edit', '12', '--add-label'] && $p->command[5] === 'size:large');
@@ -195,11 +192,11 @@ class ForemanGateTest extends TestCase
     {
         config(['foreman.max_pr_lines' => 10]);
 
-        [$run, $comments] = $this->settle(['verify' => 1, 'numstat' => "60\t40\tapp/A.php\n"]);
+        [$run, $comments] = $this->settle(['verify' => 1, 'lines' => 100]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('gate_failed', $run->stop_reason);
-        Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
+        $this->assertFalse($this->git->didPush());
         $this->assertStringContainsString('Verify script failed', $comments[0]);
         $this->assertStringNotContainsString('Size limit', $comments[0]);
     }
@@ -208,7 +205,7 @@ class ForemanGateTest extends TestCase
     {
         config(['foreman.max_pr_lines' => 13]);
 
-        [$run] = $this->settle(['numstat' => "6\t4\tapp/A.php\n3\t0\tapp/B.php\n"]);
+        [$run] = $this->settle(['lines' => 13]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         Process::assertDidntRun(fn (PendingProcess $p) => in_array('--draft', $p->command, true) || in_array('size:large', $p->command, true));
