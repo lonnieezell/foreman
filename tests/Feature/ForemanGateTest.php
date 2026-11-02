@@ -177,16 +177,31 @@ class ForemanGateTest extends TestCase
         Livewire::test(Dashboard::class)->assertSeeInOrder(['Running checks', 'Reviewing']);
     }
 
-    public function test_a_change_over_the_size_limit_goes_to_needs_you_instead_of_opening(): void
+    public function test_a_change_over_the_size_limit_opens_as_a_draft_labelled_size_large(): void
     {
         config(['foreman.max_pr_lines' => 10]);
 
         [$run, $comments] = $this->settle(['numstat' => "6\t4\tapp/A.php\n3\t0\tapp/B.php\n-\t-\timage.png\n"]);
 
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+        $this->assertSame([], $comments);
+        Process::assertRan(fn (PendingProcess $p) => $this->isPush($p));
+        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $p->command, true)
+            && collect($p->command)->contains(fn ($arg) => str_contains($arg, '- Size: 13 changed lines, over the limit of 10. Opened as a draft.')));
+        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 5) === ['gh', 'pr', 'edit', '12', '--add-label'] && $p->command[5] === 'size:large');
+    }
+
+    public function test_a_change_over_the_size_limit_that_fails_another_check_still_goes_to_needs_you(): void
+    {
+        config(['foreman.max_pr_lines' => 10]);
+
+        [$run, $comments] = $this->settle(['verify' => 1, 'numstat' => "60\t40\tapp/A.php\n"]);
+
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('gate_failed', $run->stop_reason);
         Process::assertDidntRun(fn (PendingProcess $p) => $this->isPush($p));
-        $this->assertStringContainsString('the change is 13 changed lines', $comments[0]);
-        $this->assertStringContainsString('over the limit of 10', $comments[0]);
+        $this->assertStringContainsString('Verify script failed', $comments[0]);
+        $this->assertStringNotContainsString('Size limit', $comments[0]);
     }
 
     public function test_a_change_at_the_size_limit_still_opens(): void
@@ -196,6 +211,7 @@ class ForemanGateTest extends TestCase
         [$run] = $this->settle(['numstat' => "6\t4\tapp/A.php\n3\t0\tapp/B.php\n"]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
+        Process::assertDidntRun(fn (PendingProcess $p) => in_array('--draft', $p->command, true) || in_array('size:large', $p->command, true));
     }
 
     public function test_the_pr_body_ends_with_foremans_footer(): void

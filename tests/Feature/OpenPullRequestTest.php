@@ -21,7 +21,7 @@ class OpenPullRequestTest extends TestCase
      * Opens a PR with `gh pr create` answering as `$create` says, and `gh pr list` finding `$existing`.
      * `$create` is 'ok', 'fails' (exit 1) or 'hangs' (throws, as a timeout does).
      */
-    private function open(string $create, string $existing): string
+    private function open(string $create, string $existing, bool $draft = false): string
     {
         Process::fake(function (PendingProcess $process) use ($create, $existing) {
             $command = array_slice($process->command, 0, 3);
@@ -42,13 +42,27 @@ class OpenPullRequestTest extends TestCase
             'allowed_tools' => Repository::DEFAULT_ALLOWED_TOOLS, 'setup_script' => 'true',
         ]);
 
-        return app(GitHub::class)->openPullRequest($repo->fresh(), 'agent/issue-58', 'Fix', 'Closes #58');
+        return app(GitHub::class)->openPullRequest($repo->fresh(), 'agent/issue-58', 'Fix', 'Closes #58', $draft);
     }
 
     public function test_it_returns_the_url_gh_prints(): void
     {
         $this->assertSame(self::PR, $this->open('ok', ''));
         Process::assertDidntRun(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'list']);
+    }
+
+    public function test_a_draft_passes_draft_to_gh(): void
+    {
+        $this->open('ok', '', draft: true);
+
+        Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $p->command, true));
+    }
+
+    public function test_a_ready_pr_is_not_a_draft(): void
+    {
+        $this->open('ok', '');
+
+        Process::assertDidntRun(fn (PendingProcess $p) => in_array('--draft', $p->command, true));
     }
 
     public function test_a_create_that_times_out_after_github_opened_the_pr_uses_that_pr(): void

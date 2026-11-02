@@ -43,6 +43,8 @@ class ScopeJudgeTest extends TestCase
 
     private bool $diffFails = false;
 
+    private bool $gateFails = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -110,6 +112,10 @@ class ScopeJudgeTest extends TestCase
 
             if ($command[0] === 'bash') {
                 $this->sequence[] = 'gate';
+
+                if ($this->gateFails && count(array_keys($this->sequence, 'gate', true)) > 1) {
+                    return Process::result('FAILED: FooTest', '', 1);
+                }
             }
 
             if (array_slice($command, 0, 2) === ['git', 'diff'] && ! in_array('--numstat', $command, true)) {
@@ -213,27 +219,45 @@ class ScopeJudgeTest extends TestCase
         $this->assertStringContainsString('Scope judge: passed.', $this->prBodies[0]);
     }
 
-    public function test_two_unusable_answers_move_the_run_to_needs_you_with_what_went_wrong(): void
+    public function test_two_unusable_answers_open_the_pr_as_a_draft_labelled_scope_unchecked(): void
     {
         $missingField = json_encode(['type' => 'result', 'is_error' => false, 'structured_output' => ['in_scope' => true, 'reason' => 'Fine.']]);
         [$run, $comments] = $this->settle([null, $missingField]);
 
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+        $this->assertSame([], $comments);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge', 'gate'], $this->sequence);
+        $this->assertTrue($this->ran(['git', 'push']));
+        $this->assertTrue(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)));
+        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:unchecked']));
+        $this->assertStringContainsString('- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.', $this->prBodies[0]);
+    }
+
+    public function test_two_unusable_answers_with_a_failing_gate_still_move_the_run_to_needs_you(): void
+    {
+        $this->gateFails = true;
+        [$run, $comments] = $this->settle([null, null]);
+
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
-        $this->assertSame('scope_unusable', $run->stop_reason);
-        $this->assertNotNull($run->finished_at);
-        $this->assertSame(['issue', 'gate', 'review', 'judge', 'judge'], $this->sequence);
-        $this->assertStringContainsString('API Error: overloaded', $comments[0]);
-        $this->assertStringContainsString('weakens_tests', $comments[0]);
+        $this->assertSame('gate_failed', $run->stop_reason);
+        $this->assertStringContainsString('FAILED: FooTest', $comments[0]);
         $this->assertFalse($this->ran(['git', 'push']));
     }
 
-    public function test_an_unusable_answer_after_the_correction_round_also_moves_the_run_to_needs_you(): void
+    public function test_an_unusable_answer_after_the_correction_round_also_opens_a_draft(): void
     {
-        [$run, $comments] = $this->settle([self::VETO, 'not json', 'not json']);
+        [$run] = $this->settle([self::VETO, 'not json', 'not json']);
 
-        $this->assertSame(RunStatus::NeedsHuman, $run->status);
-        $this->assertStringContainsString('not json', $comments[0]);
-        $this->assertFalse($this->ran(['git', 'push']));
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+        $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'judge', 'gate'], $this->sequence);
+        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:unchecked']));
+    }
+
+    public function test_a_passing_judge_opens_a_ready_pr(): void
+    {
+        $this->settle();
+
+        $this->assertFalse(collect($this->commands)->contains(fn ($c) => in_array('--draft', $c, true) || in_array('scope:unchecked', $c, true)));
     }
 
     public function test_a_multi_line_reason_is_kept_on_one_line(): void
