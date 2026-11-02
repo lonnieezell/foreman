@@ -33,7 +33,7 @@ class Worktree
     }
 
     /**
-     * Hooks around each step that has a label: `$before` gets the label, `$after` runs when the command ends.
+     * Hooks around each step that has a label: `$before` gets the label, `$after` runs when it, a fetch or a merge ends.
      * The caller uses them to log, check for cancellation and keep the run's heartbeat fresh.
      */
     public function tracking(Closure $before, Closure $after): static
@@ -50,11 +50,11 @@ class Worktree
      */
     public function prepare(bool $continuing): bool
     {
-        $this->step('Fetching origin', ['git', 'fetch', 'origin', '--quiet'], $this->source);
+        $this->step('Fetching origin', ['fetch', 'origin', '--quiet'], $this->source);
 
         // A previous run for the same issue may have left a worktree behind
         if (File::isDirectory($this->path)) {
-            $this->step('Removing old worktree', ['git', 'worktree', 'remove', '--force', $this->path], $this->source);
+            $this->step('Removing old worktree', ['worktree', 'remove', '--force', $this->path], $this->source);
         }
 
         $pushed = $continuing && $this->isPushed();
@@ -62,7 +62,7 @@ class Worktree
 
         File::ensureDirectoryExists(dirname($this->path));
         $this->step("Creating worktree on {$this->branch} from {$from}",
-            ['git', 'worktree', 'add', '-B', $this->branch, $this->path, $from], $this->source);
+            ['worktree', 'add', '-B', $this->branch, $this->path, $from], $this->source);
 
         return $pushed;
     }
@@ -86,6 +86,7 @@ class Worktree
 
         if ($fetch) {
             $fetched = $this->git(['fetch', 'origin', '--quiet']);
+            $this->beat();
 
             if ($fetched->failed()) {
                 $log("Couldn't fetch origin, so {$base} wasn't merged. Going on from the branch as it was: ".str(trim($fetched->errorOutput()))->limit(500));
@@ -106,7 +107,8 @@ class Worktree
 
         try {
             // Well under the 5-minute heartbeat limit, so a slow merge can't get the run reaped
-            $merge = Process::path($this->path)->timeout(120)->run(['git', 'merge', '--no-edit', $base]);
+            $merge = $this->git(['merge', '--no-edit', $base], timeout: 120);
+            $this->beat();
 
             if ($merge->successful()) {
                 return $incoming->successful()
@@ -140,10 +142,10 @@ class Worktree
         return array_values(array_filter(explode("\0", $this->sinceBase(['diff', '--name-only', '-z', '--no-renames'], 'Could not list the changed files'))));
     }
 
-    /** Lines added plus deleted since the branch left the base branch. */
+    /** Lines added plus deleted since the branch left the base branch. A diff that fails counts as 0: the count only labels the PR. */
     public function changedLines(): int
     {
-        return (int) collect(explode("\n", trim($this->sinceBase(['diff', '--numstat'], "Couldn't count the changed lines"))))
+        return (int) collect(explode("\n", trim($this->git(['diff', '--numstat', "{$this->baseRef()}...HEAD"])->output())))
             ->sum(fn ($row) => array_sum(array_map('intval', array_slice(explode("\t", $row), 0, 2))));   // binary files show "-"
     }
 
@@ -154,14 +156,14 @@ class Worktree
             $this->signUnpushedCommits();
         }
 
-        $this->step("Pushing {$this->branch}", ['git', 'push', '--set-upstream', 'origin', $this->branch]);
+        $this->step("Pushing {$this->branch}", ['push', '--set-upstream', 'origin', $this->branch]);
     }
 
     /** `/security-review` diffs against origin/HEAD, and quietly reviews nothing when that ref is missing. */
     public function pointOriginHeadAtBase(): void
     {
         if ($this->git(['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/HEAD'])->failed()) {
-            $this->step("Pointing origin/HEAD at {$this->baseRef()} for /security-review", ['git', 'remote', 'set-head', 'origin', $this->base]);
+            $this->step("Pointing origin/HEAD at {$this->baseRef()} for /security-review", ['remote', 'set-head', 'origin', $this->base]);
         }
     }
 
@@ -206,7 +208,7 @@ class Worktree
         $from = $this->isPushed()
             ? "origin/{$this->branch}"
             : trim($this->git(['merge-base', 'HEAD', $this->baseRef()])->output());
-        $this->step('Signing the agent\'s commits', ['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', $from]);
+        $this->step('Signing the agent\'s commits', ['rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', $from]);
     }
 
     /** Run a diff against the base branch and give its output. */
@@ -223,22 +225,26 @@ class Worktree
 
     private function git(array $args, ?string $cwd = null, int $timeout = 60): ProcessResult
     {
-        $result = Process::path($cwd ?? $this->path)->timeout($timeout)->run(['git', ...$args]);
+        return Process::path($cwd ?? $this->path)->timeout($timeout)->run(['git', ...$args]);
+    }
 
+    /** Tell the caller a long command has ended, so the run counts as alive. */
+    private function beat(): void
+    {
         if ($this->after) {
             ($this->after)();
         }
-
-        return $result;
     }
 
-    private function step(string $label, array $command, ?string $cwd = null): void
+    /** Run a labelled git command, given without the leading `git`, and throw when it fails. */
+    private function step(string $label, array $args, ?string $cwd = null): void
     {
         if ($this->before) {
             ($this->before)($label);
         }
 
-        $result = $this->git(array_slice($command, 1), $cwd, 300);
+        $result = $this->git($args, $cwd, 300);
+        $this->beat();
 
         if ($result->failed()) {
             $output = trim($result->errorOutput() ?: $result->output());

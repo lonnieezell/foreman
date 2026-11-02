@@ -281,6 +281,70 @@ class WorktreeTest extends TestCase
         $this->assertSame($head, trim($this->git($this->origin, 'rev-parse', 'agent/issue-7')));
     }
 
+    /** Turn signing on with a stand-in for gpg that signs anything, so signing needs no keys. */
+    private function fakeSigning(): void
+    {
+        File::put("{$this->dir}/gpg", "#!/bin/sh\ncat >/dev/null\necho '[GNUPG:] SIG_CREATED D 1 8 00 1700000000 FAKE' >&2\nprintf -- '-----BEGIN PGP SIGNATURE-----\\n\\nfake\\n-----END PGP SIGNATURE-----\\n'\n");
+        chmod("{$this->dir}/gpg", 0755);
+        $this->git($this->source, 'config', 'gpg.program', "{$this->dir}/gpg");
+        $this->git($this->source, 'config', 'commit.gpgsign', 'true');
+    }
+
+    private function signed(string $ref): bool
+    {
+        return str_contains($this->git($this->path, 'cat-file', 'commit', $ref), 'gpgsig');
+    }
+
+    public function test_a_signing_push_signs_an_unpushed_branch_from_where_it_left_the_base(): void
+    {
+        $worktree = $this->prepared();
+        $base = trim($this->git($this->path, 'rev-parse', 'origin/main'));
+        $this->commit($this->path, 'c.txt', "c\n", 'first');
+        $this->commit($this->path, 'd.txt', "d\n", 'second');
+        $this->fakeSigning();
+
+        $worktree->push(sign: true);
+
+        $this->assertTrue($this->signed('HEAD'));
+        $this->assertTrue($this->signed('HEAD~1'));
+        $this->assertSame($base, trim($this->git($this->path, 'rev-parse', 'HEAD~2')), 'the base is not rewritten');
+        $this->assertSame(trim($this->git($this->path, 'rev-parse', 'HEAD')), trim($this->git($this->origin, 'rev-parse', 'agent/issue-7')));
+    }
+
+    public function test_a_signing_push_leaves_what_was_already_pushed_alone(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->path, 'c.txt', "c\n", 'pushed before');
+        $worktree->push();
+        $pushed = trim($this->git($this->path, 'rev-parse', 'HEAD'));
+        $this->commit($this->path, 'd.txt', "d\n", 'not pushed yet');
+        $this->fakeSigning();
+
+        $worktree->push(sign: true);
+
+        $this->assertTrue($this->signed('HEAD'));
+        $this->assertSame($pushed, trim($this->git($this->path, 'rev-parse', 'HEAD~1')));
+    }
+
+    public function test_a_line_count_that_fails_counts_as_zero(): void
+    {
+        $worktree = new Worktree($this->prepared()->path, 'agent/issue-7', 'no-such-base', $this->source);
+
+        $this->assertSame(0, $worktree->changedLines());
+    }
+
+    public function test_an_existing_origin_head_is_left_alone(): void
+    {
+        $worktree = $this->prepared();
+        $this->git($this->other, 'push', '-q', 'origin', 'main:elsewhere');
+        $this->git($this->path, 'fetch', '-q', 'origin');
+        $this->git($this->path, 'remote', 'set-head', 'origin', 'elsewhere');
+
+        $worktree->pointOriginHeadAtBase();
+
+        $this->assertSame('refs/remotes/origin/elsewhere', trim($this->git($this->path, 'symbolic-ref', 'refs/remotes/origin/HEAD')));
+    }
+
     public function test_origin_head_gets_pointed_at_the_base_when_missing(): void
     {
         $worktree = $this->prepared();

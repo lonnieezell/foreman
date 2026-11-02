@@ -291,7 +291,7 @@ class ProcessRun implements ShouldQueue
             'locked_paths' => $run->repository->lockedPathList(),
             'allow_lock_files' => $allowLockFiles,
             'hooks_dir' => $dir,
-            'base' => "origin/{$run->repository->base_branch}",
+            'base' => $run->worktree($worktree)->baseRef(),
             'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
             'stop_counter' => "{$dir}/run-{$run->id}-stops",
         ]));
@@ -439,7 +439,7 @@ class ProcessRun implements ShouldQueue
 
             $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
             $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
-                '{{base}}' => "origin/{$repo->base_branch}",
+                '{{base}}' => $this->worktree($run)->baseRef(),
                 '{{verdict}}' => self::describeVerdict($verdict),
             ]));
         }
@@ -529,7 +529,9 @@ class ProcessRun implements ShouldQueue
     {
         $worktree = $this->worktree($run);
         $base = $worktree->baseRef();
-        ['tier' => $tier, 'reason' => $reason] = RiskTier::assess(StackSet::detect($run->worktree_path), $worktree->diffSinceBase(context: 0));
+        // A diff that fails assesses as no change, as before: the tier only picks which review passes run
+        $diff = rescue(fn () => $worktree->diffSinceBase(context: 0), '', report: false);
+        ['tier' => $tier, 'reason' => $reason] = RiskTier::assess(StackSet::detect($run->worktree_path), $diff);
         $level = [1 => 'low', 2 => 'medium', 3 => 'high'][$tier];
 
         $run->update(['risk_tier' => $tier]);
@@ -665,14 +667,15 @@ class ProcessRun implements ShouldQueue
     private function review(Run $run, GitHub $github): ?array
     {
         $repo = $run->repository;
-        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, "origin/{$repo->base_branch}");
+        $base = $this->worktree($run)->baseRef();
+        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, $base);
         $limit = (int) config('foreman.max_pr_lines');
 
         $run->moveTo(RunStatus::Reviewing);
         $run->log('Reviewing: running the integrity check and the verify script before pushing.');
 
         $failures = array_filter([
-            $this->gateCheck($run, 'Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base=origin/{$repo->base_branch}"], 120),
+            $this->gateCheck($run, 'Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base={$base}"], 120),
             $verify === '' ? null : $this->gateCheck($run, 'Verify script', ['bash', '-ec', $verify], 1500),
         ]);
 
@@ -905,7 +908,7 @@ class ProcessRun implements ShouldQueue
 
         if ($this->mergedFromBase) {
             $commits = collect($this->mergedFromBase)->map(fn ($s) => "- {$s}")->implode("\n");
-            $prompt .= "\n\nBefore this run, Foreman merged origin/{$run->repository->base_branch} into your branch. It brought in these commits:\n\n"
+            $prompt .= "\n\nBefore this run, Foreman merged {$this->worktree($run)->baseRef()} into your branch. It brought in these commits:\n\n"
                 .IssueSanitiser::wrapText($commits)
                 ."\n\nThey may change what you found before, so run your checks again.";
         }

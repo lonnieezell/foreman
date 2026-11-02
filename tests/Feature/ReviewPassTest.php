@@ -174,6 +174,16 @@ class ReviewPassTest extends TestCase
         $this->assertSame(['issue', 'gate', 'review', 'gate'], $this->sequence);
     }
 
+    public function test_a_risk_diff_that_fails_is_assessed_as_tier_1_instead_of_failing_the_run(): void
+    {
+        $this->git->diffFailure = 'fatal: bad revision';
+
+        [$run] = $this->settle(self::TEST_DIFF);
+
+        $this->assertSame(1, $run->risk_tier);
+        $this->assertStringContainsString('`low --fix origin/main`', $this->prompt('code-review skill'));
+    }
+
     public function test_a_tier_2_change_gets_a_medium_code_review_and_simplify(): void
     {
         [$run] = $this->settle(self::CODE_DIFF);
