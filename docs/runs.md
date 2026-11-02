@@ -57,6 +57,8 @@ The agent finishes by writing a result file in its worktree, `.foreman/result.js
 
 Foreman opened a PR from the agent's work, and the repository doesn't watch PRs. Review the PR yourself.
 
+The PR is a draft when the change is over the size limit (label `size:large`), or when the scope judge gave no usable answer (label `scope:unchecked`). The footer says why. See [The size limit](guardrails.md#the-size-limit) and [Scope judge](guardrails.md#scope-judge).
+
 You'll also see this on a run that handed its PR to a fix-up round. On a round, it reads **Fixes pushed · round 1/2**.
 
 ### Watching PR
@@ -69,14 +71,12 @@ The PR was merged, or all its checks pass and no review-bot threads are open. Re
 
 ### Needs you
 
-Foreman stopped and wants a human. There are nine ways to get here:
+Foreman stopped and wants a human. There are seven ways to get here:
 
 - **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when the spec is unclear or contradicts the code, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
 - **The agent thinks a test is wrong.** The reason is `test_looks_wrong`. The agent was told not to change, delete or skip the test, so it stopped and explained which test and why. Decide whether the test or the code is wrong, then reply on the issue.
 - **Foreman's gate failed.** The verify script or the integrity check failed when Foreman ran it before pushing. Nothing was pushed. Foreman commented on the issue with the output. Fix the cause or reply on the issue, then click **Continue after my reply**.
 - **The scope judge vetoed the change twice.** The [scope judge](guardrails.md#scope-judge) said the change goes beyond the issue, or weakens tests. The agent got one round to correct it, and the judge vetoed it again. Nothing was pushed. Foreman's comment on the issue gives the judge's reason. Decide whether the judge is right. Then reply on the issue and click **Continue after my reply**, or open the PR yourself from the worktree.
-- **The scope judge gave no usable answer.** The judge call failed or gave an answer Foreman couldn't read, twice in a row. Nothing was pushed. The comment on the issue quotes what went wrong each time. This is usually a passing API problem. Click **Continue after my reply** to try again.
-- **The change is too big.** The branch changes more lines than the size limit (`FOREMAN_MAX_PR_LINES`, 1,000 by default). Nothing was pushed, and the comment gives the count. Reply on the issue to ask the agent to split the work, or open the PR yourself from the worktree.
 - **The issue was already done.** The result file said `already_done`. The comment says where the work is and whether its tests pass.
 - **Fix-up rounds ran out.** The PR still has failing checks or open bot threads after the last round. Foreman left a summary comment on the PR. The PR is yours from here.
 - **Someone else pushed to the PR's branch.** Foreman stops watching so it doesn't fight you over the branch.

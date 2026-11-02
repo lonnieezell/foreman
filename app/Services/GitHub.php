@@ -216,10 +216,10 @@ class GitHub
     }
 
     /** Opens a PR for a branch that is already pushed. Returns its URL. */
-    public function openPullRequest(Repository $repo, string $branch, string $title, string $body): string
+    public function openPullRequest(Repository $repo, string $branch, string $title, string $body, bool $draft = false): string
     {
         try {
-            $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body]);
+            $output = $this->gh($repo, ['pr', 'create', '--head', $branch, '--base', $repo->base_branch, '--title', $title, '--body', $body, ...($draft ? ['--draft'] : [])]);
         } catch (Throwable $e) {
             // gh can fail or hang after GitHub has already opened the PR, so look before failing the run
             $existing = trim($this->gh($repo, ['pr', 'list', '--head', $branch, '--state', 'open', '--json', 'url', '--jq', '.[0].url'], allowFailure: true));

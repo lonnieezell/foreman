@@ -455,13 +455,15 @@ class ProcessRun implements ShouldQueue
         // The judge goes before the second gate, so a veto doesn't throw a gate run away
         foreach ([false, true] as $corrected) {
             $result = $this->prResult($run, $github);
-            $verdict = $result === null ? null : $this->judge($run, $github, $issue);
 
-            if ($verdict === null) {
+            if ($result === null) {
                 return;
             }
 
-            if (self::judgePasses($verdict)) {
+            $verdict = $this->judge($run, $issue);
+
+            // No usable answer still goes on to the gate, and opens a draft if it passes
+            if ($verdict === null || self::judgePasses($verdict)) {
                 break;
             }
 
@@ -480,22 +482,34 @@ class ProcessRun implements ShouldQueue
             ]));
         }
 
-        $footer = $this->review($run, $github);
+        $gate = $this->review($run, $github);
 
-        if ($footer === null) {
+        if ($gate === null) {
             return;
         }
 
-        $passed = $corrected ? 'passed after one correction round' : 'passed';
-        $run->log("Scope judge {$passed}: {$verdict['reason']}");
-        $footer .= "\n- Scope judge: {$passed}. {$verdict['reason']}";
+        ['footer' => $footer, 'oversized' => $oversized] = $gate;
+        $labels = $oversized ? ['size:large'] : [];
+
+        if ($verdict === null) {
+            $run->log('Scope judge gave no usable answer twice. Opening the PR as a draft.');
+            $footer .= "\n- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.";
+            $labels[] = 'scope:unchecked';
+        } else {
+            $passed = $corrected ? 'passed after one correction round' : 'passed';
+            $run->log("Scope judge {$passed}: {$verdict['reason']}");
+            $footer .= "\n- Scope judge: {$passed}. {$verdict['reason']}";
+        }
 
         $this->push($run);
 
         $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
         $body .= "\n\n{$footer}";
-        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body);
-        $github->labelPullRequest($repo, $prUrl, "risk:tier-{$run->risk_tier}");
+        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body, draft: $labels !== []);
+
+        foreach (["risk:tier-{$run->risk_tier}", ...$labels] as $label) {
+            $github->labelPullRequest($repo, $prUrl, $label);
+        }
 
         if ($repo->watch_prs) {
             $this->watch($run, $github->pullRequest($repo, $prUrl)['head_sha'], ['pr_url' => $prUrl]);
@@ -590,11 +604,11 @@ class ProcessRun implements ShouldQueue
     /**
      * Ask a separate Haiku call with no tools whether the change stays within the issue and leaves the tests alone.
      * It sees only the cleaned-up issue and the diff, never the agent's session or reasoning.
-     * An unusable answer is asked again once. A second one flags the issue for a human and gives null.
+     * An unusable answer is asked again once. A second one gives null.
      *
      * @return array{in_scope:bool,weakens_tests:bool,reason:string}|null
      */
-    private function judge(Run $run, GitHub $github, string $issue): ?array
+    private function judge(Run $run, string $issue): ?array
     {
         $repo = $run->repository;
         $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--no-color', '--no-ext-diff', "origin/{$repo->base_branch}...HEAD"]);
@@ -612,8 +626,6 @@ class ProcessRun implements ShouldQueue
         // Outside the project, so no CLAUDE.md or project settings get loaded; user settings are left out too
         $dir = sys_get_temp_dir().'/foreman-scope-judge';
         File::ensureDirectoryExists($dir);
-
-        $problems = [];
 
         foreach ([1, 2] as $attempt) {
             $this->guardCancel($run);
@@ -644,12 +656,7 @@ class ProcessRun implements ShouldQueue
             }
 
             $run->log("Scope judge gave no usable answer ({$problem}).");
-            $problems[] = "Try {$attempt}: {$problem}";
         }
-
-        $this->handToHuman($run, $github,
-            "Foreman's scope judge gave no usable answer twice, so nothing was pushed. The branch is still in the worktree.\n\n".self::quote(...$problems),
-            'Scope judge failed twice. Flagged the issue for a human.', 'scope_unusable');
 
         return null;
     }
@@ -695,9 +702,12 @@ class ProcessRun implements ShouldQueue
 
     /**
      * Foreman's own gate, outside any hook: the integrity check, the verify script and the size limit.
-     * Returns the footer for the PR body, or null after flagging the issue for a human with the output.
+     * Going over the size limit doesn't fail the gate; it makes the PR a draft.
+     * Returns the footer for the PR body and whether the change is over the limit, or null after flagging the issue for a human with the output.
+     *
+     * @return array{footer:string,oversized:bool}|null
      */
-    private function review(Run $run, GitHub $github): ?string
+    private function review(Run $run, GitHub $github): ?array
     {
         $repo = $run->repository;
         $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, "origin/{$repo->base_branch}");
@@ -712,11 +722,6 @@ class ProcessRun implements ShouldQueue
         ]);
 
         $failures = [...$failures, ...$this->lockedChangeFailures($run)];
-        $lines = $this->changedLines($run);
-
-        if ($lines > $limit) {
-            $failures[] = "Size limit: the change is {$lines} changed lines (added plus deleted), over the limit of {$limit}.";
-        }
 
         if ($failures) {
             $this->handToHuman($run, $github,
@@ -727,11 +732,13 @@ class ProcessRun implements ShouldQueue
         }
 
         $commands = collect(explode("\n", $verify))->map(fn ($c) => trim($c))->filter()->map(fn ($c) => "`{$c}`")->implode(', ');
+        $lines = $this->changedLines($run);
+        $oversized = $lines > $limit;
 
-        return "---\n**Foreman's gate**, run by Foreman outside the agent before the push:\n\n"
+        return ['oversized' => $oversized, 'footer' => "---\n**Foreman's gate**, run by Foreman outside the agent before the push:\n\n"
             .'- Verify script: '.($commands === '' ? 'none configured' : "passed ({$commands})")."\n"
             ."- Test integrity: passed\n"
-            ."- Size: {$lines} changed lines (limit {$limit})";
+            .($oversized ? "- Size: {$lines} changed lines, over the limit of {$limit}. Opened as a draft." : "- Size: {$lines} changed lines (limit {$limit})")];
     }
 
     /** The failure text when the command fails, or null when it passes. */

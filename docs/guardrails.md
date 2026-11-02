@@ -238,13 +238,15 @@ When the agent says it is done with a `pr` result, Foreman doesn't push yet. The
 
 1. The [test-integrity check](#test-integrity), against `origin/<base>`.
 2. The repository's [verify script](repository-settings.md#verify-script). An empty script falls back to the detected stacks' checks, as in [Definition of done](#definition-of-done).
-3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit.
+3. A size check. It adds up the lines added and deleted against the base branch, and compares the total with the size limit. Going over the limit doesn't fail the gate. It makes the PR a draft. See [The size limit](#the-size-limit).
 
-If all three pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then the [scope judge](#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If any one fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
+If the first two pass, Foreman works out the [risk tier](#risk-tiers) and sends the agent through a review pass. Then the [scope judge](#scope-judge) checks that the change stays within the issue. If the judge passes it, Foreman runs all three checks again. Only if they pass a second time does Foreman push the branch and open the PR. It adds a footer to the PR body that lists the checks it ran, the integrity result, the size and the judge's verdict. If the integrity check or the verify script fails, nothing is pushed. The run ends as **Needs you**. Foreman comments on the issue with the output, up to 3,000 characters per check, and adds the human label. When you reply, **Continue after my reply** sends the agent back into the same worktree to fix it.
 
 ### The size limit
 
-The limit is 1,000 changed lines by default. Set `FOREMAN_MAX_PR_LINES` in `.env` to change it, then restart Foreman. See [Global settings](global-settings.md#environment-variables). A change over the limit goes to **Needs you** instead of opening a PR, so a person decides whether to split it up. A change exactly at the limit still opens.
+The limit is 1,000 changed lines by default. Set `FOREMAN_MAX_PR_LINES` in `.env` to change it, then restart Foreman. See [Global settings](global-settings.md#environment-variables). A change over the limit still goes through the review pass, the scope judge and the second gate. Foreman checks the size again in the second gate, so a change that `/simplify` shrank under the limit opens as normal. If it is still over, Foreman opens the PR as a draft, labels it `size:large`, and says so in the footer. A change exactly at the limit opens as normal.
+
+A draft can't be auto-merged. When a watched draft PR is ready, Foreman hands it to you instead of merging it. See [PR watching](pr-watching.md). You decide whether to mark it ready, or ask for the work to be split up.
 
 ### Why checks run again outside the agent
 
@@ -325,7 +327,7 @@ What happens next depends on the verdict:
 
 - **Pass.** The change is in scope and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
 - **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
-- **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, nothing is pushed. The run goes to **Needs you**, and the comment quotes what went wrong each time. Foreman never treats a missing verdict as a pass.
+- **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, Foreman still runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It labels the PR `scope:unchecked`, and the footer says the change wasn't checked against the issue. The run log has what went wrong each time. Foreman never treats a missing verdict as a pass: a draft can't be auto-merged.
 
 The run log shows a veto as soon as it happens. A passing verdict is logged only after the second gate passes.
 
@@ -339,7 +341,7 @@ The judge never sees that story. It gets no session, no tools and no access to t
 
 - It is an AI opinion, not a rule. It can pass a change that drifts, or veto one that is fine. [Test integrity](#test-integrity) is still the mechanical check for weakened tests.
 - It only sees the diff and the issue. A change that matches the issue's words but misses its intent can pass.
-- A very large diff makes the judge's job harder. The [size limit](#the-size-limit) keeps the diff in check.
+- A very large diff makes the judge's job harder. The [size limit](#the-size-limit) no longer stops a large change before the judge, so a huge diff can be too much for it. Then the judge gives no usable answer and the PR opens as a draft.
 - A global `CLAUDE.md` in the repository's Claude profile may still load. Leaving out settings doesn't cover memory files. Project files don't load, because the judge runs outside the repository.
 - The judge runs before the second gate, so a veto doesn't waste a full gate run. The corrected change still goes through the gate before the push, but it doesn't get a second review pass. The risk tier stays as it was set before the correction.
 - It only judges the first PR of a run. Fix-up rounds on an open PR don't get a judge.
