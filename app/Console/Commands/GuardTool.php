@@ -25,7 +25,7 @@ class GuardTool extends Command
             return 2;
         }
 
-        $guard = new Guard(StackSet::detect($rules['worktree']), $rules['worktree'], $rules['locked_paths'], $rules['allow_lock_files']);
+        $guard = new Guard(StackSet::detect($rules['worktree']), $rules['worktree'], $rules['locked_paths'], $rules['allow_lock_files'], $rules['hooks_dir'] ?? '');
         $reason = $guard->check($hook);
 
         if ($reason === null) {

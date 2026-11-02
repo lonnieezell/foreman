@@ -12,6 +12,8 @@ class Guard
     /** A command starts at the beginning, or after ; & | ( a backtick or a newline, past any VAR=value prefixes. */
     public const COMMAND_START = '(?:^|[;&|(`\n])\s*(?:\w+=\S*\s+)*';
 
+    private const HOOKS_BLOCKED = "Foreman's hook files are off limits. They hold the rules this guard enforces.";
+
     private const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
 
     /** Protected in every repository, whatever the stack. Matched against the file name or the end of the path. */
@@ -28,7 +30,20 @@ class Guard
         private string $worktree,
         private array $lockedPaths = [],
         private bool $allowLockFiles = false,
+        private string $hooksDir = '',
     ) {}
+
+    /**
+     * The reasons any of these changed files, relative to the worktree, break a locked path or lock file rule.
+     * Foreman's gate runs this against the branch diff, because shell tools can write files the edit checks never see.
+     *
+     * @param  list<string>  $paths
+     * @return list<string>
+     */
+    public function lockedChanges(array $paths): array
+    {
+        return array_values(array_filter(array_map($this->lockedReason(...), $paths)));
+    }
 
     public function check(array $hook): ?string
     {
@@ -43,7 +58,13 @@ class Guard
             return null;
         }
 
-        $path = $this->relativePath((string) ($input['file_path'] ?? $input['notebook_path'] ?? ''));
+        $file = (string) ($input['file_path'] ?? $input['notebook_path'] ?? '');
+
+        if ($this->inHooksDir($file)) {
+            return self::HOOKS_BLOCKED;
+        }
+
+        $path = $this->relativePath($file);
 
         return $path === null ? null : $this->checkEdit($path, $input);
     }
@@ -53,6 +74,7 @@ class Guard
         $start = self::COMMAND_START;
 
         return match (true) {
+            $this->mentionsHooksDir($command) => self::HOOKS_BLOCKED,
             (bool) preg_match("/{$start}git(?:\\s+-[\\w-]+(?:[ =]\\S+)?)*\\s+push\\b/", $command) => 'git push is blocked. Foreman pushes the branch after its own checks.',
             (bool) preg_match("/{$start}gh(?:\\s|\$)/", $command) => 'gh commands are blocked. Foreman talks to GitHub, not the agent.',
             (bool) preg_match('/(?:^|\s)--no-verify\b/', $command) => '--no-verify is blocked. Fix what the hooks complain about instead of skipping them.',
@@ -74,6 +96,17 @@ class Guard
             return "{$path} holds tool settings. Change the code to satisfy the tool, not the tool's settings.";
         }
 
+        if ($reason = $this->lockedReason($path)) {
+            return $reason;
+        }
+
+        return $this->addsSkipMarker($input)
+            ? 'This edit adds a skip or suppress marker. Fix the code or the test instead of silencing it.'
+            : null;
+    }
+
+    private function lockedReason(string $path): ?string
+    {
         if ($this->matchesAny($this->lockedPaths, $path, anywhere: false)) {
             return "{$path} is locked in this repository's settings.";
         }
@@ -82,9 +115,27 @@ class Guard
             return "{$path} is a lock file. It may only change when the issue has the `dependencies` label.";
         }
 
-        return $this->addsSkipMarker($input)
-            ? 'This edit adds a skip or suppress marker. Fix the code or the test instead of silencing it.'
-            : null;
+        return null;
+    }
+
+    private function mentionsHooksDir(string $command): bool
+    {
+        return array_filter($this->hooksDirs(), fn ($dir) => str_contains($command, $dir)) !== [];
+    }
+
+    private function inHooksDir(string $path): bool
+    {
+        return array_filter($this->hooksDirs(), fn ($dir) => str_starts_with($path, "{$dir}/")) !== [];
+    }
+
+    /** The hooks directory as given and with symlinks resolved, without a trailing slash. Empty when none is set. */
+    private function hooksDirs(): array
+    {
+        if ($this->hooksDir === '') {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter([rtrim($this->hooksDir, '/'), rtrim((string) realpath($this->hooksDir), '/')])));
     }
 
     /** True when the edit leaves more of some marker in the file than it took out. */

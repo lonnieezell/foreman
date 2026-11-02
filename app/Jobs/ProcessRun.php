@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\RunStatus;
+use App\Guardrails\Guard;
 use App\Guardrails\RiskTier;
 use App\Guardrails\Sandbox;
 use App\Guardrails\StackSet;
@@ -327,6 +328,7 @@ class ProcessRun implements ShouldQueue
             'log' => $run->logPath(),
             'locked_paths' => $run->repository->lockedPathList(),
             'allow_lock_files' => $allowLockFiles,
+            'hooks_dir' => $dir,
             'base' => "origin/{$run->repository->base_branch}",
             'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
             'stop_counter' => "{$dir}/run-{$run->id}-stops",
@@ -706,6 +708,7 @@ class ProcessRun implements ShouldQueue
             $verify === '' ? null : $this->gateCheck($run, 'Verify script', ['bash', '-ec', $verify], 1500),
         ]);
 
+        $failures = [...$failures, ...$this->lockedChangeFailures($run)];
         $lines = $this->changedLines($run);
 
         if ($lines > $limit) {
@@ -756,6 +759,28 @@ class ProcessRun implements ShouldQueue
         $output = trim((string) preg_replace('/\e\[[\d;]*m/', '', $process->output().$process->errorOutput()));
 
         return "{$label} failed (exit {$process->exitCode()}):\n".(strlen($output) > 3000 ? '…'.substr($output, -3000) : $output);
+    }
+
+    /**
+     * Locked paths and lock files the branch changed since it left the base branch.
+     * The guard only sees edit tools, so this catches writes made from the shell.
+     *
+     * @return list<string>
+     */
+    private function lockedChangeFailures(Run $run): array
+    {
+        $repo = $run->repository;
+        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--name-only', '-z', '--no-renames', "origin/{$repo->base_branch}...HEAD"]);
+
+        if (! $diff->successful()) {
+            throw new RuntimeException('Could not list the changed files to check for locked paths: '.trim($diff->errorOutput()));
+        }
+
+        $files = array_values(array_filter(explode("\0", $diff->output())));
+
+        $guard = new Guard(StackSet::detect($run->worktree_path), $run->worktree_path, $repo->lockedPathList(), $this->allowLockFiles);
+
+        return array_map(fn ($reason) => "Locked file changed: {$reason}", $guard->lockedChanges($files));
     }
 
     /** Lines added plus deleted on the branch since it left the base branch. */
@@ -850,6 +875,15 @@ class ProcessRun implements ShouldQueue
     private function settleRound(Run $run, GitHub $github): void
     {
         $repo = $run->repository;
+
+        if ($failures = $this->lockedChangeFailures($run)) {
+            $this->handToHuman($run, $github,
+                "Foreman's gate stopped this fix-up round before pushing. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(...$failures),
+                "Foreman's gate failed. Flagged the issue for a human.");
+
+            return;
+        }
+
         $this->push($run);
         $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
         $pushed = $head !== $run->head_sha;
