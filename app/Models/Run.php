@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Services\GitHub;
+use App\Support\ForemanEnv;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -146,8 +147,28 @@ class Run extends Model
             return;
         }
 
+        $this->stopDockerServices();
+
         Process::path($this->repository->local_path)->run(['git', 'worktree', 'remove', '--force', $this->worktree_path]);
         $this->log('Worktree removed.');
+    }
+
+    /** Stops the compose services the setup script started, when the repository opted in and the worktree has a compose file. */
+    private function stopDockerServices(): void
+    {
+        if (! $this->repository->stop_docker) {
+            return;
+        }
+
+        $hasComposeFile = collect(['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'])
+            ->contains(fn (string $file) => File::exists("{$this->worktree_path}/{$file}"));
+
+        if (! $hasComposeFile) {
+            return;
+        }
+
+        $result = Process::path($this->worktree_path)->env(ForemanEnv::removed())->timeout(120)->run(['docker', 'compose', 'down', '-v']);
+        $this->log($result->successful() ? 'Docker services stopped.' : 'docker compose down failed: '.trim($result->errorOutput() ?: $result->output()));
     }
 
     /** Human-readable log the UI tails. */

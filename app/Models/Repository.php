@@ -36,7 +36,7 @@ SH;
     protected $guarded = ['id'];
 
     // Match the column defaults, so a repository made in code is unsandboxed and merges with "merge" before it's saved
-    protected $attributes = ['sandbox' => false, 'merge_method' => 'merge'];
+    protected $attributes = ['sandbox' => false, 'stop_docker' => false, 'merge_method' => 'merge'];
 
     protected function casts(): array
     {
@@ -46,6 +46,7 @@ SH;
             'watch_prs' => 'boolean',
             'auto_merge_max_tier' => 'integer',
             'sandbox' => 'boolean',
+            'stop_docker' => 'boolean',
             'daily_budget' => 'decimal:2',
             'max_budget_per_run' => 'decimal:2',
             'last_polled_at' => 'datetime',

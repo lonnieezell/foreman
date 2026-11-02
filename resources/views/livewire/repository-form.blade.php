@@ -7,7 +7,7 @@
         'scripts' => ['Scripts', ['setup_script', 'verify_script']],
         'perms' => ['Permissions', ['allowed_tools', 'locked_paths']],
         'instructions' => ['Instructions', ['prompt_template']],
-        'after' => ['After the PR', ['watch_prs', 'auto_merge_max_tier', 'merge_method', 'cleanup_worktrees', 'sandbox']],
+        'after' => ['After the PR', ['watch_prs', 'auto_merge_max_tier', 'merge_method', 'cleanup_worktrees', 'stop_docker', 'sandbox']],
     ];
     $fields = collect($sections)->flatMap(fn ($section) => array_fill_keys($section[1], $section[0]));
     $stackNames = ['php' => 'PHP', 'typescript' => 'TypeScript', 'rust' => 'Rust', 'python' => 'Python'];
@@ -418,6 +418,13 @@
                         <p class="hint">Once Foreman is finished with the PR. A failed run keeps its worktree.</p>
                     </div>
                     <input id="cleanup_worktrees" type="checkbox" role="switch" class="switch" wire:model="cleanup_worktrees">
+                </div>
+                <div class="switch-row">
+                    <div>
+                        <label for="stop_docker">Stop Docker services with the worktree</label>
+                        <p class="hint">Runs <code>docker compose down -v</code> before the worktree is removed, if it has a compose file. Needs the switch above. <a href="{{ route('docs', 'repository-settings') }}#docker-backed-tests">Docker-backed tests</a></p>
+                    </div>
+                    <input id="stop_docker" type="checkbox" role="switch" class="switch" wire:model="stop_docker">
                 </div>
                 <div class="switch-row">
                     <div>
