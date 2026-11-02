@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\RunStatus;
+use App\Guardrails\RiskTier;
+use App\Guardrails\StackSet;
 use App\Jobs\ProcessRun;
 use App\Models\Run;
 use App\Models\Setting;
@@ -47,6 +49,10 @@ class PrWatcher
         $threads = $pr['threads'];
 
         if (! $checks && ! $threads) {
+            if ($this->autoMerge($run, $pr)) {
+                return;
+            }
+
             $this->finish($run, RunStatus::PrReady, 'Checks passed and no bot threads are open.');
 
             return;
@@ -67,6 +73,89 @@ class PrWatcher
         }
 
         $this->startRound($run, $checks, $threads);
+    }
+
+    /**
+     * Merges a ready PR when the repository opted in and the change is low-risk enough.
+     * Gives false when the run should end as PR ready as usual. Any other outcome is handled here.
+     */
+    private function autoMerge(Run $run, array $pr): bool
+    {
+        // Read live, not from the run: turning auto-merge off must stop pending merges at once
+        $repo = $run->repository()->first();
+        $max = $repo->auto_merge_max_tier;
+
+        if (! $max) {
+            return false;
+        }
+
+        if (Setting::paused()) {
+            $held = 'Ready to auto-merge; held while Foreman is paused.';
+
+            if (! str_ends_with(trim($run->tail(1)), $held)) {
+                $run->log($held);
+            }
+
+            return true;
+        }
+
+        // Later commits can change the diff, so rate it again
+        $diff = $this->github->pullRequestDiff($repo, $run->pr_url);
+        $tier = RiskTier::assess(StackSet::detect(is_dir((string) $run->worktree_path) ? $run->worktree_path : $repo->local_path), $diff)['tier'];
+        $before = $run->risk_tier;
+
+        if ($tier !== $before) {
+            $run->update(['risk_tier' => $tier]);
+            $before === null
+                ? $this->github->labelPullRequest($repo, $run->pr_url, "risk:tier-{$tier}")
+                : $this->github->swapPullRequestLabel($repo, $run->pr_url, "risk:tier-{$before}", "risk:tier-{$tier}");
+        }
+
+        if ($tier > $max) {
+            // Rated that high from the start: not an auto-merge case, so it is PR ready as usual
+            if ($before === null || $tier <= $before) {
+                return false;
+            }
+
+            $this->handBack($run, "Tier rose from {$before} to {$tier} after fix-up rounds. Foreman won't auto-merge it. Over to you.",
+                "Tier rose from {$before} to {$tier} after fix-up rounds. Left the PR to you.", 'tier_rose');
+
+            return true;
+        }
+
+        $blocks = array_filter([
+            $pr['human_threads'] ?? 0 ? 'a person has an open review thread' : null,
+            ($pr['changes_requested'] ?? false) ? 'a person asked for changes' : null,
+            ($pr['is_draft'] ?? false) ? 'the PR is a draft' : null,
+        ]);
+
+        if ($blocks) {
+            $why = implode(', ', $blocks);
+            $this->handBack($run, 'Foreman won\'t auto-merge: '.$why.'. Over to you.', "Not auto-merging: {$why}.", 'human_review');
+
+            return true;
+        }
+
+        $this->github->commentOnPullRequest($repo, $run->pr_url, "Auto-merged by Foreman: tier {$tier}, checks passed, no open threads.");
+
+        if ($error = $this->github->mergePullRequest($repo, $run->pr_url, $repo->merge_method, $run->head_sha)) {
+            $this->handBack($run, "Auto-merge failed: {$error}", "The merge failed. gh said: {$error}", 'merge_failed');
+
+            return true;
+        }
+
+        $this->github->labelPullRequest($repo, $run->pr_url, 'auto-merged');
+        $this->finish($run, RunStatus::Merged, sprintf('Auto-merged (%s) at %s, tier %d.', $repo->merge_method, substr($run->head_sha, 0, 7), $tier));
+
+        return true;
+    }
+
+    /** Comments on the PR, flags the issue for a human and ends the run as Needs you. */
+    private function handBack(Run $run, string $comment, string $log, string $stopReason): void
+    {
+        $this->github->commentOnPullRequest($run->repository, $run->pr_url, $comment);
+        $this->github->addHumanLabel($run->repository, $run->issue_number);
+        $this->finish($run, RunStatus::NeedsHuman, $log, $stopReason);
     }
 
     /** Nothing pending and the bots quiet for a while, or the timeout has passed. */

@@ -12,6 +12,7 @@ enum RunStatus: string
     case PrOpened = 'pr_opened';     // PR opened (or fixes pushed) and not watched further
     case WatchingPr = 'watching_pr'; // waiting on CI and review bots; no worker attached
     case PrReady = 'pr_ready';
+    case Merged = 'merged';          // Foreman merged the PR itself (auto-merge)
     case NeedsHuman = 'needs_human';
     case Failed = 'failed';
     case Cancelled = 'cancelled';
@@ -44,6 +45,7 @@ enum RunStatus: string
             self::PrOpened => 'PR opened',
             self::WatchingPr => 'Watching PR',
             self::PrReady => 'PR ready',
+            self::Merged => 'Merged',
             self::NeedsHuman => 'Needs you',
             self::Failed => 'Failed',
             self::Cancelled => 'Cancelled',
@@ -54,7 +56,7 @@ enum RunStatus: string
     public function tone(): string
     {
         return match ($this) {
-            self::PrOpened, self::PrReady => 'good',
+            self::PrOpened, self::PrReady, self::Merged => 'good',
             self::NeedsHuman => 'attention',
             self::Failed => 'bad',
             self::Cancelled => 'quiet',

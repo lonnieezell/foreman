@@ -52,6 +52,10 @@
         <div class="notice">
             <p>Someone else pushed to the PR’s branch, so Foreman stopped watching to avoid fighting over it. It’s yours from here.</p>
         </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && in_array($run->stop_reason, ['tier_rose', 'human_review', 'merge_failed'], true))
+        <div class="notice">
+            <p>Foreman didn’t auto-merge this PR. The reason is in the latest comment on the PR. It’s yours from here.</p>
+        </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url)
         <div class="notice">
             <p>The PR still has failing checks or open review threads that the agent couldn’t settle. It’s yours from here: see the latest comment on the PR.</p>

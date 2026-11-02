@@ -79,6 +79,24 @@ If checks still fail or bot threads are still open after the last round, Foreman
 
 The PR is yours from there.
 
+## Auto-merge
+
+With [Auto-merge](repository-settings.md#auto-merge) on, Foreman merges the PR itself at the point where it would end as **PR ready**. That's when checks have passed and no bot threads are open. Foreman runs `gh pr merge`. It doesn't use GitHub's built-in auto-merge, because that waits only for the checks branch protection requires, and it knows nothing about bot threads.
+
+Before it merges, Foreman goes through these steps in order:
+
+1. **Read the setting live.** It uses the repository's setting now, not a copy from when the run started.
+2. **Hold while paused.** While Foreman is paused, the run stays in **Watching PR**. It logs "Ready to auto-merge; held while Foreman is paused." once. On the first check after the pause ends, it goes through every step again.
+3. **Re-rate the tier.** Foreman rates the PR's final diff again, because the review pass, a scope-judge correction or fix-up rounds can change it. The new tier is saved on the run, and the `risk:tier-N` label on the PR is swapped. If the tier rose and is now above the setting, the run ends as **Needs you** with a PR comment such as "Tier rose from 1 to 3 after fix-up rounds." A PR that was already above the setting from the start isn't merged and ends as **PR ready**. Tier 3 is never merged.
+4. **Check for human review activity.** The run ends as **Needs you** if a person has an unresolved review thread, a person's latest verdict is "Changes requested", or the PR is a draft. Plain PR comments outside review threads don't block.
+5. **Merge.** Foreman runs `gh pr merge` with the repository's merge method and `--match-head-commit` set to the commit it checked. It never uses `--admin` or `--delete-branch`.
+
+Before merging, Foreman comments "Auto-merged by Foreman: tier N, checks passed, no open threads." After the merge it adds an `auto-merged` label to the PR. It creates the label first if the repository doesn't have it. The run ends as **Merged**, and the log says, for example, "Auto-merged (merge) at abc1234, tier 1."
+
+If `gh pr merge` fails, Foreman doesn't retry. It comments on the PR with the error text, adds the human label to the issue, and ends the run as **Needs you**. Common causes are branch protection that needs an approving review, a base branch that moved, and a merge method the repository turns off.
+
+A merge by a person still ends as **PR ready** with "PR merged." With Watch PRs off, or auto-merge off, nothing here applies.
+
 ## Stopping
 
 Click **Stop watching** on the run page to end watching. The run becomes **Cancelled** and the PR stays open.

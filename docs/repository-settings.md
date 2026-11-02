@@ -216,6 +216,19 @@ The review pass after the gate uses `/code-review` and `/simplify`, plus `/secur
 
 The **Fix failing checks and review-bot comments** switch. On by default. After the agent opens a PR, Foreman follows it through CI and review bots and runs fix-up rounds. Off means the run ends as **PR opened**. The number of fix-up rounds is one setting for all repositories, in [Global settings](global-settings.md#pr-watching). See [PR watching](pr-watching.md).
 
+### Auto-merge
+
+Off by default. A choice of **Off**, **Tier 1 only** or **Tiers 1 and 2**. When it's on, Foreman merges the PR itself once [PR watching](pr-watching.md#auto-merge) marks it ready. Tier 3 changes (auth, routes, risky code) are never merged. They always wait for you. See [Risk tiers](guardrails.md#risk-tiers).
+
+- **Auto-merge needs Watch PRs.** The select is greyed out while Watch PRs is off. Saving auto-merge with Watch PRs off gives the error "Auto-merge needs Watch PRs."
+- **Foreman reads the setting live.** A run doesn't copy it when it starts, unlike model and effort. Turn auto-merge off and every PR still being watched stops merging at once.
+- **A repository whose branch protection requires an approving review can never auto-merge.** Foreman never uses `--admin`, so GitHub refuses the merge. The run ends as **Needs you**.
+- **Foreman never deletes the branch.** Use GitHub's "Automatically delete head branches" setting.
+
+### Merge method
+
+**Merge**, **Squash** or **Rebase**. The default is Merge. It only shows when auto-merge isn't Off. Your repository must allow that method on GitHub, or the merge fails.
+
 ### Remove the worktree when done
 
 On by default. Foreman deletes the worktree when it's finished with the PR. That's when the PR is ready, handed to you, or cancelled, or straight away if Watch PRs is off. A failed run always keeps its worktree, so you can look inside it.

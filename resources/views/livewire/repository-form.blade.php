@@ -7,7 +7,7 @@
         'scripts' => ['Scripts', ['setup_script', 'verify_script']],
         'perms' => ['Permissions', ['allowed_tools', 'locked_paths']],
         'instructions' => ['Instructions', ['prompt_template']],
-        'after' => ['After the PR', ['watch_prs', 'cleanup_worktrees', 'sandbox']],
+        'after' => ['After the PR', ['watch_prs', 'auto_merge_max_tier', 'merge_method', 'cleanup_worktrees', 'sandbox']],
     ];
     $fields = collect($sections)->flatMap(fn ($section) => array_fill_keys($section[1], $section[0]));
     $stackNames = ['php' => 'PHP', 'typescript' => 'TypeScript', 'rust' => 'Rust', 'python' => 'Python'];
@@ -392,6 +392,25 @@
                         <p class="hint">Foreman watches the PR and sends the agent back in. Up to {{ config('foreman.pr_watch.max_rounds') }} rounds, <a href="{{ route('settings') }}" wire:navigate>set in Settings</a>.</p>
                     </div>
                     <input id="watch_prs" type="checkbox" role="switch" class="switch" wire:model="watch_prs">
+                </div>
+                <div class="field">
+                    <label for="auto_merge_max_tier">Auto-merge</label>
+                    <select id="auto_merge_max_tier" wire:model="auto_merge_max_tier" x-bind:disabled="! $wire.watch_prs" @disabled(! $watch_prs)>
+                        <option value="">Off</option>
+                        <option value="1">Tier 1 only</option>
+                        <option value="2">Tiers 1 and 2</option>
+                    </select>
+                    <p class="hint">Tier 3 changes (auth, routes, risky code) always wait for you. Needs Watch PRs. <a href="{{ route('docs', 'repository-settings') }}#auto-merge">How it works</a></p>
+                    @error('auto_merge_max_tier') <span class="error">{{ $message }}</span> @enderror
+                </div>
+                <div class="field" x-show="$wire.auto_merge_max_tier !== ''" @if ($auto_merge_max_tier === '') style="display: none" @endif>
+                    <label for="merge_method">Merge method</label>
+                    <select id="merge_method" wire:model="merge_method">
+                        @foreach (App\Models\Repository::MERGE_METHODS as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error('merge_method') <span class="error">{{ $message }}</span> @enderror
                 </div>
                 <div class="switch-row">
                     <div>
