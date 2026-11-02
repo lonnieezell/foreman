@@ -2,11 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Repository;
 use App\Models\Run;
-use App\Support\ForemanEnv;
+use App\Services\Gate;
 use Illuminate\Console\Command;
-use Symfony\Component\Process\Process;
 
 class StopHook extends Command
 {
@@ -36,11 +34,7 @@ class StopHook extends Command
             return self::SUCCESS;
         }
 
-        $verify = trim($rules['verify_script']) ?: Repository::defaultVerifyScript($rules['worktree'], $rules['base']);
-        $failures = array_filter([
-            $this->failure('Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base={$rules['base']}"], $rules['worktree'], 120),
-            $verify === '' ? null : $this->failure('Verify script', ['bash', '-ec', $verify], $rules['worktree'], 1500),
-        ]);
+        $failures = Gate::run($rules['worktree'], $rules['base'], $rules['verify_script']);
 
         if (! $failures) {
             return self::SUCCESS;
@@ -54,27 +48,5 @@ class StopHook extends Command
         );
 
         return 2;
-    }
-
-    /** The trimmed output when the command fails, or null when it passes. */
-    private function failure(string $label, array $command, string $cwd, int $timeout): ?string
-    {
-        // CI keeps test runners such as Jest and react-scripts out of watch mode
-        $process = new Process($command, $cwd, [...ForemanEnv::removed(), 'CI' => 'true'], timeout: $timeout);
-
-        try {
-            $process->run();
-        } catch (\Throwable $e) {
-            return "{$label} failed: {$e->getMessage()}";
-        }
-
-        if ($process->isSuccessful()) {
-            return null;
-        }
-
-        // Failures are at the end of the output, so keep the tail
-        $output = trim((string) preg_replace('/\e\[[\d;]*m/', '', $process->getOutput().$process->getErrorOutput()));
-
-        return "{$label} failed (exit {$process->getExitCode()}):\n".(strlen($output) > 3000 ? '…'.substr($output, -3000) : $output);
     }
 }
