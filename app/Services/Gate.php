@@ -34,6 +34,32 @@ class Gate
         ]);
     }
 
+    /**
+     * The inherited `GIT_CONFIG_*` settings without the agent's push block. Tests that push to a local "origin"
+     * pass in ProcessRun's gate and on a developer's machine, so the Stop hook must not fail them. The other
+     * settings, such as the empty credential helper, stay.
+     *
+     * @return array<string,string|false>
+     */
+    private static function withoutPushBlock(): array
+    {
+        $env = [];
+        $kept = 0;
+
+        for ($i = 0; $i < (int) getenv('GIT_CONFIG_COUNT'); $i++) {
+            [$key, $value] = [getenv("GIT_CONFIG_KEY_{$i}"), getenv("GIT_CONFIG_VALUE_{$i}")];
+            $env += ["GIT_CONFIG_KEY_{$i}" => false, "GIT_CONFIG_VALUE_{$i}" => false];
+
+            if ($key !== 'remote.origin.pushurl') {
+                $env["GIT_CONFIG_KEY_{$kept}"] = $key;
+                $env["GIT_CONFIG_VALUE_{$kept}"] = $value;
+                $kept++;
+            }
+        }
+
+        return $env ? [...$env, 'GIT_CONFIG_COUNT' => (string) $kept] : [];
+    }
+
     /** The failure text when the command fails, or null when it passes. */
     private static function check(string $worktree, string $label, array $command, int $timeout, ?Closure $before, ?Closure $progress): ?string
     {
@@ -43,7 +69,7 @@ class Gate
 
         try {
             // CI keeps test runners such as Jest and react-scripts out of watch mode
-            $process = Process::path($worktree)->env([...ForemanEnv::removed(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
+            $process = Process::path($worktree)->env([...ForemanEnv::removed(), ...self::withoutPushBlock(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
         } catch (Throwable $e) {
             return "{$label} failed: {$e->getMessage()}";
         } finally {

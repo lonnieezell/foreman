@@ -83,6 +83,26 @@ class GateTest extends TestCase
         $this->assertSame(['Test-integrity check', 'Verify script'], array_keys(Gate::run($this->dir, 'main', 'exit 1')));
     }
 
+    public function test_the_checks_drop_the_agents_push_block_but_keep_its_other_git_settings(): void
+    {
+        $env = ['GIT_CONFIG_COUNT' => '2', 'GIT_CONFIG_KEY_0' => 'remote.origin.pushurl', 'GIT_CONFIG_VALUE_0' => '/nonexistent/x', 'GIT_CONFIG_KEY_1' => 'foreman.kept', 'GIT_CONFIG_VALUE_1' => 'yes'];
+
+        foreach ($env as $name => $value) {
+            putenv("{$name}={$value}");
+        }
+
+        try {
+            // Tests that push to a local "origin" pass in the gate and locally, so the Stop hook must not fail them
+            $failures = Gate::run($this->dir, 'main', "! git config --get remote.origin.pushurl\ntest \"\$(git config --get foreman.kept)\" = yes");
+        } finally {
+            foreach (array_keys($env) as $name) {
+                putenv($name);
+            }
+        }
+
+        $this->assertSame([], $failures);
+    }
+
     public function test_an_empty_verify_script_falls_back_to_the_detected_stacks_checks(): void
     {
         $this->assertSame($this->detectedScript(), Gate::verifyScript('  ', $this->dir, 'main'));
