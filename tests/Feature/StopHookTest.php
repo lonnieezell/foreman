@@ -76,7 +76,17 @@ class StopHookTest extends TestCase
         $this->assertStringContainsString('Tests: 1 failed', $message);
         $this->assertStringContainsString('2000', $message);
         $this->assertStringNotContainsString("\n1\n", $message, 'only the end of the output is kept');
-        $this->assertStringContainsString('Blocked the stop (1 of 3)', $this->log());
+        $this->assertStringContainsString('Blocked the stop (1 of 3): Verify script failed.', $this->log());
+    }
+
+    public function test_the_log_line_names_every_failed_check(): void
+    {
+        $this->git('checkout', '-q', '-b', 'agent/x');
+        file_put_contents("{$this->dir}/work/phpunit.xml", '<phpunit/>');
+
+        $this->stop('exit 1');
+
+        $this->assertStringContainsString('Blocked the stop (1 of 3): Test-integrity check and Verify script failed.', $this->log());
     }
 
     public function test_the_verify_script_runs_in_the_worktree_and_stops_at_the_first_failing_line(): void

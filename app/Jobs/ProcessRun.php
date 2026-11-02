@@ -7,8 +7,8 @@ use App\Guardrails\Guard;
 use App\Guardrails\RiskTier;
 use App\Guardrails\Sandbox;
 use App\Guardrails\StackSet;
-use App\Models\Repository;
 use App\Models\Run;
+use App\Services\Gate;
 use App\Services\GitHub;
 use App\Services\Usage;
 use App\Services\Worktree;
@@ -669,18 +669,25 @@ class ProcessRun implements ShouldQueue
     {
         $repo = $run->repository;
         $base = $this->worktree($run)->baseRef();
-        $verify = trim((string) $repo->verify_script) ?: Repository::defaultVerifyScript($run->worktree_path, $base);
+        $verify = Gate::verifyScript($repo->verify_script, $run->worktree_path, $base);
         $limit = (int) config('foreman.max_pr_lines');
 
         $run->moveTo(RunStatus::Reviewing);
         $run->log('Reviewing: running the integrity check and the verify script before pushing.');
 
-        $failures = array_filter([
-            $this->gateCheck($run, 'Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base={$base}"], 120),
-            $verify === '' ? null : $this->gateCheck($run, 'Verify script', ['bash', '-ec', $verify], 1500),
-        ]);
+        $beat = 0;
+        $failures = Gate::run(
+            $run->worktree_path, $base, $repo->verify_script,
+            before: fn () => $this->guardCancel($run),
+            progress: function () use ($run, &$beat) {
+                if (time() - $beat >= 30) {
+                    $beat = time();
+                    $run->update(['heartbeat_at' => now()]);
+                }
+            },
+        );
 
-        $failures = [...$failures, ...$this->lockedChangeFailures($run)];
+        $failures = [...array_values($failures), ...$this->lockedChangeFailures($run)];
 
         if ($failures) {
             $this->handToHuman($run, $github,
@@ -698,36 +705,6 @@ class ProcessRun implements ShouldQueue
             .'- Verify script: '.($commands === '' ? 'none configured' : "passed ({$commands})")."\n"
             ."- Test integrity: passed\n"
             .($oversized ? "- Size: {$lines} changed lines, over the limit of {$limit}. Opened as a draft." : "- Size: {$lines} changed lines (limit {$limit})")];
-    }
-
-    /** The failure text when the command fails, or null when it passes. */
-    private function gateCheck(Run $run, string $label, array $command, int $timeout): ?string
-    {
-        $this->guardCancel($run);
-        $beat = 0;
-
-        try {
-            // CI keeps test runners such as Jest and react-scripts out of watch mode
-            $process = Process::path($run->worktree_path)->env([...ForemanEnv::removed(), 'CI' => 'true'])->timeout($timeout)->run($command, function () use ($run, &$beat) {
-                if (time() - $beat >= 30) {
-                    $beat = time();
-                    $run->update(['heartbeat_at' => now()]);
-                }
-            });
-        } catch (Throwable $e) {
-            return "{$label} failed: {$e->getMessage()}";
-        }
-
-        $run->update(['heartbeat_at' => now()]);
-
-        if ($process->successful()) {
-            return null;
-        }
-
-        // Failures are at the end of the output, so keep the tail
-        $output = trim((string) preg_replace('/\e\[[\d;]*m/', '', $process->output().$process->errorOutput()));
-
-        return "{$label} failed (exit {$process->exitCode()}):\n".(strlen($output) > 3000 ? '…'.substr($output, -3000) : $output);
     }
 
     /**
