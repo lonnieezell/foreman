@@ -19,6 +19,9 @@ class FakeWorktree extends Worktree
     /** @var list<string> Subjects the base merge brought in. */
     public array $merged = [];
 
+    /** @var list<string> Messages the base merge reports through its log. */
+    public array $catchUpLog = [];
+
     public bool $pushed = false;
 
     public string $diff = '';
@@ -77,6 +80,7 @@ class FakeWorktree extends Worktree
     public function catchUpWithBase(bool $fetch, Closure $log): array
     {
         $this->calls[] = $fetch ? 'catchUp:fetch' : 'catchUp';
+        array_map($log, $this->catchUpLog);
 
         return $this->merged;
     }

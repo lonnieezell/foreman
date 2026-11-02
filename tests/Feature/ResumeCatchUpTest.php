@@ -134,6 +134,47 @@ class ResumeCatchUpTest extends TestCase
         $this->assertNotContains('catchUp:fetch', $this->beforeAgent);
     }
 
+    public function test_the_worktree_is_built_for_the_runs_path_branch_base_and_checkout(): void
+    {
+        $this->process($this->makeRun());
+
+        $this->assertSame(
+            ['path' => $this->worktree, 'branch' => 'agent/issue-7', 'base' => 'develop', 'source' => base_path()],
+            $this->git->builtWith,
+        );
+    }
+
+    public function test_what_catching_up_reports_goes_to_the_run_log(): void
+    {
+        $this->git->catchUpLog = ['Merging origin/develop into agent/issue-7', "Couldn't merge origin/develop, so the merge was aborted."];
+
+        $run = $this->process($this->makeRun());
+
+        $log = (string) file_get_contents($run->logPath());
+        $this->assertStringContainsString('Merging origin/develop into agent/issue-7', $log);
+        $this->assertStringContainsString("Couldn't merge origin/develop, so the merge was aborted.", $log);
+    }
+
+    public function test_a_catch_up_that_merged_nothing_still_starts_the_agent_without_listing_commits(): void
+    {
+        $this->git->catchUpLog = ["Couldn't fetch origin, so origin/develop wasn't merged."];
+
+        $run = $this->process($this->makeRun());
+
+        $this->assertNotNull(collect($this->ran)->first(fn (array $command) => $command[0] === 'claude'));
+        $this->assertStringNotContainsString('into your branch', $this->prompt());
+        $this->assertStringNotContainsString('merge', (string) $run->error, 'the catch-up did not fail the run');
+    }
+
+    public function test_a_cancelled_run_stops_before_catching_up(): void
+    {
+        $run = $this->process($this->makeRun(['cancel_requested' => true]));
+
+        $this->assertSame(RunStatus::Cancelled, $run->status);
+        $this->assertNotContains('catchUp:fetch', $this->git->calls);
+        $this->assertNull(collect($this->ran)->first(fn (array $command) => $command[0] === 'claude'));
+    }
+
     public function test_the_resume_prompt_says_the_result_file_was_cleared(): void
     {
         $this->process($this->makeRun(), comments: "owner wrote:\nGo ahead.");
