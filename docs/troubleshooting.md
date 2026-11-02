@@ -34,6 +34,7 @@ Common errors:
 | "Couldn't diff the change for the scope judge: …" | git couldn't diff the branch against `origin/<base>` for the [scope judge](guardrails.md#scope-judge). |
 | "Pushing … failed: …" | Foreman's push was refused. Check your git access to the repository, and whether the branch already exists on GitHub. |
 | "Signing the agent's commits failed: …" | Your git config signs commits, and signing failed. Check that `gpg-agent` is running and your key is unlocked. See [Sandbox](repository-settings.md#sandbox). |
+| "The process "'gh' … exceeded the timeout of … seconds." | A `gh` call to GitHub hung. It usually takes a second, but now and then it stalls. A read, such as fetching comments, is tried a second time first. If the second try hangs too, `storage/logs/laravel.log` has a "gh timed out twice" entry with the end of `gh`'s debug output, which shows where it was stuck. Nothing is lost, so continue or retry the run. |
 | "The worker stopped responding. It was probably restarted mid-run." | No heartbeat for 5 minutes, usually because the laptop slept or Foreman was stopped. Foreman only releases the issue in this case. It doesn't comment or add the human label. |
 
 When you've dealt with the cause, click **Start over** on the run page, or **Retry** on the dashboard. That queues the issue again with a fresh worktree.
