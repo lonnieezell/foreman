@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Models\Repository;
 use App\Models\Setting;
 use App\Support\IssueSanitiser;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -370,21 +372,55 @@ GRAPHQL;
 
     private function gh(Repository $repo, array $args, bool $allowFailure = false): string
     {
-        $result = Process::path($repo->local_path)
-            ->timeout(60)
-            ->run(['gh', ...$args, '--repo', $repo->github_repo]);
+        $read = in_array($args[1] ?? '', ['view', 'list'], true);
 
-        if (! $allowFailure) {
-            $result->throw();
-        }
-
-        return $result->output();
+        return $this->run($repo, ['gh', ...$args, '--repo', $repo->github_repo], $read, $allowFailure);
     }
 
     /** `gh api` takes no --repo flag. */
     private function api(Repository $repo, array $args, bool $allowFailure = false): string
     {
-        $result = Process::path($repo->local_path)->timeout(60)->run(['gh', 'api', ...$args]);
+        $write = collect($args)->contains(fn (string $arg) => str_starts_with($arg, 'query=mutation') || in_array($arg, ['-X', '--method'], true));
+
+        return $this->run($repo, ['gh', 'api', ...$args], ! $write, $allowFailure);
+    }
+
+    /**
+     * gh now and then hangs on a call that normally takes a second. A read that times out is tried once more,
+     * with gh's API debug output on, so a second hang logs where gh was stuck. A write is never tried twice.
+     */
+    private function run(Repository $repo, array $command, bool $read, bool $allowFailure): string
+    {
+        $attempt = fn (array $env = []) => Process::path($repo->local_path)->env($env)->timeout($read ? 30 : 60)->run($command);
+
+        try {
+            $result = $attempt();
+        } catch (ProcessTimedOutException $e) {
+            if (! $read) {
+                throw $e;
+            }
+
+            try {
+                $result = $attempt(['GH_DEBUG' => 'api']);
+            } catch (ProcessTimedOutException $again) {
+                $debug = collect(explode("\n", trim($again->result->errorOutput())))->take(-40)->implode("\n");
+                Log::error('gh timed out twice', [
+                    'command' => str(implode(' ', $command))->limit(300)->toString(),
+                    'debug' => preg_replace('/\b(gh[opsur]_|github_pat_)\w+/', '[token]', $debug),
+                ]);
+
+                throw $again;
+            }
+
+            // The retry's stderr is mostly debug output, which must not reach a comment on GitHub
+            if ($result->failed() && ! $allowFailure) {
+                $error = collect(explode("\n", trim($result->errorOutput())))->last();
+
+                throw new RuntimeException("gh failed after a retry (exit {$result->exitCode()}): {$error}");
+            }
+
+            return $result->output();
+        }
 
         if (! $allowFailure) {
             $result->throw();
