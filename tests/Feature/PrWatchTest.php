@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class PrWatchTest extends TestCase
@@ -31,10 +32,13 @@ class PrWatchTest extends TestCase
 
     private string $worktree;
 
+    private FakeWorktree $git;
+
     protected function setUp(): void
     {
         parent::setUp();
 
+        $this->git = FakeWorktree::install($this->app);
         $this->freezeTime();
         $this->worktree = sys_get_temp_dir().'/foreman-pr-watch-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -188,7 +192,8 @@ class PrWatchTest extends TestCase
         $run = $this->check($this->watchedRun());
 
         $this->assertSame(RunStatus::PrReady, $run->status);
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['git', 'worktree', 'remove', '--force', $this->worktree]);
+        $this->assertTrue($this->git->ran('remove'));
+        $this->assertSame($this->worktree, $this->git->builtWith['path']);
     }
 
     public function test_failing_checks_and_bot_threads_start_a_round(): void
@@ -283,9 +288,7 @@ class PrWatchTest extends TestCase
                 return Process::result(json_encode(['type' => 'result', 'num_turns' => 3]));
             }
 
-            return $process->command === ['git', 'rev-parse', '--git-path', 'info/exclude']
-                ? Process::result($this->worktree.'/exclude')
-                : Process::result();
+            return Process::result();
         });
 
         (new ProcessRun($run))->handle($github);
@@ -310,7 +313,7 @@ class PrWatchTest extends TestCase
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('ccccccc3333', $run->head_sha);
         $this->assertSame(now()->toDateTimeString(), $run->watch_started_at->toDateTimeString());
-        Process::assertDidntRun(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['git', 'worktree', 'remove']);
+        $this->assertFalse($this->git->ran('remove'));
     }
 
     public function test_without_watching_an_opened_pr_ends_the_run(): void
@@ -322,7 +325,8 @@ class PrWatchTest extends TestCase
         $this->process($run, $github, $this->writePrResult(...));
 
         $this->assertSame(RunStatus::PrOpened, $run->fresh()->status);
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['git', 'worktree', 'remove', '--force', $this->worktree]);
+        $this->assertTrue($this->git->ran('remove'));
+        $this->assertSame($this->worktree, $this->git->builtWith['path']);
     }
 
     public function test_a_round_posts_verdicts_and_watches_the_new_head(): void
@@ -357,13 +361,12 @@ class PrWatchTest extends TestCase
 
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('ddddddd4444', $run->head_sha);
-        $this->assertStringContainsString(".foreman/\n", File::get($this->worktree.'/exclude'));
         Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude'
             && str_contains($p->command[2], 'round 1 of 2')
             && str_contains($p->command[2], "### T1\ncoderabbitai on app/Foo.php:3\n\n<untrusted_text>\nNull check missing.\n</untrusted_text>")
             && str_contains($p->command[2], "<untrusted_text>\nFAILED Tests\\FooTest\n</untrusted_text>")
             && in_array('--resume', $p->command, true));
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['git', 'push', '--set-upstream', 'origin', 'agent/issue-7']);
+        $this->assertTrue($this->git->ran('push'));
     }
 
     public function test_rounds_get_no_extra_gh_tools(): void
@@ -418,7 +421,6 @@ class PrWatchTest extends TestCase
         Process::fake(function (PendingProcess $p) use ($nodes) {
             return match (true) {
                 $p->command[0] === 'claude' => Process::result(json_encode(['type' => 'result'])),
-                $p->command === ['git', 'rev-parse', '--git-path', 'info/exclude'] => Process::result($this->worktree.'/exclude'),
                 in_array('graphql', $p->command, true) => Process::result(json_encode(['data' => ['repository' => ['issue' => ['comments' => ['nodes' => $nodes]]]]])),
                 str_contains($p->command[2] ?? '', 'collaborators/lonnie/') => Process::result(json_encode(['permission' => 'write'])),
                 str_contains($p->command[2] ?? '', 'collaborators/stranger/') => Process::result(json_encode(['permission' => 'read'])),
@@ -472,12 +474,13 @@ class PrWatchTest extends TestCase
         $missing = $this->worktree.'/gone';
         $run = $this->watchedRun(['status' => RunStatus::Queued, 'pr_url' => null, 'resume_session_id' => 'sess-0', 'worktree_path' => $missing]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+        $this->git->pushed = true;
 
         try {
             $this->process($run, $github);
         } finally {
-            Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 4) === ['git', 'worktree', 'add', '-B']
-                && end($p->command) === 'origin/agent/issue-7');
+            $this->assertSame(['prepare', 'catchUp'], array_slice($this->git->calls, 0, 2), 'rebuilt, then caught up with the base before the setup script');
+            $this->assertSame($run->repository->worktreePath(7), $run->fresh()->worktree_path, 'the worktree is rebuilt where the repository keeps it');
         }
     }
 

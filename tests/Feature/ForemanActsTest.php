@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
 class ForemanActsTest extends TestCase
@@ -23,9 +24,13 @@ class ForemanActsTest extends TestCase
 
     private string $worktree;
 
+    private FakeWorktree $git;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->git = FakeWorktree::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-acts-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -108,9 +113,8 @@ class ForemanActsTest extends TestCase
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame('https://github.com/owner/app/pull/12', $run->pr_url);
-        Process::assertRan(fn (PendingProcess $p) => $p->command === ['git', 'push', '--set-upstream', 'origin', 'agent/issue-7']
-            && $p->path === $this->worktree
-            && ! array_key_exists('GIT_CONFIG_COUNT', $p->environment));
+        $this->assertTrue($this->git->ran('push'));
+        $this->assertSame($this->worktree, $this->git->builtWith['path']);
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'pr', 'create']
             && in_array('Add the thing', $p->command, true)
             && collect($p->command)->contains(fn ($arg) => str_starts_with($arg, "Closes #7\n\nIt adds the thing.\n\n---\n**Foreman's gate**")));
@@ -137,7 +141,7 @@ class ForemanActsTest extends TestCase
         $this->assertSame('agent_asked', $run->stop_reason);
         $this->assertRanCommand(['gh', 'issue', 'comment', '7', '--body', 'FooTest asserts the wrong thing.']);
         Process::assertRan(fn (PendingProcess $p) => in_array('--add-label', $p->command, true) && in_array('needs-human', $p->command, true));
-        $this->assertDidntRunCommand(['git', 'push']);
+        $this->assertFalse($this->git->didPush());
         $this->assertDidntRunCommand(['gh', 'pr', 'create']);
         $this->assertStringContainsString('test_looks_wrong', $run->tail());
     }
@@ -151,7 +155,7 @@ class ForemanActsTest extends TestCase
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('already_done', $run->stop_reason);
         $this->assertRanCommand(['gh', 'issue', 'comment', '7', '--body', 'Done in abc123.']);
-        $this->assertDidntRunCommand(['git', 'push']);
+        $this->assertFalse($this->git->didPush());
     }
 
     public static function badResults(): array
@@ -178,7 +182,7 @@ class ForemanActsTest extends TestCase
         $this->assertStringContainsString('I got stuck on the migration.', $run->error);
         Process::assertRan(fn (PendingProcess $p) => array_slice($p->command, 0, 3) === ['gh', 'issue', 'comment']
             && str_contains($p->command[5], '> I got stuck on the migration.'));
-        $this->assertDidntRunCommand(['git', 'push']);
+        $this->assertFalse($this->git->didPush());
     }
 
     public function test_a_result_file_left_by_an_earlier_run_is_ignored(): void

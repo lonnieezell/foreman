@@ -11,6 +11,7 @@ use App\Models\Repository;
 use App\Models\Run;
 use App\Services\GitHub;
 use App\Services\Usage;
+use App\Services\Worktree;
 use App\Support\ForemanEnv;
 use App\Support\IssueSanitiser;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -78,12 +79,13 @@ class ProcessRun implements ShouldQueue
         try {
             if ($run->resume_session_id && $run->worktree_path && File::isDirectory($run->worktree_path)) {
                 $worktree = $run->worktree_path;   // continuing: keep the agent's work in progress
-                $this->catchUpWithBase($run, $worktree, fetch: true);
+                $this->catchUpWithBase($run, fetch: true);
             } else {
                 $worktree = $this->prepareWorktree($run);
             }
 
-            $this->prepareForemanFiles($worktree);
+            // Clear the last run's result and verdicts
+            $this->worktree($run)->clearForemanFiles(self::RESULT_FILE, self::REVIEW_FILE);
 
             $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
             $this->runAgent($run, $worktree, $github);
@@ -113,27 +115,14 @@ class ProcessRun implements ShouldQueue
         $repo = $run->repository;
         $worktree = $repo->worktreePath($run->issue_number);
 
-        $this->step($run, 'Fetching origin', ['git', 'fetch', 'origin', '--quiet'], $repo->local_path);
-
-        // A previous run for the same issue may have left a worktree behind
-        if (File::isDirectory($worktree)) {
-            $this->step($run, 'Removing old worktree', ['git', 'worktree', 'remove', '--force', $worktree], $repo->local_path);
-        }
-
         // Continuing without a worktree: rebuild from what was pushed, never reset the branch to base
-        $pushed = ($run->resume_session_id || $run->pr_round) && Process::path($repo->local_path)
-            ->run(['git', 'rev-parse', '--verify', '--quiet', "origin/{$run->branch}"])->successful();
-        $from = $pushed ? "origin/{$run->branch}" : "origin/{$repo->base_branch}";
-
-        File::ensureDirectoryExists(dirname($worktree));
-        $this->step($run, "Creating worktree on {$run->branch} from {$from}",
-            ['git', 'worktree', 'add', '-B', $run->branch, $worktree, $from], $repo->local_path);
+        $pushed = $this->worktree($run, $worktree)->prepare(continuing: (bool) ($run->resume_session_id || $run->pr_round));
 
         $run->update(['worktree_path' => $worktree]);
 
         // Before the setup script, so dependencies the base branch added get installed
         if ($pushed) {
-            $this->catchUpWithBase($run, $worktree, fetch: false);
+            $this->catchUpWithBase($run, fetch: false);
         }
 
         $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::removed());
@@ -145,50 +134,23 @@ class ProcessRun implements ShouldQueue
      * Merge the latest base branch into a continuing run's branch, so fixes that landed there reach it.
      * Any failure leaves the branch as it was and the run goes on: the gate still catches what the base would have fixed.
      */
-    private function catchUpWithBase(Run $run, string $worktree, bool $fetch): void
+    private function catchUpWithBase(Run $run, bool $fetch): void
     {
-        $base = "origin/{$run->repository->base_branch}";
         $this->guardCancel($run);
 
-        if ($fetch) {
-            $fetched = Process::path($worktree)->run(['git', 'fetch', 'origin', '--quiet']);
-            $run->update(['heartbeat_at' => now()]);
+        $this->mergedFromBase = $this->worktree($run)->catchUpWithBase($fetch, fn (string $message) => $run->log($message));
+    }
 
-            if ($fetched->failed()) {
-                $run->log("Couldn't fetch origin, so {$base} wasn't merged. Going on from the branch as it was: ".str(trim($fetched->errorOutput()))->limit(500));
-
-                return;
-            }
-        }
-
-        // `git merge --abort` can't always restore uncommitted changes, so never risk them
-        if (trim(Process::path($worktree)->run(['git', 'status', '--porcelain', '--untracked-files=no'])->output()) !== '') {
-            $run->log("Not merging {$base}: the worktree has uncommitted changes. Going on from the branch as it was.");
-
-            return;
-        }
-
-        $run->log("Merging {$base} into {$run->branch}");
-        $incoming = Process::path($worktree)->run(['git', 'log', '--format=%s', "HEAD..{$base}"]);
-
-        try {
-            // Well under the 5-minute heartbeat limit, so a slow merge can't get the run reaped
-            $merge = Process::path($worktree)->timeout(120)->run(['git', 'merge', '--no-edit', $base]);
-
-            if ($merge->successful()) {
-                if ($incoming->successful()) {
-                    $this->mergedFromBase = array_slice(array_values(array_filter(explode("\n", trim($incoming->output())))), 0, 20);
-                }
-
-                return;
-            }
-            $why = trim($merge->errorOutput()."\n".$merge->output());
-        } catch (Throwable $e) {
-            $why = $e->getMessage();
-        }
-
-        Process::path($worktree)->run(['git', 'merge', '--abort']);
-        $run->log("Couldn't merge {$base}, so the merge was aborted. Going on from the branch as it was: ".str($why)->limit(500));
+    /** The run's worktree, with its steps logged, cancellable, and counted as signs of life. */
+    private function worktree(Run $run, ?string $path = null): Worktree
+    {
+        return $run->worktree($path)->tracking(
+            function (string $label) use ($run) {
+                $run->log($label);
+                $this->guardCancel($run);
+            },
+            fn () => $run->update(['heartbeat_at' => now()]),
+        );
     }
 
     private function step(Run $run, string $label, array $command, string $cwd, int $timeout = 300, array $env = []): void
@@ -349,7 +311,7 @@ class ProcessRun implements ShouldQueue
         ]];
 
         if ($run->repository->sandbox) {
-            $config['sandbox'] = Sandbox::settings($worktree);
+            $config['sandbox'] = Sandbox::settings($worktree, $run->worktree($worktree)->gitDirs());
         }
 
         $settings = "{$dir}/run-{$run->id}-settings.json";
@@ -565,9 +527,9 @@ class ProcessRun implements ShouldQueue
      */
     private function reviewPass(Run $run, GitHub $github): void
     {
-        $base = "origin/{$run->repository->base_branch}";
-        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '-U0', '--no-color', '--no-ext-diff', "{$base}...HEAD"]);
-        ['tier' => $tier, 'reason' => $reason] = RiskTier::assess(StackSet::detect($run->worktree_path), $diff->output());
+        $worktree = $this->worktree($run);
+        $base = $worktree->baseRef();
+        ['tier' => $tier, 'reason' => $reason] = RiskTier::assess(StackSet::detect($run->worktree_path), $worktree->diffSinceBase(context: 0));
         $level = [1 => 'low', 2 => 'medium', 3 => 'high'][$tier];
 
         $run->update(['risk_tier' => $tier]);
@@ -585,10 +547,7 @@ class ProcessRun implements ShouldQueue
         }
 
         // /security-review diffs against origin/HEAD, and quietly reviews nothing when that ref is missing
-        if (Process::path($run->worktree_path)->run(['git', 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/HEAD'])->failed()) {
-            $this->step($run, "Pointing origin/HEAD at {$base} for /security-review",
-                ['git', 'remote', 'set-head', 'origin', $run->repository->base_branch], $run->worktree_path);
-        }
+        $worktree->pointOriginHeadAtBase();
 
         $run->log('Security review: /security-review.');
         $this->runPass($run, $github, '/security-review', strtr(file_get_contents(resource_path('prompts/security-review.md')), [
@@ -611,16 +570,12 @@ class ProcessRun implements ShouldQueue
     private function judge(Run $run, string $issue): ?array
     {
         $repo = $run->repository;
-        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--no-color', '--no-ext-diff', "origin/{$repo->base_branch}...HEAD"]);
-
-        if ($diff->failed()) {
-            throw new RuntimeException("Couldn't diff the change for the scope judge: ".str(trim($diff->errorOutput()))->limit(500));
-        }
+        $diff = $this->worktree($run)->diffSinceBase();
 
         $prompt = strtr(file_get_contents(resource_path('prompts/scope-judge.md')), [
             '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
             '{{issue}}' => $issue,
-            '{{diff}}' => IssueSanitiser::wrapText($diff->output(), clean: false),
+            '{{diff}}' => IssueSanitiser::wrapText($diff, clean: false),
         ]);
 
         // Outside the project, so no CLAUDE.md or project settings get loaded; user settings are left out too
@@ -732,7 +687,7 @@ class ProcessRun implements ShouldQueue
         }
 
         $commands = collect(explode("\n", $verify))->map(fn ($c) => trim($c))->filter()->map(fn ($c) => "`{$c}`")->implode(', ');
-        $lines = $this->changedLines($run);
+        $lines = $this->worktree($run)->changedLines();
         $oversized = $lines > $limit;
 
         return ['oversized' => $oversized, 'footer' => "---\n**Foreman's gate**, run by Foreman outside the agent before the push:\n\n"
@@ -780,51 +735,17 @@ class ProcessRun implements ShouldQueue
     private function lockedChangeFailures(Run $run): array
     {
         $repo = $run->repository;
-        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--name-only', '-z', '--no-renames', "origin/{$repo->base_branch}...HEAD"]);
-
-        if (! $diff->successful()) {
-            throw new RuntimeException('Could not list the changed files to check for locked paths: '.trim($diff->errorOutput()));
-        }
-
-        $files = array_values(array_filter(explode("\0", $diff->output())));
+        $files = $this->worktree($run)->changedFiles();
 
         $guard = new Guard(StackSet::detect($run->worktree_path), $run->worktree_path, $repo->lockedPathList(), $this->allowLockFiles);
 
         return array_map(fn ($reason) => "Locked file changed: {$reason}", $guard->lockedChanges($files));
     }
 
-    /** Lines added plus deleted on the branch since it left the base branch. */
-    private function changedLines(Run $run): int
-    {
-        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--numstat', "origin/{$run->repository->base_branch}...HEAD"]);
-
-        return (int) collect(explode("\n", trim($diff->output())))
-            ->sum(fn ($row) => array_sum(array_map('intval', array_slice(explode("\t", $row), 0, 2))));   // binary files show "-"
-    }
-
-    /** Foreman's own push, with the agent's restrictions left off. */
+    /** Foreman's own push. A sandboxed agent commits unsigned, so its commits get signed first. */
     private function push(Run $run): void
     {
-        if ($run->repository->sandbox) {
-            $this->signUnpushedCommits($run);
-        }
-
-        $this->step($run, "Pushing {$run->branch}", ['git', 'push', '--set-upstream', 'origin', $run->branch], $run->worktree_path);
-    }
-
-    /** A sandboxed agent can't reach gpg-agent, so it commits unsigned. Sign what isn't pushed yet, here outside the sandbox. */
-    private function signUnpushedCommits(Run $run): void
-    {
-        $git = Process::path($run->worktree_path);
-
-        if (trim($git->run(['git', 'config', '--type=bool', '--get', 'commit.gpgsign'])->output()) !== 'true') {
-            return;
-        }
-
-        $from = $git->run(['git', 'rev-parse', '--verify', '--quiet', "origin/{$run->branch}"])->successful()
-            ? "origin/{$run->branch}"
-            : trim($git->run(['git', 'merge-base', 'HEAD', "origin/{$run->repository->base_branch}"])->output());
-        $this->step($run, 'Signing the agent\'s commits', ['git', 'rebase', '--force-rebase', '--rebase-merges', '--autostash', '--gpg-sign', $from], $run->worktree_path);
+        $this->worktree($run)->push(sign: $run->repository->sandbox);
     }
 
     /**
@@ -945,25 +866,6 @@ class ProcessRun implements ShouldQueue
             ->filter(fn ($e) => is_array($e) && is_string($e['thread_id'] ?? null) && is_string($e['verdict'] ?? null))
             ->keyBy('thread_id')
             ->all();
-    }
-
-    /** Clear the last run's result and verdicts, and keep them out of git without touching .gitignore. */
-    private function prepareForemanFiles(string $worktree): void
-    {
-        File::delete(["{$worktree}/".self::RESULT_FILE, "{$worktree}/".self::REVIEW_FILE]);
-
-        $exclude = trim(Process::path($worktree)->run(['git', 'rev-parse', '--git-path', 'info/exclude'])->output());
-
-        if ($exclude === '') {
-            return;
-        }
-
-        $exclude = str_starts_with($exclude, '/') ? $exclude : "{$worktree}/{$exclude}";
-
-        if (! str_contains((string) @file_get_contents($exclude), "\n.foreman/\n")) {
-            File::ensureDirectoryExists(dirname($exclude));
-            File::append($exclude, "\n.foreman/\n");
-        }
     }
 
     private function roundPrompt(Run $run, GitHub $github): string
