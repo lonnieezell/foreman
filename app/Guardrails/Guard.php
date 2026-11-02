@@ -74,7 +74,7 @@ class Guard
         $start = self::COMMAND_START;
 
         return match (true) {
-            $this->hooksDir !== '' && str_contains($command, rtrim($this->hooksDir, '/')) => self::HOOKS_BLOCKED,
+            $this->mentionsHooksDir($command) => self::HOOKS_BLOCKED,
             (bool) preg_match("/{$start}git(?:\\s+-[\\w-]+(?:[ =]\\S+)?)*\\s+push\\b/", $command) => 'git push is blocked. Foreman pushes the branch after its own checks.',
             (bool) preg_match("/{$start}gh(?:\\s|\$)/", $command) => 'gh commands are blocked. Foreman talks to GitHub, not the agent.',
             (bool) preg_match('/(?:^|\s)--no-verify\b/', $command) => '--no-verify is blocked. Fix what the hooks complain about instead of skipping them.',
@@ -118,19 +118,24 @@ class Guard
         return null;
     }
 
+    private function mentionsHooksDir(string $command): bool
+    {
+        return array_filter($this->hooksDirs(), fn ($dir) => str_contains($command, $dir)) !== [];
+    }
+
     private function inHooksDir(string $path): bool
     {
+        return array_filter($this->hooksDirs(), fn ($dir) => str_starts_with($path, "{$dir}/")) !== [];
+    }
+
+    /** The hooks directory as given and with symlinks resolved, without a trailing slash. Empty when none is set. */
+    private function hooksDirs(): array
+    {
         if ($this->hooksDir === '') {
-            return false;
+            return [];
         }
 
-        foreach (array_unique([$this->hooksDir, (string) realpath($this->hooksDir)]) as $dir) {
-            if ($dir !== '' && str_starts_with($path, rtrim($dir, '/').'/')) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_values(array_unique(array_filter([rtrim($this->hooksDir, '/'), rtrim((string) realpath($this->hooksDir), '/')])));
     }
 
     /** True when the edit leaves more of some marker in the file than it took out. */

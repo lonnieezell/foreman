@@ -770,8 +770,13 @@ class ProcessRun implements ShouldQueue
     private function lockedChangeFailures(Run $run): array
     {
         $repo = $run->repository;
-        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--name-only', "origin/{$repo->base_branch}...HEAD"]);
-        $files = array_values(array_filter(array_map('trim', explode("\n", $diff->output()))));
+        $diff = Process::path($run->worktree_path)->run(['git', 'diff', '--name-only', '-z', '--no-renames', "origin/{$repo->base_branch}...HEAD"]);
+
+        if (! $diff->successful()) {
+            throw new RuntimeException('Could not list the changed files to check for locked paths: '.trim($diff->errorOutput()));
+        }
+
+        $files = array_values(array_filter(explode("\0", $diff->output())));
 
         $guard = new Guard(StackSet::detect($run->worktree_path), $run->worktree_path, $repo->lockedPathList(), $this->allowLockFiles);
 
