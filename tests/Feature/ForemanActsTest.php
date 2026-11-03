@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Livewire\RepositoryForm;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\Claude\ClaudeCli;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -222,7 +223,7 @@ class ForemanActsTest extends TestCase
         $git($this->worktree, ['clone', $origin, $clone])->throw();
         $git($clone, ['commit', '--allow-empty', '-m', 'first'])->throw();
 
-        $agent = $git($clone, ['push', 'origin', 'HEAD:main'], ProcessRun::agentEnv());
+        $agent = $git($clone, ['push', 'origin', 'HEAD:main'], ClaudeCli::agentEnv());
         $this->assertTrue($agent->failed());
         $this->assertSame('', trim($git($origin, ['branch', '--list'])->output()));
 

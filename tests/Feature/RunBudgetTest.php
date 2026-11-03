@@ -8,11 +8,11 @@ use App\Livewire\RepositoryForm;
 use App\Models\Repository;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\TestCase;
 
 class RunBudgetTest extends TestCase
@@ -32,32 +32,25 @@ class RunBudgetTest extends TestCase
         ]);
     }
 
-    /** Runs the job against a faked `claude`, returning the command it used. */
-    private function claudeCommand(Repository $repo): array
+    /** Runs the job against a fake `claude`, returning the budget it gave the agent. */
+    private function agentBudget(Repository $repo): string|float|null
     {
         $run = $repo->runs()->create([
             'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
             'branch' => 'agent/issue-7', 'status' => RunStatus::Queued, 'model' => $repo->fresh()->model,
             'worktree_path' => sys_get_temp_dir(),
         ]);
-        Process::fake(['*' => Process::result(json_encode(['type' => 'result', 'num_turns' => 1]))]);
+        $claude = FakeClaude::install($this->app);
+        Process::fake();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
         $github->allows('labels')->andReturn([]);
         $github->allows('pullRequestFor')->andReturn('https://example.test/pr/1');
 
         (new ProcessRun($run))->handle($github);
 
-        $command = null;
-        Process::assertRan(function (PendingProcess $process) use (&$command) {
-            if ($process->command[0] === 'claude') {
-                $command = $process->command;
-            }
-
-            return $command !== null;
-        });
         File::delete([$run->logPath(), $run->rawLogPath()]);
 
-        return $command;
+        return $claude->agentCalls[0]['budget'];
     }
 
     public function test_form_saves_the_run_cap_and_empty_clears_it(): void
@@ -87,15 +80,13 @@ class RunBudgetTest extends TestCase
         $this->assertNull($repo->fresh()->max_budget_per_run);
     }
 
-    public function test_runs_start_with_the_budget_flag_when_a_cap_is_set(): void
+    public function test_runs_start_with_the_budget_when_a_cap_is_set(): void
     {
-        $command = $this->claudeCommand($this->repository(['max_budget_per_run' => 2.5]));
-
-        $this->assertSame('2.50', $command[array_search('--max-budget-usd', $command) + 1]);
+        $this->assertSame('2.50', $this->agentBudget($this->repository(['max_budget_per_run' => 2.5])));
     }
 
-    public function test_runs_start_without_the_budget_flag_when_no_cap_is_set(): void
+    public function test_runs_start_without_a_budget_when_no_cap_is_set(): void
     {
-        $this->assertNotContains('--max-budget-usd', $this->claudeCommand($this->repository()));
+        $this->assertNull($this->agentBudget($this->repository()));
     }
 }

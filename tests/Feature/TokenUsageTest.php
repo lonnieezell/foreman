@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\TestCase;
 
 class TokenUsageTest extends TestCase
@@ -40,7 +41,7 @@ class TokenUsageTest extends TestCase
     {
         $run = $this->makeRun();
 
-        Process::fake(['*' => Process::result(json_encode([
+        FakeClaude::install($this->app)->onAgent = fn () => FakeClaude::result([
             'type' => 'result',
             'num_turns' => 3,
             'total_cost_usd' => 0.42,
@@ -50,7 +51,8 @@ class TokenUsageTest extends TestCase
                 'cache_read_input_tokens' => 250000,
                 'cache_creation_input_tokens' => 18000,
             ],
-        ]))]);
+        ]);
+        Process::fake();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
 
         (new ProcessRun($run))->handle($github);

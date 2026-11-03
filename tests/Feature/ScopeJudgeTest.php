@@ -6,12 +6,14 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\Claude\OneShotResult;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
@@ -36,23 +38,20 @@ class ScopeJudgeTest extends TestCase
     /** @var list<string> The PR bodies Foreman opened. */
     private array $prBodies = [];
 
-    /** @var list<list<string>> Each judge call's command. */
-    private array $judgeCommands = [];
-
-    /** @var list<string> What each judge call got on stdin. */
-    private array $judgeInputs = [];
-
     private bool $diffFails = false;
 
     private bool $gateFails = false;
 
     private FakeWorktree $git;
 
+    private FakeClaude $claude;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->git = FakeWorktree::install($this->app);
+        $this->claude = FakeClaude::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-judge-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -88,35 +87,32 @@ class ScopeJudgeTest extends TestCase
         $this->git->diff = self::DIFF;
         $this->git->diffFailure = $this->diffFails ? 'fatal: bad revision' : null;
 
-        Process::fake(function (PendingProcess $process) use (&$verdicts) {
+        $this->claude->onOneShot = function () use (&$verdicts) {
+            $this->sequence[] = 'judge';
+            $verdict = $verdicts ? array_shift($verdicts) : self::PASS;
+
+            return match (true) {
+                $verdict === null => new OneShotResult(error: 'exit 1: API Error: overloaded'),
+                is_string($verdict) => new OneShotResult(output: $verdict),
+                default => $verdict,
+            };
+        };
+
+        $this->claude->onAgent = function (array $call) {
+            $this->sequence[] = match (true) {
+                str_contains($call['prompt'], 'code-review skill') => 'review',
+                str_contains($call['prompt'], 'scope judge') => 'correction',
+                default => 'issue',
+            };
+
+            File::ensureDirectoryExists("{$this->worktree}/.foreman");
+            File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
+
+            return FakeClaude::result(['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']);
+        };
+
+        Process::fake(function (PendingProcess $process) {
             $command = $this->commands[] = $process->command;
-
-            if (self::isScopeJudge($process)) {
-                $this->sequence[] = 'judge';
-                $this->judgeCommands[] = $command;
-                $this->judgeInputs[] = $process->input;
-                $verdict = $verdicts ? array_shift($verdicts) : self::PASS;
-
-                return match (true) {
-                    $verdict === null => Process::result('', 'API Error: overloaded', 1),
-                    is_string($verdict) => Process::result($verdict),
-                    default => Process::result(json_encode(['type' => 'result', 'is_error' => false, 'total_cost_usd' => 0.01, 'structured_output' => $verdict])),
-                };
-            }
-
-            if ($command[0] === 'claude') {
-                $prompt = $command[2] ?? '';
-                $this->sequence[] = match (true) {
-                    str_contains($prompt, 'code-review skill') => 'review',
-                    str_contains($prompt, 'scope judge') => 'correction',
-                    default => 'issue',
-                };
-
-                File::ensureDirectoryExists("{$this->worktree}/.foreman");
-                File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
-
-                return Process::result(json_encode(['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']));
-            }
 
             if ($command[0] === 'bash') {
                 $this->sequence[] = 'gate';
@@ -154,21 +150,17 @@ class ScopeJudgeTest extends TestCase
         return collect($this->commands)->contains(fn ($c) => array_slice($c, 0, count($prefix)) === $prefix);
     }
 
-    public function test_the_judge_is_haiku_with_no_tools_and_sees_only_the_issue_and_the_diff(): void
+    public function test_the_judge_is_a_one_shot_call_that_sees_only_the_issue_and_the_diff(): void
     {
         $this->settle();
 
-        $judge = $this->judgeCommands[0];
-        $prompt = $this->judgeInputs[0];
+        $judge = $this->claude->oneShotCalls[0];
 
-        $this->assertSame(['claude', '-p', '--model', 'haiku'], array_slice($judge, 0, 4));
-        $this->assertSame('', $judge[array_search('--tools', $judge, true) + 1]);
-        $this->assertSame('project', $judge[array_search('--setting-sources', $judge, true) + 1]);
-        $this->assertContains('--strict-mcp-config', $judge);
-        $this->assertNotContains('--resume', $judge);
-        $this->assertNotContains('--settings', $judge);
-        $this->assertStringContainsString('Fix the bug', $prompt);
-        $this->assertStringContainsString('+return 1;', $prompt);
+        $this->assertSame(['in_scope', 'weakens_tests', 'reason'], $judge['schema']['required']);
+        $this->assertSame('app', $judge['repo']->name);
+        $this->assertStringContainsString('Fix the bug', $judge['prompt']);
+        $this->assertStringContainsString('+return 1;', $judge['prompt']);
+        $this->assertNull(collect($this->claude->agentCalls)->first(fn ($call) => $call['prompt'] === $judge['prompt']), 'the judge never joins the agent session');
     }
 
     public function test_a_pass_adds_the_verdict_to_the_pr_footer(): void
@@ -187,9 +179,9 @@ class ScopeJudgeTest extends TestCase
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'gate'], $this->sequence);
 
-        $correction = collect($this->commands)->first(fn ($c) => $c[0] === 'claude' && str_contains($c[2], 'scope judge'));
-        $this->assertStringContainsString('Adds an unrelated settings page.', $correction[2]);
-        $this->assertSame('sess-1', $correction[array_search('--resume', $correction, true) + 1]);
+        $correction = $this->claude->agentCall('scope judge');
+        $this->assertStringContainsString('Adds an unrelated settings page.', $correction['prompt']);
+        $this->assertSame('sess-1', $correction['resume']);
         $this->assertStringContainsString('Scope judge: passed after one correction round. Only fixes the bug the issue names.', $this->prBodies[0]);
     }
 
@@ -223,8 +215,7 @@ class ScopeJudgeTest extends TestCase
 
     public function test_two_unusable_answers_open_the_pr_as_a_draft_labelled_scope_unchecked(): void
     {
-        $missingField = json_encode(['type' => 'result', 'is_error' => false, 'structured_output' => ['in_scope' => true, 'reason' => 'Fine.']]);
-        [$run, $comments] = $this->settle([null, $missingField]);
+        [$run, $comments] = $this->settle([null, ['in_scope' => true, 'reason' => 'Fine.']]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);

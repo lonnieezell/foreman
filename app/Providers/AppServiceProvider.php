@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\Setting;
+use App\Services\Claude\Claude;
+use App\Services\Claude\ClaudeCli;
 use App\Services\Usage;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Queue;
@@ -17,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
     {
         // One instance per process (each poll is its own), so a "Run anyway" used by a fix-up round still covers issue intake
         $this->app->singleton(Usage::class);
+
+        $this->app->bind(Claude::class, ClaudeCli::class);
     }
 
     /**

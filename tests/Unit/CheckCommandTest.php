@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Jobs\ProcessRun;
+use App\Services\Claude\ClaudeCli;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -70,12 +70,12 @@ class CheckCommandTest extends TestCase
     #[DataProvider('checkCommands')]
     public function test_check_commands_are_detected(string $command): void
     {
-        $this->assertMatchesRegularExpression(ProcessRun::CHECK_COMMAND, $command);
+        $this->assertMatchesRegularExpression(ClaudeCli::CHECK_COMMAND, $command);
     }
 
     #[DataProvider('otherCommands')]
     public function test_other_commands_are_not_detected(string $command): void
     {
-        $this->assertDoesNotMatchRegularExpression(ProcessRun::CHECK_COMMAND, $command);
+        $this->assertDoesNotMatchRegularExpression(ClaudeCli::CHECK_COMMAND, $command);
     }
 }

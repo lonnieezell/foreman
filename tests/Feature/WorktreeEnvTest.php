@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\Claude\ClaudeCli;
 use App\Services\GitHub;
 use App\Support\ForemanEnv;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -140,7 +141,7 @@ class WorktreeEnvTest extends TestCase
 
         // What the agent's hooks inherit: Foreman's real .env removed, so each hook must load it again itself
         $this->app->useEnvironmentPath(base_path());
-        $env = [...ForemanEnv::removed(), ...ProcessRun::agentEnv()];
+        $env = [...ForemanEnv::removed(), ...ClaudeCli::agentEnv()];
 
         foreach (['foreman:guard', 'foreman:format-staged', 'foreman:stop'] as $hook) {
             $process = new SymfonyProcess([PHP_BINARY, base_path('artisan'), $hook, $rules], "{$this->envDir}/work", $env);

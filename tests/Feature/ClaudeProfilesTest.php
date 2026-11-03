@@ -8,11 +8,11 @@ use App\Livewire\RepositoryForm;
 use App\Models\Repository;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\TestCase;
 
 class ClaudeProfilesTest extends TestCase
@@ -53,8 +53,8 @@ class ClaudeProfilesTest extends TestCase
         ], $config['claude_profiles']);
     }
 
-    /** Runs the job against a faked `claude` that prints the given result event. */
-    private function processRun(Repository $repo, array $result): void
+    /** Runs the job against a fake `claude`, returning the run and the repository the agent was started for. */
+    private function processRun(Repository $repo): array
     {
         $run = $repo->runs()->create([
             'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
@@ -62,20 +62,23 @@ class ClaudeProfilesTest extends TestCase
             'resume_session_id' => 'abc', 'worktree_path' => sys_get_temp_dir(),
         ]);
 
-        Process::fake(['*' => Process::result(json_encode(['type' => 'result', ...$result]))]);
+        $claude = FakeClaude::install($this->app);
+        Process::fake();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
 
         (new ProcessRun($run))->handle($github);
 
         File::delete([$run->logPath(), $run->rawLogPath()]);
+
+        return [$run->fresh(), $claude->agentCalls[0]['run']->repository];
     }
 
     public function test_claude_runs_with_the_repository_profile(): void
     {
-        $this->processRun($this->repository(['claude_profile' => 'work']), ['num_turns' => 1]);
+        [$run, $repo] = $this->processRun($this->repository(['claude_profile' => 'work']));
 
-        Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'claude'
-            && $process->environment['CLAUDE_CONFIG_DIR'] === '/home/me/.claude-work');
+        $this->assertSame('work', $run->claude_profile);
+        $this->assertSame('work', $repo->profileName());
     }
 
     public function test_repositories_without_a_profile_use_the_default_login(): void
