@@ -32,21 +32,17 @@ final class ScopeJudge
 
     /**
      * An unusable answer is asked again once. A second one gives null.
-     * `$claim` is the agent's answer to an earlier veto. `$excerpts` are the lines it points to, as Foreman read them from the base branch.
-     *
-     * @param  list<array{path:string,start:int,end:int,code:?string}>  $excerpts  `code` is null when the base branch lacks those lines.
+     * `$reply` is the agent's answer to an earlier veto. Its evidence is read from `$worktree`'s base branch.
      */
-    public function verdict(string $issue, string $diff, ?string $claim = null, array $excerpts = []): ?ScopeVerdict
+    public function verdict(string $issue, string $diff, ?JudgeReply $reply = null, ?Worktree $worktree = null): ?ScopeVerdict
     {
         $prompt = Prompt::render('scope-judge', [
             'untrusted_note' => IssueSanitiser::TEXT_NOTE,
             'issue' => $issue,
             'diff' => IssueSanitiser::wrapText($diff, clean: false),
-            'answer' => $claim === null ? '' : Prompt::render('scope-judge-answer', [
-                'claim' => IssueSanitiser::wrapText($claim),
-                'excerpts' => collect($excerpts)->map(fn ($e) => "### {$e['path']}, lines {$e['start']}-{$e['end']}\n\n"
-                    .($e['code'] === null ? 'Not on the base branch.' : IssueSanitiser::wrapText(str($e['code'])->limit(8000), clean: false)))
-                    ->implode("\n\n") ?: 'The author pointed to no code.',
+            'answer' => $reply === null ? '' : Prompt::render('scope-judge-answer', [
+                'claim' => IssueSanitiser::wrapText($reply->claim),
+                'excerpts' => self::excerpts($worktree === null ? [] : $reply->excerpts($worktree)),
             ]),
         ]);
 
@@ -73,5 +69,14 @@ final class ScopeJudge
         }
 
         return null;
+    }
+
+    /** @param  list<array{path:string,start:int,end:int,code:?string}>  $excerpts */
+    private static function excerpts(array $excerpts): string
+    {
+        return collect($excerpts)
+            ->map(fn ($e) => "### {$e['path']}, lines {$e['start']}-{$e['end']}\n\n"
+                .($e['code'] === null ? 'Not on the base branch.' : IssueSanitiser::wrapText(str($e['code'])->limit(8000), clean: false)))
+            ->implode("\n\n") ?: 'The author pointed to no code.';
     }
 }

@@ -56,8 +56,8 @@ class AgentReportTest extends TestCase
             'evidence' => [['path' => 'src/ConsentFilter.php', 'start' => 10, 'end' => 20]],
         ]]))->outcome();
 
-        $this->assertSame('The consent fix is already on develop.', $outcome->judgeClaim);
-        $this->assertSame([['path' => 'src/ConsentFilter.php', 'start' => 10, 'end' => 20]], $outcome->judgeEvidence);
+        $this->assertSame('The consent fix is already on develop.', $outcome->judgeReply->claim);
+        $this->assertSame([['path' => 'src/ConsentFilter.php', 'start' => 10, 'end' => 20]], $outcome->judgeReply->evidence);
     }
 
     public function test_the_judge_reply_keeps_five_well_formed_ranges_of_at_most_80_lines(): void
@@ -81,7 +81,7 @@ class AgentReportTest extends TestCase
             ['path' => 'f2.php', 'start' => 1, 'end' => 1],
             ['path' => 'f3.php', 'start' => 1, 'end' => 1],
             ['path' => 'f4.php', 'start' => 1, 'end' => 1],
-        ], $outcome->judgeEvidence);
+        ], $outcome->judgeReply->evidence);
     }
 
     public function test_a_judge_reply_without_a_claim_is_left_out_and_the_pr_result_still_stands(): void
@@ -89,8 +89,7 @@ class AgentReportTest extends TestCase
         $outcome = $this->report(json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'B', 'judge_reply' => ['claim' => ' ', 'evidence' => [['path' => 'a.php', 'start' => 1, 'end' => 2]]]]))->outcome();
 
         $this->assertSame(Outcome::Pr, $outcome->kind);
-        $this->assertNull($outcome->judgeClaim);
-        $this->assertSame([], $outcome->judgeEvidence);
+        $this->assertNull($outcome->judgeReply);
     }
 
     public function test_a_needs_human_result_gives_its_comment_and_reason(): void

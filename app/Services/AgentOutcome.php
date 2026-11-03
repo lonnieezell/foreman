@@ -13,8 +13,6 @@ final class AgentOutcome
         public readonly ?string $body = null,
         public readonly ?string $comment = null,
         public readonly ?string $reason = null,
-        public readonly ?string $judgeClaim = null,
-        /** @var list<array{path:string,start:int,end:int}> Line ranges on the base branch that back up the claim. */
-        public readonly array $judgeEvidence = [],
+        public readonly ?JudgeReply $judgeReply = null,
     ) {}
 }

@@ -265,8 +265,8 @@ class WorktreeTest extends TestCase
         $worktree = $this->prepared();
         $this->commit($this->path, 'a.txt', "changed\n", 'branch work');
 
-        $this->assertSame("two\nthree", $worktree->linesAtBase('a.txt', 2, 3));
-        $this->assertSame('three', $worktree->linesAtBase('a.txt', 3, 50));
+        $this->assertSame(['two', 'three'], $worktree->linesAtBase('a.txt', 2, 3));
+        $this->assertSame(['three'], $worktree->linesAtBase('a.txt', 3, 50));
     }
 
     public function test_lines_at_the_base_are_null_for_a_file_the_base_lacks_or_a_range_past_its_end(): void

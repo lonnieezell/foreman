@@ -213,7 +213,7 @@ class ScopeJudgeRunTest extends TestCase
     public function test_the_agents_answer_and_the_code_foreman_read_reach_only_the_second_judge_call(): void
     {
         $this->judgeReply = self::REPLY;
-        $this->git->atBase = ['src/Consent.php' => "\$choices = consent_choices();\nreturn \$choices;"];
+        $this->git->atBase = ['src/Consent.php' => ['$choices = consent_choices();', 'return $choices;']];
         $this->settle([self::MISSING]);
 
         [$first, $second] = $this->claude->oneShotCalls;
@@ -226,7 +226,7 @@ class ScopeJudgeRunTest extends TestCase
     public function test_an_excerpt_shorter_than_its_range_is_labelled_with_the_lines_it_has(): void
     {
         $this->judgeReply = self::REPLY;
-        $this->git->atBase = ['src/Consent.php' => 'return consent_choices();'];
+        $this->git->atBase = ['src/Consent.php' => ['return consent_choices();']];
         $this->settle([self::MISSING]);
 
         $this->assertStringContainsString('### src/Consent.php, lines 3-3', $this->claude->oneShotCalls[1]['prompt']);

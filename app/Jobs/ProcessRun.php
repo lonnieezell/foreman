@@ -14,6 +14,7 @@ use App\Services\Claude\AgentResult;
 use App\Services\Claude\Claude;
 use App\Services\Gate;
 use App\Services\GitHub;
+use App\Services\JudgeReply;
 use App\Services\ScopeJudge;
 use App\Services\ScopeVerdict;
 use App\Services\Worktree;
@@ -210,8 +211,6 @@ class ProcessRun implements ShouldQueue
         $issue = $github->sanitisedIssue($repo, $run->issue_number);
 
         // The judge goes before the second gate, so a veto doesn't throw a gate run away
-        $incomplete = false;
-
         foreach ([false, true] as $corrected) {
             $result = $this->prResult($run, $github, $agent);
 
@@ -220,23 +219,22 @@ class ProcessRun implements ShouldQueue
             }
 
             // Only the correction round's answer goes to the judge: it is the one written after a veto
-            $verdict = $this->judge($run, $issue, $corrected ? $result : null);
+            $verdict = $this->judge($run, $issue, $corrected ? $result->judgeReply : null);
 
             // No usable answer still goes on to the gate, and opens a draft if it passes
             if ($verdict === null || $verdict->passes()) {
                 break;
             }
 
-            // Missing work is easy to spot in review, so it opens a draft if the gate passes
-            if ($corrected && $verdict->onlyMissesWork()) {
-                $incomplete = true;
-                break;
-            }
-
             if ($corrected) {
-                $answer = $result->judgeClaim === null
+                // Missing work is easy to spot in review, so it opens a draft if the gate passes
+                if ($verdict->onlyMissesWork()) {
+                    break;
+                }
+
+                $answer = $result->judgeReply === null
                     ? "The agent's PR body:\n\n".self::quote((string) str($result->body)->limit(2000))
-                    : "The agent's answer to the judge:\n\n".self::quote($result->judgeClaim);
+                    : self::judgeAnswer($result->judgeReply);
 
                 $this->handToHuman($run, $github,
                     "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote($verdict->describe())."\n\n{$answer}",
@@ -265,10 +263,10 @@ class ProcessRun implements ShouldQueue
             $run->log('Scope judge gave no usable answer twice. Opening the PR as a draft.');
             $footer .= "\n- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.";
             $labels[] = 'scope:unchecked';
-        } elseif ($incomplete) {
+        } elseif (! $verdict->passes()) {
             $run->log("Scope judge vetoed the change again, only for missing work: {$verdict->reason} Opening the PR as a draft.");
             $footer .= "\n- Scope judge: vetoed twice, only for missing work, so opened as a draft. {$verdict->reason}";
-            $footer .= $result->judgeClaim === null ? '' : "\n\nThe agent's answer to the judge:\n\n".self::quote($result->judgeClaim);
+            $footer .= $result->judgeReply === null ? '' : "\n\n".self::judgeAnswer($result->judgeReply);
             $labels[] = 'scope:incomplete';
         } else {
             $passed = $corrected ? 'passed after one correction round' : 'passed';
@@ -375,24 +373,24 @@ class ProcessRun implements ShouldQueue
 
     /**
      * The scope judge's verdict on the diff since the base branch, or null when it gave no usable answer twice.
-     * With `$reply`, the judge also gets the agent's answer to its veto and the lines it points to, read from the base branch here.
+     * With `$reply`, the judge also gets the agent's answer to its veto.
      */
-    private function judge(Run $run, string $issue, ?AgentOutcome $reply = null): ?ScopeVerdict
+    private function judge(Run $run, string $issue, ?JudgeReply $reply = null): ?ScopeVerdict
     {
         $worktree = $this->worktree($run);
         $diff = $worktree->diffSinceBase();
-        $excerpts = array_map(function ($e) use ($worktree) {
-            $code = $worktree->linesAtBase($e['path'], $e['start'], $e['end']);
-
-            // A range past the end of the file is labelled with the lines it really has
-            return [...$e, 'end' => $code === null ? $e['end'] : $e['start'] + substr_count($code, "\n"), 'code' => $code];
-        }, $reply?->judgeEvidence ?? []);
 
         return (new ScopeJudge($run->repository, function (string $message) use ($run) {
             $run->log($message);
             $run->update(['heartbeat_at' => now()]);
             $this->guardCancel($run);
-        }))->verdict($issue, $diff, $reply?->judgeClaim, $excerpts);
+        }))->verdict($issue, $diff, $reply, $worktree);
+    }
+
+    /** The agent's answer to the judge, for the hand-off comment and the PR footer. */
+    private static function judgeAnswer(JudgeReply $reply): string
+    {
+        return "The agent's answer to the judge:\n\n".self::quote($reply->claim);
     }
 
     /** Flag the issue for a human with `$comment`, and end the run as Needs you. */
