@@ -64,7 +64,7 @@ class FakeClaude implements Claude
 
         $answer = $this->onOneShot
             ? ($this->onOneShot)($call)
-            : ['in_scope' => true, 'weakens_tests' => false, 'reason' => 'Stays within the issue.'];
+            : ['adds_unrequested' => false, 'misses_requested' => false, 'weakens_tests' => false, 'reason' => 'Stays within the issue.'];
 
         return $answer instanceof OneShotResult ? $answer : new OneShotResult($answer, json_encode($answer));
     }

@@ -14,6 +14,7 @@ use App\Services\Claude\AgentResult;
 use App\Services\Claude\Claude;
 use App\Services\Gate;
 use App\Services\GitHub;
+use App\Services\JudgeReply;
 use App\Services\ScopeJudge;
 use App\Services\ScopeVerdict;
 use App\Services\Worktree;
@@ -217,7 +218,8 @@ class ProcessRun implements ShouldQueue
                 return;
             }
 
-            $verdict = $this->judge($run, $issue);
+            // Only the correction round's answer goes to the judge: it is the one written after a veto
+            $verdict = $this->judge($run, $issue, $corrected ? $result->judgeReply : null);
 
             // No usable answer still goes on to the gate, and opens a draft if it passes
             if ($verdict === null || $verdict->passes()) {
@@ -225,8 +227,17 @@ class ProcessRun implements ShouldQueue
             }
 
             if ($corrected) {
+                // Missing work is easy to spot in review, so it opens a draft if the gate passes
+                if ($verdict->onlyMissesWork()) {
+                    break;
+                }
+
+                $answer = $result->judgeReply === null
+                    ? "The agent's PR body:\n\n".self::quote((string) str($result->body)->limit(2000))
+                    : self::judgeAnswer($result->judgeReply);
+
                 $this->handToHuman($run, $github,
-                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote($verdict->describe()),
+                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote($verdict->describe())."\n\n{$answer}",
                     "Scope judge vetoed the change again: {$verdict->reason} Flagged the issue for a human.", 'scope_vetoed');
 
                 return;
@@ -252,6 +263,11 @@ class ProcessRun implements ShouldQueue
             $run->log('Scope judge gave no usable answer twice. Opening the PR as a draft.');
             $footer .= "\n- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.";
             $labels[] = 'scope:unchecked';
+        } elseif (! $verdict->passes()) {
+            $run->log("Scope judge vetoed the change again, only for missing work: {$verdict->reason} Opening the PR as a draft.");
+            $footer .= "\n- Scope judge: vetoed twice, only for missing work, so opened as a draft. {$verdict->reason}";
+            $footer .= $result->judgeReply === null ? '' : "\n\n".self::judgeAnswer($result->judgeReply);
+            $labels[] = 'scope:incomplete';
         } else {
             $passed = $corrected ? 'passed after one correction round' : 'passed';
             $run->log("Scope judge {$passed}: {$verdict->reason}");
@@ -355,16 +371,26 @@ class ProcessRun implements ShouldQueue
         return $agent;
     }
 
-    /** The scope judge's verdict on the diff since the base branch, or null when it gave no usable answer twice. */
-    private function judge(Run $run, string $issue): ?ScopeVerdict
+    /**
+     * The scope judge's verdict on the diff since the base branch, or null when it gave no usable answer twice.
+     * With `$reply`, the judge also gets the agent's answer to its veto.
+     */
+    private function judge(Run $run, string $issue, ?JudgeReply $reply = null): ?ScopeVerdict
     {
-        $diff = $this->worktree($run)->diffSinceBase();
+        $worktree = $this->worktree($run);
+        $diff = $worktree->diffSinceBase();
 
         return (new ScopeJudge($run->repository, function (string $message) use ($run) {
             $run->log($message);
             $run->update(['heartbeat_at' => now()]);
             $this->guardCancel($run);
-        }))->verdict($issue, $diff);
+        }))->verdict($issue, $diff, $reply, $worktree);
+    }
+
+    /** The agent's answer to the judge, for the hand-off comment and the PR footer. */
+    private static function judgeAnswer(JudgeReply $reply): string
+    {
+        return "The agent's answer to the judge:\n\n".self::quote($reply->claim);
     }
 
     /** Flag the issue for a human with `$comment`, and end the run as Needs you. */

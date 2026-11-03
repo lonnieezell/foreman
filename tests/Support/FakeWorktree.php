@@ -31,6 +31,9 @@ class FakeWorktree extends Worktree
 
     public int $changedLines = 0;
 
+    /** @var array<string,list<string>> What linesAtBase gives for each path, whatever the range. A path left out isn't on the base branch. */
+    public array $atBase = [];
+
     /** Runs when the worktree is removed, for tests that check the order against other commands. */
     public ?Closure $onRemove = null;
 
@@ -94,6 +97,13 @@ class FakeWorktree extends Worktree
         }
 
         return $this->diff;
+    }
+
+    public function linesAtBase(string $path, int $start, int $end): ?array
+    {
+        $this->calls[] = 'linesAtBase';
+
+        return $this->atBase[$path] ?? null;
     }
 
     public function changedFiles(): array

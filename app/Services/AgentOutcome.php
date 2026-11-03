@@ -13,5 +13,6 @@ final class AgentOutcome
         public readonly ?string $body = null,
         public readonly ?string $comment = null,
         public readonly ?string $reason = null,
+        public readonly ?JudgeReply $judgeReply = null,
     ) {}
 }

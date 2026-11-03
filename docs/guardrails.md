@@ -312,29 +312,47 @@ A deep review on every change costs time and money for little gain. A typo fix i
 
 ## Scope judge
 
-After the review pass, and before [Foreman's gate](#foremans-gate) runs the second time, one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with three fields:
+After the review pass, and before [Foreman's gate](#foremans-gate) runs the second time, one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with four fields:
 
-- `in_scope`: whether the change sticks to what the issue asks for. Unrelated features, refactors the issue didn't mention, and leaving out most of the work all count against it.
+- `adds_unrequested`: whether the change does work the issue didn't ask for, such as unrelated features or refactors the issue didn't mention.
+- `misses_requested`: whether the change leaves out a real part of what the issue asks for.
 - `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine.
 - `reason`: one or two sentences on why.
 
 ### How it works
 
-Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in a temporary folder of its own outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. Claude Code's `--json-schema` flag makes the answer fit the three fields.
+Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It can't read files, run commands or look anything up. It runs in a temporary folder of its own outside the repository, with no session to resume, no MCP servers and no user settings, so your hooks and plugins don't load. Foreman sends the prompt on standard input, because a large diff can be too long for a single command-line argument. Its prompt holds only two things: the [sanitised issue](#sanitised-issue) and the branch's diff against the base branch. Both are marked as untrusted data. After a correction round, the prompt can also hold the [agent's answer](#answering-a-veto). Claude Code's `--json-schema` flag makes the answer fit the four fields.
 
 What happens next depends on the verdict:
 
-- **Pass.** The change is in scope and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
-- **Veto.** The change is out of scope, or weakens tests, or both. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, nothing is pushed. The run goes to **Needs you**, and Foreman comments on the issue with the reason. See [Runs and statuses](runs.md#needs-you).
+- **Pass.** The change does what the issue asks, nothing more, and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
+- **Veto.** The change adds unrequested work, misses requested work, weakens tests, or any mix of these. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. The agent can also [answer the veto](#answering-a-veto). Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, what happens depends on why:
+  - **Only missing work.** Foreman runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It labels the PR `scope:incomplete`. The footer gives the judge's reason and the agent's answer, if it wrote one. Missing work is easy to spot in review, and a draft can't be auto-merged. If the gate fails, the run goes to **Needs you** as usual.
+  - **Anything else.** Nothing is pushed. The run goes to **Needs you**. Foreman comments on the issue with the judge's reason and the agent's answer. Without an answer, the comment quotes the agent's PR body instead. See [Runs and statuses](runs.md#needs-you).
 - **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, Foreman still runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It labels the PR `scope:unchecked`, and the footer says the change wasn't checked against the issue. The run log has what went wrong each time. Foreman never treats a missing verdict as a pass: a draft can't be auto-merged.
 
 The run log shows a veto as soon as it happens. A passing verdict is logged only after the second gate passes.
+
+### Answering a veto
+
+The judge can't see the repo, so it can be wrong. For example, an issue may ask for two fixes when the base branch already has one of them. The diff shows only the other fix, so the judge says work is missing.
+
+In the correction round, the agent can answer the veto. It adds a `judge_reply` to its `pr` result, with a short claim and up to five line ranges of at most 80 lines each:
+
+```json
+"judge_reply": {
+  "claim": "The consent fix is already on develop, in ConsentFilter.",
+  "evidence": [{"path": "src/Consent/ConsentFilter.php", "start": 40, "end": 58}]
+}
+```
+
+Foreman reads each range from the base branch itself, with `git show`. The judge gets the claim, marked as untrusted, and the code Foreman read. It never gets the agent's own copy of the code. Its prompt says to trust the code, not the claim. A range the base branch doesn't have is shown as missing. A path with a line break or other control character is dropped. Only the judge's second call gets the answer.
 
 ### Why it is a separate model call
 
 The agent can't judge its own scope fairly. It has spent the whole run building a story about why each edit was needed. A review inside the same session reads that story too, and tends to agree with it. Scope creep and weakened tests are exactly the mistakes that come with a good-sounding reason.
 
-The judge never sees that story. It gets no session, no tools and no access to the worktree, so it can't read the agent's notes or commit messages beyond the diff. It sees what a human reviewer would see first: what was asked, and what changed. The agent also can't reach the judge. Foreman makes the call in its own process, after the agent has stopped. Haiku keeps the check cheap and fast. The question is narrow, and the call is small.
+The judge never sees that story. It gets no session, no tools and no access to the worktree, so it can't read the agent's notes or commit messages beyond the diff. It sees what a human reviewer would see first: what was asked, and what changed. The agent also can't reach the judge, except through an [answer to a veto](#answering-a-veto). That answer is a claim the judge is told not to believe on its own, plus code Foreman read from the base branch. Foreman makes the call in its own process, after the agent has stopped. Haiku keeps the check cheap and fast. The question is narrow, and the call is small.
 
 ### What it doesn't do
 
