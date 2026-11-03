@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
@@ -38,11 +39,14 @@ class ReviewPassTest extends TestCase
 
     private FakeWorktree $git;
 
+    private FakeClaude $claude;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->git = FakeWorktree::install($this->app);
+        $this->claude = FakeClaude::install($this->app);
 
         $this->worktree = sys_get_temp_dir().'/foreman-review-'.uniqid();
         File::ensureDirectoryExists($this->worktree);
@@ -83,28 +87,23 @@ class ReviewPassTest extends TestCase
             'resume_session_id' => 'abc', 'worktree_path' => $this->worktree,
         ]);
 
-        Process::fake(function (PendingProcess $process) use ($answers) {
+        $this->claude->onAgent = function (array $call) use ($answers) {
+            $pass = match (true) {
+                str_starts_with($call['prompt'], '/security-review') => 'security',
+                str_contains($call['prompt'], 'code-review skill') => 'review',
+                default => 'issue',
+            };
+            $this->sequence[] = $pass;
+
+            $result = $pass === 'review' && $answers['reviewResult'] ? $answers['reviewResult'] : ['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.'];
+            File::ensureDirectoryExists("{$this->worktree}/.foreman");
+            File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode($result));
+
+            return FakeClaude::result($answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']);
+        };
+
+        Process::fake(function (PendingProcess $process) {
             $command = $this->commands[] = $process->command;
-
-            if (self::isScopeJudge($process)) {
-                return Process::result(self::SCOPE_JUDGE_PASS);
-            }
-
-            if ($command[0] === 'claude') {
-                $prompt = $command[2] ?? '';
-                $pass = match (true) {
-                    str_starts_with($prompt, '/security-review') => 'security',
-                    str_contains($prompt, 'code-review skill') => 'review',
-                    default => 'issue',
-                };
-                $this->sequence[] = $pass;
-
-                $result = $pass === 'review' && $answers['reviewResult'] ? $answers['reviewResult'] : ['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.'];
-                File::ensureDirectoryExists("{$this->worktree}/.foreman");
-                File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode($result));
-
-                return Process::result(json_encode($answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']));
-            }
 
             if ($command[0] === 'bash') {
                 $this->sequence[] = 'gate';
@@ -131,15 +130,9 @@ class ReviewPassTest extends TestCase
         return [$run->fresh(), $comments ?? []];
     }
 
-    /** The first claude call whose prompt holds `$needle`. */
-    private function claudeCommand(string $needle): array
-    {
-        return collect($this->commands)->first(fn ($c) => $c[0] === 'claude' && str_contains($c[2] ?? '', $needle)) ?? [];
-    }
-
     private function prompt(string $needle): ?string
     {
-        return $this->claudeCommand($needle)[2] ?? null;
+        return $this->claude->agentCall($needle)['prompt'] ?? null;
     }
 
     private function ran(array $prefix): bool
@@ -209,10 +202,8 @@ class ReviewPassTest extends TestCase
     {
         $this->settle(self::ROUTE_DIFF);
 
-        $review = $this->claudeCommand('code-review skill');
-        $this->assertSame('sess-1', $review[array_search('--resume', $review, true) + 1]);
-        $security = $this->claudeCommand('/security-review');
-        $this->assertSame('sess-1', $security[array_search('--resume', $security, true) + 1]);
+        $this->assertSame('sess-1', $this->claude->agentCall('code-review skill')['resume']);
+        $this->assertSame('sess-1', $this->claude->agentCall('/security-review')['resume']);
     }
 
     public function test_the_passes_add_to_the_runs_cost_and_turns(): void
@@ -227,8 +218,7 @@ class ReviewPassTest extends TestCase
     {
         $this->settle(self::CODE_DIFF, repository: ['max_budget_per_run' => '3.00']);
 
-        $review = $this->claudeCommand('code-review skill');
-        $this->assertSame('2', $review[array_search('--max-budget-usd', $review, true) + 1]);
+        $this->assertEquals(2.0, $this->claude->agentCall('code-review skill')['budget']);
     }
 
     public function test_a_spent_cap_stops_the_run_before_the_pass(): void

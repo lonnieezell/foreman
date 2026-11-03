@@ -5,12 +5,12 @@ namespace App\Jobs;
 use App\Enums\RunStatus;
 use App\Guardrails\Guard;
 use App\Guardrails\RiskTier;
-use App\Guardrails\Sandbox;
 use App\Guardrails\StackSet;
 use App\Models\Run;
+use App\Services\Claude\AgentResult;
+use App\Services\Claude\Claude;
 use App\Services\Gate;
 use App\Services\GitHub;
-use App\Services\Usage;
 use App\Services\Worktree;
 use App\Support\ForemanEnv;
 use App\Support\IssueSanitiser;
@@ -31,11 +31,6 @@ class ProcessRun implements ShouldQueue
     /** Where the agent says how it ended, relative to the worktree. Foreman acts on it. */
     public const RESULT_FILE = '.foreman/result.json';
 
-    /** A Bash command matching this moves the run to Checking: tests, linters, formatters, type checks. */
-    public const CHECK_COMMAND = '/\b(pest|phpunit|phpstan|pint|artisan test|vitest|jest|playwright|eslint|prettier|biome|tsc|rustfmt|pytest|ruff|mypy|pyright)\b'
-        .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
-        .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
-
     /** The scope judge's answer. */
     private const JUDGE_SCHEMA = [
         'type' => 'object',
@@ -50,12 +45,6 @@ class ProcessRun implements ShouldQueue
     public int $tries = 1;
 
     public int $timeout = 0;   // we enforce max_minutes ourselves so we can clean up
-
-    private string $buffer = '';
-
-    private ?array $result = null;
-
-    private bool $limitReported = false;
 
     private bool $allowLockFiles = false;
 
@@ -89,8 +78,8 @@ class ProcessRun implements ShouldQueue
             $this->worktree($run)->excludeFromGit('.foreman/');
 
             $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
-            $this->runAgent($run, $worktree, $github);
-            $this->settle($run, $github);
+            $agent = $this->runAgent($run, $worktree, $github);
+            $this->settle($run, $github, $agent);
         } catch (Throwable $e) {
             $run->refresh();
             $cancelled = $run->cancel_requested;
@@ -171,7 +160,7 @@ class ProcessRun implements ShouldQueue
     /**
      * @param  string|null  $followUp  A review pass's prompt. It resumes this run's own session, and its usage adds to the run's.
      */
-    private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null): void
+    private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null): AgentResult
     {
         $repo = $run->repository;
         $budget = $repo->max_budget_per_run;
@@ -196,70 +185,11 @@ class ProcessRun implements ShouldQueue
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)),
         };
 
-        $command = [
-            'claude', '-p', $prompt,
-            '--model', $run->model,
-            '--max-turns', (string) $repo->max_turns,
-            '--allowedTools', $repo->allowed_tools,
-            '--permission-mode', 'dontAsk',
-            '--settings', $this->writeHookSettings($run, $worktree, $this->allowLockFiles),
-            '--output-format', 'stream-json',
-            '--verbose',
-        ];
-
-        if ($budget !== null) {
-            array_push($command, '--max-budget-usd', (string) $budget);
-        }
-
-        if ($run->effort) {
-            array_push($command, '--effort', $run->effort);
-        }
-
         // Same conversation, so the agent doesn't re-explore the codebase
         $resume = $followUp !== null ? $run->session_id : $run->resume_session_id;
 
-        if ($resume) {
-            array_push($command, '--resume', $resume);
-        }
-
-        $this->result = null;
-
-        $process = Process::path($worktree)
-            ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox)])
-            ->forever()
-            ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
-
-        $run->update(['pid' => $process->id()]);
-        $deadline = now()->addMinutes($repo->max_minutes);
-
-        while ($process->running()) {
-            sleep(2);
-            $run->update(['heartbeat_at' => now()]);
-
-            if ($run->fresh()->cancel_requested) {
-                $process->signal(15); // SIGTERM
-                $process->wait();
-                throw new RuntimeException('Cancelled');
-            }
-
-            if (now()->greaterThan($deadline)) {
-                $process->signal(15); // SIGTERM
-                $process->wait();
-                throw new RuntimeException("Hit the {$repo->max_minutes}-minute limit.");
-            }
-        }
-
-        $result = $process->wait();
-        $this->consume($run, "\n"); // flush any final partial line
-
-        $usage = [
-            'cost_usd' => $this->result['total_cost_usd'] ?? 0,
-            'num_turns' => $this->result['num_turns'] ?? null,
-            'input_tokens' => $this->result['usage']['input_tokens'] ?? null,
-            'output_tokens' => $this->result['usage']['output_tokens'] ?? null,
-            'cache_read_tokens' => $this->result['usage']['cache_read_input_tokens'] ?? null,
-            'cache_write_tokens' => $this->result['usage']['cache_creation_input_tokens'] ?? null,
-        ];
+        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles);
+        $usage = $agent->usage();
 
         if ($followUp !== null) {
             foreach ($usage as $column => $value) {
@@ -267,138 +197,13 @@ class ProcessRun implements ShouldQueue
             }
         }
 
-        $run->update(['pid' => null, ...$usage]);
+        $run->update([...$usage, 'session_id' => $agent->sessionId ?? $run->session_id]);
 
-        $this->holdIfOutOfUsage($run);
-
-        if ($this->result === null && $result->failed()) {
-            throw new RuntimeException('Claude exited without a result: '.str($result->errorOutput())->limit(500));
-        }
-    }
-
-    /**
-     * Write the run's hook settings outside the worktree, so the agent can't edit them.
-     * `foreman:guard` and `foreman:format-staged` run before tool calls, and `foreman:stop` when the agent tries to stop. All read their rules from a file next to the settings.
-     */
-    private function writeHookSettings(Run $run, string $worktree, bool $allowLockFiles): string
-    {
-        $dir = storage_path('foreman/hooks');
-        File::ensureDirectoryExists($dir);
-
-        $rules = "{$dir}/run-{$run->id}-rules.json";
-        File::put($rules, json_encode([
-            'worktree' => $worktree,
-            'log' => $run->logPath(),
-            'locked_paths' => $run->repository->lockedPathList(),
-            'allow_lock_files' => $allowLockFiles,
-            'hooks_dir' => $dir,
-            'base' => $run->worktree()->baseRef(),
-            'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
-            'stop_counter' => "{$dir}/run-{$run->id}-stops",
-        ]));
-        File::delete("{$dir}/run-{$run->id}-stops");   // each start of the agent, resumes included, gets its own 3 blocks
-
-        $hook = fn (string $name) => implode(' ', array_map('escapeshellarg', [PHP_BINARY, base_path('artisan'), $name, $rules]));
-        $config = ['hooks' => [
-            'PreToolUse' => [[
-                'matcher' => 'Bash|Edit|Write|MultiEdit|NotebookEdit',
-                'hooks' => [
-                    ['type' => 'command', 'command' => $hook('foreman:guard')],
-                    ['type' => 'command', 'command' => $hook('foreman:format-staged')],
-                ],
-            ]],
-            // The checks can take a while, so the timeout (in seconds) is longer than Claude Code's default
-            'Stop' => [['hooks' => [['type' => 'command', 'command' => $hook('foreman:stop'), 'timeout' => 1800]]]],
-        ]];
-
-        if ($run->repository->sandbox) {
-            $config['sandbox'] = Sandbox::settings($worktree, $run->worktree()->gitDirs());
-        }
-
-        $settings = "{$dir}/run-{$run->id}-settings.json";
-        File::put($settings, json_encode($config));
-
-        return $settings;
-    }
-
-    /** Turn Claude's stream-json into a readable log and stage updates. */
-    private function consume(Run $run, string $chunk): void
-    {
-        $this->buffer .= $chunk;
-
-        while (($pos = strpos($this->buffer, "\n")) !== false) {
-            $line = trim(substr($this->buffer, 0, $pos));
-            $this->buffer = substr($this->buffer, $pos + 1);
-
-            if ($line === '') {
-                continue;
-            }
-
-            File::append($run->rawLogPath(), $line."\n");
-            $event = json_decode($line, true);
-
-            if (! is_array($event)) {
-                continue;
-            }
-
-            if (isset($event['session_id']) && $run->session_id !== $event['session_id']) {
-                $run->update(['session_id' => $event['session_id']]);
-            }
-
-            if (($event['type'] ?? null) === 'rate_limit_event') {
-                app(Usage::class)->record($run->repository->profileName(), $event['rate_limit_info'] ?? []);
-                $this->limitReported = ($event['rate_limit_info']['status'] ?? null) === 'rejected';
-
-                continue;
-            }
-
-            if (($event['type'] ?? null) === 'result') {
-                $this->result = $event;
-                $run->log(sprintf('Finished after %d turns, $%.2f', $event['num_turns'] ?? 0, $event['total_cost_usd'] ?? 0));
-
-                continue;
-            }
-
-            if (($event['type'] ?? null) !== 'assistant') {
-                continue;
-            }
-
-            foreach ($event['message']['content'] ?? [] as $block) {
-                if (($block['type'] ?? null) === 'text' && trim($block['text']) !== '') {
-                    $run->log((string) str($block['text'])->squish()->limit(300));
-                }
-
-                if (($block['type'] ?? null) === 'tool_use') {
-                    $this->logToolUse($run, $block);
-                }
-            }
-        }
-    }
-
-    private function logToolUse(Run $run, array $block): void
-    {
-        $input = $block['input'] ?? [];
-        $name = $block['name'] ?? 'tool';
-
-        $summary = match ($name) {
-            'Bash' => '$ '.($input['command'] ?? ''),
-            'Edit', 'Write', 'Read' => "{$name} ".($input['file_path'] ?? ''),
-            default => $name,
-        };
-
-        $run->log((string) str($summary)->limit(200));
-
-        // Move the run along the line when the agent starts checking its work
-        $command = $input['command'] ?? '';
-        if ($name === 'Bash' && preg_match(self::CHECK_COMMAND, $command)) {
-            if ($run->status === RunStatus::Working) {
-                $run->moveTo(RunStatus::Checking);
-            }
-        }
+        return $agent;
     }
 
     /** Act on the agent's result file, but push only what passes Foreman's own checks. */
-    private function settle(Run $run, GitHub $github): void
+    private function settle(Run $run, GitHub $github, AgentResult $agent): void
     {
         if ($run->pr_round) {
             $this->settleRound($run, $github);
@@ -408,16 +213,16 @@ class ProcessRun implements ShouldQueue
 
         $repo = $run->repository;
 
-        if ($this->prResult($run, $github) === null || $this->review($run, $github) === null) {
+        if ($this->prResult($run, $github, $agent) === null || $this->review($run, $github) === null) {
             return;
         }
 
-        $this->reviewPass($run, $github);
+        $agent = $this->reviewPass($run, $github);
         $issue = $github->sanitisedIssue($repo, $run->issue_number);
 
         // The judge goes before the second gate, so a veto doesn't throw a gate run away
         foreach ([false, true] as $corrected) {
-            $result = $this->prResult($run, $github);
+            $result = $this->prResult($run, $github, $agent);
 
             if ($result === null) {
                 return;
@@ -439,7 +244,7 @@ class ProcessRun implements ShouldQueue
             }
 
             $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
-            $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
+            $agent = $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
                 '{{base}}' => $this->worktree($run)->baseRef(),
                 '{{verdict}}' => self::describeVerdict($verdict),
             ]));
@@ -491,17 +296,17 @@ class ProcessRun implements ShouldQueue
      *
      * @return array{outcome:string,title:string,body:string}|null
      */
-    private function prResult(Run $run, GitHub $github): ?array
+    private function prResult(Run $run, GitHub $github, AgentResult $agent): ?array
     {
         $result = $this->readResult($run->worktree_path);
 
         if ($result === null) {
-            $reason = ($this->result['is_error'] ?? false)
-                ? 'Claude stopped with an error ('.($this->result['subtype'] ?? 'unknown').').'
+            $reason = $agent->isError()
+                ? 'Claude stopped with an error ('.($agent->subtype() ?? 'unknown').').'
                 : 'The agent finished without a readable result file ('.self::RESULT_FILE.').';
 
             // Its last message usually says why, so keep it where a human will see it
-            $last = trim($this->result['result'] ?? '');
+            $last = $agent->message();
 
             throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
         }
@@ -526,7 +331,7 @@ class ProcessRun implements ShouldQueue
      * Rate the change's risk from its diff, then resume the agent's session to review it as deep as the tier calls for:
      * `/code-review` and `/simplify`, plus `/security-review` for tier 3.
      */
-    private function reviewPass(Run $run, GitHub $github): void
+    private function reviewPass(Run $run, GitHub $github): AgentResult
     {
         $worktree = $this->worktree($run);
         $base = $worktree->baseRef();
@@ -538,7 +343,7 @@ class ProcessRun implements ShouldQueue
         $run->update(['risk_tier' => $tier]);
         $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort, then /simplify.");
 
-        $this->runPass($run, $github, 'The review pass', strtr(file_get_contents(resource_path('prompts/review-pass.md')), [
+        $agent = $this->runPass($run, $github, 'The review pass', strtr(file_get_contents(resource_path('prompts/review-pass.md')), [
             '{{tier}}' => (string) $tier,
             '{{reason}}' => $reason,
             '{{level}}' => $level,
@@ -546,21 +351,23 @@ class ProcessRun implements ShouldQueue
         ]));
 
         if ($tier < 3) {
-            return;
+            return $agent;
         }
 
         // /security-review diffs against origin/HEAD, and quietly reviews nothing when that ref is missing
         $worktree->pointOriginHeadAtBase();
 
         $run->log('Security review: /security-review.');
-        $this->runPass($run, $github, '/security-review', strtr(file_get_contents(resource_path('prompts/security-review.md')), [
+        $agent = $this->runPass($run, $github, '/security-review', strtr(file_get_contents(resource_path('prompts/security-review.md')), [
             '{{reason}}' => $reason,
             '{{base}}' => $base,
         ]));
 
-        if ((float) ($this->result['total_cost_usd'] ?? 0) === 0.0) {
+        if ($agent->cost() === 0.0) {
             throw new RuntimeException('/security-review ended without reviewing anything.');
         }
+
+        return $agent;
     }
 
     /**
@@ -581,22 +388,13 @@ class ProcessRun implements ShouldQueue
             '{{diff}}' => IssueSanitiser::wrapText($diff, clean: false),
         ]);
 
-        // Outside the project, so no CLAUDE.md or project settings get loaded; user settings are left out too
-        $dir = sys_get_temp_dir().'/foreman-scope-judge';
-        File::ensureDirectoryExists($dir);
-
         foreach ([1, 2] as $attempt) {
             $this->guardCancel($run);
             $run->log('Scope judge: asking Haiku whether the change stays within the issue'.($attempt > 1 ? ', again.' : '.'));
 
             try {
-                // The prompt goes on stdin: the diff can outgrow the limit on a single argument
-                $process = Process::path($dir)->env($repo->claudeEnv())->timeout(120)->input($prompt)->run([
-                    'claude', '-p', '--model', 'haiku', '--max-turns', '3', '--tools', '',
-                    '--strict-mcp-config', '--setting-sources', 'project', '--no-session-persistence', '--output-format', 'json',
-                    '--json-schema', json_encode(self::JUDGE_SCHEMA),
-                ]);
-                $verdict = json_decode($process->output(), true)['structured_output'] ?? null;
+                $answer = app(Claude::class)->oneShot($repo, $prompt, self::JUDGE_SCHEMA);
+                $verdict = $answer->structured;
 
                 if (is_array($verdict) && is_bool($verdict['in_scope'] ?? null) && is_bool($verdict['weakens_tests'] ?? null)
                     && is_string($verdict['reason'] ?? null) && trim($verdict['reason']) !== '') {
@@ -604,9 +402,7 @@ class ProcessRun implements ShouldQueue
                     return ['reason' => (string) str($verdict['reason'])->squish()->limit(500)] + $verdict;
                 }
 
-                $problem = $process->failed()
-                    ? "exit {$process->exitCode()}: ".str(trim($process->errorOutput() ?: $process->output()))->limit(500)
-                    : 'an answer without in_scope, weakens_tests and reason: '.str(trim($process->output()))->limit(500);
+                $problem = $answer->error ?? 'an answer without in_scope, weakens_tests and reason: '.str($answer->output)->limit(500);
             } catch (Throwable $e) {
                 $problem = $e->getMessage();
             } finally {
@@ -649,13 +445,15 @@ class ProcessRun implements ShouldQueue
     }
 
     /** Resume the agent's session with `$prompt`. Throws when it ends with an error. */
-    private function runPass(Run $run, GitHub $github, string $label, string $prompt): void
+    private function runPass(Run $run, GitHub $github, string $label, string $prompt): AgentResult
     {
-        $this->runAgent($run, $run->worktree_path, $github, $prompt);
+        $agent = $this->runAgent($run, $run->worktree_path, $github, $prompt);
 
-        if ($this->result === null || ($this->result['is_error'] ?? false)) {
-            throw new RuntimeException("{$label} stopped with an error (".($this->result['subtype'] ?? 'no result').').');
+        if ($agent->failed()) {
+            throw new RuntimeException("{$label} stopped with an error (".($agent->subtype() ?? 'no result').').');
         }
+
+        return $agent;
     }
 
     /**
@@ -727,42 +525,6 @@ class ProcessRun implements ShouldQueue
     private function push(Run $run): void
     {
         $this->worktree($run)->push(sign: $run->repository->sandbox);
-    }
-
-    /**
-     * Environment that stops the agent pushing: origin's push URL goes nowhere, no credential helper
-     * answers, and GitHub tokens are dropped. A false value removes the variable. A sandboxed agent
-     * also gets the Sandbox's git settings and environment.
-     *
-     * @return array<string,string|false>
-     */
-    public static function agentEnv(bool $sandboxed = false): array
-    {
-        $config = [
-            'remote.origin.pushurl' => '/nonexistent/foreman-agents-cannot-push',
-            'credential.helper' => '',
-            ...($sandboxed ? Sandbox::gitConfig() : []),
-        ];
-        $git = ['GIT_CONFIG_COUNT' => (string) count($config)];
-        $i = 0;
-        foreach ($config as $key => $value) {
-            $git["GIT_CONFIG_KEY_{$i}"] = $key;
-            $git["GIT_CONFIG_VALUE_{$i}"] = $value;
-            $i++;
-        }
-
-        return [
-            ...$git,
-            ...($sandboxed ? Sandbox::env() : []),
-            'GIT_TERMINAL_PROMPT' => '0',
-            'GH_TOKEN' => false,
-            'GITHUB_TOKEN' => false,
-            'GH_ENTERPRISE_TOKEN' => false,
-            'GITHUB_ENTERPRISE_TOKEN' => false,
-            'GIT_ASKPASS' => false,
-            'SSH_ASKPASS' => false,
-            'SSH_AUTH_SOCK' => false,
-        ];
     }
 
     /**
@@ -894,25 +656,6 @@ class ProcessRun implements ShouldQueue
         return $prompt."\n\n".IssueSanitiser::TEXT_NOTE
             ."\n\nYour last ".self::RESULT_FILE.' was cleared. Write it again before you stop, even if your answer is the same.'
             ."\n\nContinue from where you stopped, following the same instructions as before.";
-    }
-
-    /**
-     * Running out of usage holds the profile until it resets, instead of failing every queued issue in turn.
-     * The rejected rate_limit_event normally does that; this covers Claude stopping without one.
-     */
-    private function holdIfOutOfUsage(Run $run): void
-    {
-        $text = ($this->result['result'] ?? '').' '.($this->result['subtype'] ?? '');
-
-        if (($this->result['is_error'] ?? false) && preg_match('/usage limit|rate limit|quota/i', $text)) {
-            $profile = $run->repository->profileName();
-
-            if (! $this->limitReported) {
-                app(Usage::class)->recordLimitHit($profile);
-            }
-
-            $run->log("Usage limit reached. Holding the {$profile} profile until it resets.");
-        }
     }
 
     private function guardCancel(Run $run): void

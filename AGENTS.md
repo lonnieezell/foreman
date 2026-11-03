@@ -34,6 +34,7 @@ Queue workers keep old code until they restart.
 - Tests use PHPUnit 12 classes (not Pest), in `tests/Feature` and `tests/Unit`.
 - They run on in-memory SQLite with a `sync` queue.
 - Shell calls (`gh`, `git`, `claude`) are faked with `Process::fake()`, as in `tests/Feature/PrWatchTest.php`. `tests/Feature/RunEndingsTest.php` mocks `App\Services\GitHub` instead.
+- Every `claude` call goes through `App\Services\Claude\Claude`. Job tests that only care about the flow install `Tests\Support\FakeClaude` instead of matching argv. Only `tests/Feature/ClaudeCliTest.php` checks the real adapter's flags and env.
 
 ## Commit & Pull Request Guidelines
 

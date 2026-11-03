@@ -13,12 +13,12 @@ use App\Services\GitHub;
 use App\Services\PrWatcher;
 use App\Services\Usage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery;
+use Tests\Support\FakeClaude;
 use Tests\TestCase;
 
 class EffortTest extends TestCase
@@ -48,26 +48,19 @@ class EffortTest extends TestCase
         ]);
     }
 
-    /** Runs the job against a faked `claude`, returning the command it used. */
-    private function claudeCommand(Run $run): array
+    /** Runs the job against a fake `claude`, returning the run it handed the agent and the log. */
+    private function agentRun(Run $run): array
     {
-        Process::fake(['*' => Process::result(json_encode(['type' => 'result', 'num_turns' => 1]))]);
+        $claude = FakeClaude::install($this->app);
+        Process::fake();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
 
         (new ProcessRun($run))->handle($github);
 
-        $command = null;
-        Process::assertRan(function (PendingProcess $process) use (&$command) {
-            if ($process->command[0] === 'claude') {
-                $command = $process->command;
-            }
-
-            return $command !== null;
-        });
         $log = File::get($run->logPath());
         File::delete([$run->logPath(), $run->rawLogPath()]);
 
-        return [$command, $log];
+        return [$claude->agentCalls[0]['run'], $log];
     }
 
     public function test_dashboard_saves_model_and_effort(): void
@@ -207,17 +200,17 @@ class EffortTest extends TestCase
 
     public function test_process_run_leaves_out_effort_when_it_is_default(): void
     {
-        [$command, $log] = $this->claudeCommand($this->queuedRun($this->repository()));
+        [$agentRun, $log] = $this->agentRun($this->queuedRun($this->repository()));
 
-        $this->assertNotContains('--effort', $command);
+        $this->assertNull($agentRun->effort);
         $this->assertStringContainsString('Starting Claude (sonnet, default profile', $log);
     }
 
     public function test_process_run_passes_effort_when_the_run_has_one(): void
     {
-        [$command, $log] = $this->claudeCommand($this->queuedRun($this->repository(), ['effort' => 'high']));
+        [$agentRun, $log] = $this->agentRun($this->queuedRun($this->repository(), ['effort' => 'high']));
 
-        $this->assertSame('high', $command[array_search('--effort', $command) + 1]);
+        $this->assertSame('high', $agentRun->effort);
         $this->assertStringContainsString('Starting Claude (sonnet, high effort, default profile', $log);
     }
 
@@ -226,10 +219,10 @@ class EffortTest extends TestCase
         $repo = $this->repository(['model' => 'haiku', 'effort' => 'low']);
         $run = $this->queuedRun($repo, ['model' => 'opus', 'effort' => 'max']);
 
-        [$command] = $this->claudeCommand($run);
+        [$agentRun] = $this->agentRun($run);
 
-        $this->assertSame('opus', $command[array_search('--model', $command) + 1]);
-        $this->assertSame('max', $command[array_search('--effort', $command) + 1]);
+        $this->assertSame('opus', $agentRun->model);
+        $this->assertSame('max', $agentRun->effort);
     }
 
     public function test_run_detail_shows_effort(): void

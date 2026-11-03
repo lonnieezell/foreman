@@ -4,9 +4,8 @@ namespace App\Services;
 
 use App\Models\Repository;
 use App\Models\Setting;
+use App\Services\Claude\Claude;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Process;
 use Throwable;
 
 /**
@@ -118,24 +117,13 @@ class Usage
     public function probe(Repository $repo): void
     {
         try {
-            // Outside the project, so no CLAUDE.md or project settings get loaded
-            $dir = sys_get_temp_dir().'/foreman-usage-probe';
-            File::ensureDirectoryExists($dir);
-
-            $output = Process::path($dir)->env($repo->claudeEnv())->timeout(60)->run([
-                'claude', '-p', 'ok', '--model', 'haiku', '--max-turns', '1', '--tools', '',
-                '--strict-mcp-config', '--no-session-persistence', '--output-format', 'stream-json', '--verbose',
-            ])->output();
+            $rateLimits = app(Claude::class)->oneShot($repo, 'ok')->rateLimits;
         } catch (Throwable) {
             return;
         }
 
-        foreach (explode("\n", $output) as $line) {
-            $event = json_decode($line, true);
-
-            if (($event['type'] ?? null) === 'rate_limit_event') {
-                $this->record($repo->profileName(), $event['rate_limit_info'] ?? []);
-            }
+        foreach ($rateLimits as $info) {
+            $this->record($repo->profileName(), $info);
         }
     }
 
