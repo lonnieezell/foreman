@@ -381,7 +381,12 @@ class ProcessRun implements ShouldQueue
     {
         $worktree = $this->worktree($run);
         $diff = $worktree->diffSinceBase();
-        $excerpts = array_map(fn ($e) => [...$e, 'code' => $worktree->linesAtBase($e['path'], $e['start'], $e['end'])], $reply?->judgeEvidence ?? []);
+        $excerpts = array_map(function ($e) use ($worktree) {
+            $code = $worktree->linesAtBase($e['path'], $e['start'], $e['end']);
+
+            // A range past the end of the file is labelled with the lines it really has
+            return [...$e, 'end' => $code === null ? $e['end'] : $e['start'] + substr_count($code, "\n"), 'code' => $code];
+        }, $reply?->judgeEvidence ?? []);
 
         return (new ScopeJudge($run->repository, function (string $message) use ($run) {
             $run->log($message);

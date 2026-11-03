@@ -33,7 +33,7 @@ final class AgentReport
 
     /**
      * The agent's answer to a scope judge veto: its claim, and line ranges on the base branch that back it up.
-     * Without a claim it is left out. Only well-formed ranges count: the first 5, each cut to 80 lines.
+     * Without a claim it is left out. Only well-formed ranges count: the first 5, each cut to 80 lines. A path with control characters is dropped.
      *
      * @return array{0:?string,1:list<array{path:string,start:int,end:int}>}
      */
@@ -44,7 +44,8 @@ final class AgentReport
         }
 
         $evidence = collect(is_array($reply['evidence'] ?? null) ? $reply['evidence'] : [])
-            ->filter(fn ($e) => is_string($e['path'] ?? null) && $e['path'] !== ''
+            // The path goes into the judge's prompt as a heading, so a line break could fake a section
+            ->filter(fn ($e) => is_string($e['path'] ?? null) && preg_match('/^[^\x00-\x1F\x7F]+$/', $e['path'])
                 && is_int($e['start'] ?? null) && is_int($e['end'] ?? null) && $e['start'] >= 1 && $e['end'] >= $e['start'])
             ->take(5)
             ->map(fn ($e) => ['path' => $e['path'], 'start' => $e['start'], 'end' => min($e['end'], $e['start'] + 79)])

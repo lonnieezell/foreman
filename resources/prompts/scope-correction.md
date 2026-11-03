@@ -26,6 +26,8 @@ check the code first. Don't change code just to please the judge. Then add a
 Foreman reads each range from {{base}} itself and shows the judge that code with
 your claim. The judge sees no other proof, so point at the lines that do the work.
 Give at most 5 ranges of at most 80 lines each. Paths are relative to the repo root.
+Take the line numbers from `git show {{base}}:<path>`, not from the files in your
+worktree: your own edits move the lines.
 
 If the fix needs a decision you cannot make, write the `needs_human` result instead
 and explain why.

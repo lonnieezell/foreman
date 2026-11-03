@@ -213,21 +213,32 @@ class ScopeJudgeRunTest extends TestCase
     public function test_the_agents_answer_and_the_code_foreman_read_reach_only_the_second_judge_call(): void
     {
         $this->judgeReply = self::REPLY;
-        $this->git->atBase = ['src/Consent.php' => 'return consent_choices();'];
+        $this->git->atBase = ['src/Consent.php' => "\$choices = consent_choices();\nreturn \$choices;"];
         $this->settle([self::MISSING]);
 
         [$first, $second] = $this->claude->oneShotCalls;
         $this->assertStringNotContainsString("The author's answer", $first['prompt']);
         $this->assertStringContainsString('The consent fix is already on main.', $second['prompt']);
         $this->assertStringContainsString('### src/Consent.php, lines 3-4', $second['prompt']);
-        $this->assertStringContainsString('return consent_choices();', $second['prompt']);
+        $this->assertStringContainsString("\$choices = consent_choices();\nreturn \$choices;", $second['prompt']);
+    }
+
+    public function test_an_excerpt_shorter_than_its_range_is_labelled_with_the_lines_it_has(): void
+    {
+        $this->judgeReply = self::REPLY;
+        $this->git->atBase = ['src/Consent.php' => 'return consent_choices();'];
+        $this->settle([self::MISSING]);
+
+        $this->assertStringContainsString('### src/Consent.php, lines 3-3', $this->claude->oneShotCalls[1]['prompt']);
     }
 
     public function test_the_correction_prompt_says_how_to_answer_the_judge(): void
     {
         $this->settle([self::MISSING]);
 
-        $this->assertStringContainsString('judge_reply', $this->claude->agentCall('scope judge')['prompt']);
+        $correction = $this->claude->agentCall('scope judge')['prompt'];
+        $this->assertStringContainsString('judge_reply', $correction);
+        $this->assertStringContainsString('git show origin/main:<path>', $correction);
     }
 
     public function test_a_second_veto_only_for_missing_work_opens_a_draft_labelled_scope_incomplete_after_the_gate(): void

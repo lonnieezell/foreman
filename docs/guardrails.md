@@ -346,7 +346,7 @@ In the correction round, the agent can answer the veto. It adds a `judge_reply` 
 }
 ```
 
-Foreman reads each range from the base branch itself, with `git show`. The judge gets the claim, marked as untrusted, and the code Foreman read. It never gets the agent's own copy of the code. Its prompt says to trust the code, not the claim. A range the base branch doesn't have is shown as missing. Only the judge's second call gets the answer.
+Foreman reads each range from the base branch itself, with `git show`. The judge gets the claim, marked as untrusted, and the code Foreman read. It never gets the agent's own copy of the code. Its prompt says to trust the code, not the claim. A range the base branch doesn't have is shown as missing. A path with a line break or other control character is dropped. Only the judge's second call gets the answer.
 
 ### Why it is a separate model call
 

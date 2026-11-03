@@ -278,6 +278,14 @@ class WorktreeTest extends TestCase
         $this->assertNull($worktree->linesAtBase('a.txt', 9, 10));
     }
 
+    public function test_lines_at_the_base_are_null_for_a_folder(): void
+    {
+        $this->commit($this->other, 'src/b.txt', "b\n", 'folder');
+        $this->git($this->other, 'push', '-q', 'origin', 'main');
+
+        $this->assertNull($this->prepared()->linesAtBase('src', 1, 5));
+    }
+
     public function test_a_diff_with_no_base_throws(): void
     {
         $worktree = new Worktree($this->prepared()->path, 'agent/issue-7', 'no-such-base', $this->source);
