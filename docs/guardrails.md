@@ -138,7 +138,7 @@ So the command exits 2 for every block. It also exits 2 if it can't read its rul
 
 The agent has to change tests: it adds tests for new work, and it updates old ones when behavior changes on purpose. Locking every test file would stop that. A broad lock would also push the agent to work around it, or to give up on a good change.
 
-Instead, the [test-integrity check](#test-integrity) fails a run that deletes tests, adds skip markers, or ends with fewer assertions. When one test file matters, add it to **Locked paths**.
+Instead, the [test-integrity check](#test-integrity) fails a run that ends with fewer tests or assertions, or that adds skip markers. When one test file matters, add it to **Locked paths**.
 
 ### What this doesn't catch
 
@@ -181,8 +181,7 @@ The test-integrity check compares the work with where the branch left its base b
 
 | Fails on | Details |
 | --- | --- |
-| A deleted test file | Any file that matches the stack's test files in the [Stack rules](stack-rules.md) table. A moved test file counts as a delete. |
-| Fewer tests or assertions | Per file, using the test and assertion markers in the table. A file that ends with fewer of either than it started with fails. Rust unit tests sit in source files, so every changed `.rs` file is counted. |
+| Fewer tests or assertions | A total across every changed test file, using the test files and the test and assertion markers in the [Stack rules](stack-rules.md) table. The check fails when the change ends with fewer of either than it started with. The message lists each file that lost some. A test moved to another file, or a renamed test file, counts the same before and after. A deleted test file counts as having none. Rust unit tests sit in source files, so every changed `.rs` file is counted. |
 | A new skip or suppress marker | A file that holds more of a skip marker than before, such as `markTestSkipped`, `.skip(`, `#[ignore]`, `@phpstan-ignore` or `# noqa`. Markers that were already there pass. Markdown, text and JSON files are ignored, so docs can quote them. |
 | An edit to protected config | Any change to a file in the table's protected config row, such as `phpunit.xml` or `tsconfig.json`. In `pyproject.toml` only the `[tool.*]` tables count. Other parts of the file can change. |
 | A larger PHPStan baseline | A `phpstan*baseline*.neon` or `baseline.neon` file that holds more errors than before, counting each entry's `count:`. A smaller baseline passes, and the other PHPStan config is protected as above. |

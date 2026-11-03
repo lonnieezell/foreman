@@ -85,7 +85,7 @@ class InstallCiTest extends TestCase
 
         $this->assertSame(['php'], array_keys($workflow['jobs']));
         $this->assertSame(
-            ['Formatter check', 'Rector dry run', 'PHPStan', 'Test integrity', 'Tests', 'Composer audit', 'Semgrep'],
+            ['Formatter check', 'Rector dry run', 'PHPStan', 'Test integrity', 'Tests', 'Composer audit', 'Semgrep', 'Test integrity result'],
             array_slice($this->stepNames($workflow, 'php'), 3),
         );
     }
@@ -102,7 +102,7 @@ class InstallCiTest extends TestCase
         $workflow = $this->install($this->repo(['composer.json' => '{"require-dev":{"laravel/pint":"^1","phpunit/phpunit":"^12"}}']));
 
         $this->assertSame(
-            ['Formatter check', 'Test integrity', 'Tests', 'Composer audit', 'Semgrep'],
+            ['Formatter check', 'Test integrity', 'Tests', 'Composer audit', 'Semgrep', 'Test integrity result'],
             array_slice($this->stepNames($workflow, 'php'), 3),
         );
     }
@@ -125,8 +125,8 @@ class InstallCiTest extends TestCase
 
         $this->assertSame(['typescript'], array_keys($workflow['jobs']));
         $this->assertSame(
-            ['Lint', 'Typecheck', 'Test integrity', 'Tests', 'Dependency audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep'],
-            array_slice($this->stepNames($workflow, 'typescript'), -8),
+            ['Lint', 'Typecheck', 'Test integrity', 'Tests', 'Dependency audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep', 'Test integrity result'],
+            array_slice($this->stepNames($workflow, 'typescript'), -9),
         );
         $this->assertContains('npm ci', array_column($workflow['jobs']['typescript']['steps'], 'run'));
     }
@@ -136,8 +136,8 @@ class InstallCiTest extends TestCase
         $workflow = $this->install($this->repo(['Cargo.toml' => '[package]']));
 
         $this->assertSame(
-            ['Format check', 'Clippy', 'Test integrity', 'Tests', 'Install cargo-audit', 'Cargo audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep'],
-            array_slice($this->stepNames($workflow, 'rust'), -9),
+            ['Format check', 'Clippy', 'Test integrity', 'Tests', 'Install cargo-audit', 'Cargo audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep', 'Test integrity result'],
+            array_slice($this->stepNames($workflow, 'rust'), -10),
         );
     }
 
@@ -154,8 +154,8 @@ class InstallCiTest extends TestCase
         $workflow = $this->install($this->repo(['pyproject.toml' => self::PYTHON]));
 
         $this->assertSame(
-            ['Ruff format check', 'Ruff check', 'Mypy', 'Test integrity', 'Tests', 'Dependency audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep'],
-            array_slice($this->stepNames($workflow, 'python'), -9),
+            ['Ruff format check', 'Ruff check', 'Mypy', 'Test integrity', 'Tests', 'Dependency audit', 'CodeQL init', 'CodeQL analyze', 'Semgrep', 'Test integrity result'],
+            array_slice($this->stepNames($workflow, 'python'), -10),
         );
         $this->assertSame('pytest || [ $? -eq 5 ]', $this->step($workflow, 'python', 'Tests')['run'], 'no tests collected is not a failure');
     }
@@ -199,6 +199,22 @@ class InstallCiTest extends TestCase
             $this->assertSame(CiKit::PHP_VERSION, $setup['with']['php-version']);
             $this->assertStringContainsString(CiKit::SCRIPT, $integrity['run']);
             $this->assertSame(0, $job['steps'][0]['with']['fetch-depth']);
+        }
+    }
+
+    public function test_a_failed_integrity_check_lets_the_other_steps_run_and_still_fails_the_job(): void
+    {
+        $workflow = $this->install($this->repo(['composer.json' => self::LARAVEL, 'package.json' => '{}', 'Cargo.toml' => '[package]', 'pyproject.toml' => "[project]\nname = 'x'"]));
+
+        foreach ($workflow['jobs'] as $name => $job) {
+            $integrity = $this->step($workflow, $name, 'Test integrity');
+            $last = end($job['steps']);
+
+            $this->assertSame('integrity', $integrity['id'], $name);
+            $this->assertTrue($integrity['continue-on-error'], $name);
+            $this->assertSame('Test integrity result', $last['name'], $name);
+            $this->assertSame("\${{ steps.integrity.outcome == 'failure' }}", $last['if'], $name);
+            $this->assertStringContainsString('exit 1', $last['run'], $name);
         }
     }
 

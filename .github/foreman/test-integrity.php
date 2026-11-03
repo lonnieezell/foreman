@@ -9,8 +9,8 @@ declare(strict_types=1);
  * One file, PHP 8.1+, no Composer and no Foreman code, so a repository can copy it into its own CI.
  * It compares the working tree (committed, staged, unstaged and untracked changes) with the merge-base
  * of HEAD and a base branch, and fails on:
- *   - a deleted test file
- *   - fewer test functions, or fewer assertions, in a test file
+ *   - fewer test functions, or fewer assertions, in all changed test files together. Tests moved from one
+ *     file to another count the same before and after. A deleted test file counts as having no tests now.
  *   - a new skip or suppress marker
  *   - an edit to protected tool config, including `[tool.*]` tables in pyproject.toml
  *   - a PHPStan baseline that holds more errors than before
@@ -119,6 +119,8 @@ function main(array $args): int
     foreach ($changes as $path => [$status, $before, $after]) {
         array_push($violations, ...checkFile($stacks, $path, $status, $before, $after));
     }
+
+    array_push($violations, ...checkTotals($stacks, $changes));
 
     if ($violations) {
         fwrite(STDERR, "Test integrity check failed:\n- ".implode("\n- ", $violations)."\n");
@@ -242,8 +244,9 @@ function checkFile(array $stacks, string $path, string $status, ?string $before,
     $isBaseline = (bool) preg_match('/^phpstan.*baseline.*\.neon$|^baseline\.neon$/', basename($path));
     $isTest = matches(rules($stacks, 'testFiles'), $path);
 
+    // Its tests count toward the totals in checkTotals()
     if ($status === 'D' && $isTest) {
-        return ["Deleted test file {$path}."];
+        return [];
     }
 
     if (! $isBaseline && matches(rules($stacks, 'protectedConfig'), $path)) {
@@ -260,21 +263,42 @@ function checkFile(array $stacks, string $path, string $status, ?string $before,
         }
     }
 
-    if ($isTest || matches(rules($stacks, 'inlineTestFiles'), $path)) {
-        foreach (['testMarkers' => 'test functions', 'assertionMarkers' => 'assertions'] as $table => $label) {
-            $markers = rules($stacks, $table);
-
-            if (($now = countMarkers((string) $after, $markers)) < ($was = countMarkers((string) $before, $markers))) {
-                $violations[] = "Fewer {$label} in {$path}: {$was} before, {$now} now.";
-            }
-        }
-    }
-
     if ($after !== null && ! preg_match(SKIP_MARKER_EXEMPT, $path)) {
         foreach (rules($stacks, 'skipMarkers') as $marker) {
             if (countMarkers($after, [$marker]) > countMarkers((string) $before, [$marker])) {
                 $violations[] = "New skip or suppress marker `{$marker}` in {$path}. Fix the code or the test instead of silencing it.";
             }
+        }
+    }
+
+    return $violations;
+}
+
+/**
+ * Test functions and assertions, totalled across every changed test file, so a test moved to another file
+ * or a renamed file is not a loss. A deleted test file has none now. Each dropped total lists the files that lost some.
+ *
+ * @return list<string>
+ */
+function checkTotals(array $stacks, array $changes): array
+{
+    $violations = [];
+    $testFiles = [...rules($stacks, 'testFiles'), ...rules($stacks, 'inlineTestFiles')];
+
+    foreach (['testMarkers' => 'test functions', 'assertionMarkers' => 'assertions'] as $table => $label) {
+        $markers = rules($stacks, $table);
+        [$was, $now, $lost] = [0, 0, ''];
+
+        foreach ($changes as $path => [, $before, $after]) {
+            if (matches($testFiles, $path)) {
+                $was += $fileWas = countMarkers((string) $before, $markers);
+                $now += $fileNow = countMarkers((string) $after, $markers);
+                $lost .= $fileNow < $fileWas ? "\n  {$path}: {$fileWas} before, {$fileNow} now." : '';
+            }
+        }
+
+        if ($now < $was) {
+            $violations[] = "Fewer {$label} across the changed test files: {$was} before, {$now} now.{$lost}";
         }
     }
 
