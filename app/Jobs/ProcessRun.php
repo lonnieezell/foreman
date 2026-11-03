@@ -2,18 +2,24 @@
 
 namespace App\Jobs;
 
+use App\Enums\Outcome;
 use App\Enums\RunStatus;
 use App\Guardrails\Guard;
 use App\Guardrails\RiskTier;
 use App\Guardrails\StackSet;
 use App\Models\Run;
+use App\Services\AgentOutcome;
+use App\Services\AgentReport;
 use App\Services\Claude\AgentResult;
 use App\Services\Claude\Claude;
 use App\Services\Gate;
 use App\Services\GitHub;
+use App\Services\ScopeJudge;
+use App\Services\ScopeVerdict;
 use App\Services\Worktree;
 use App\Support\ForemanEnv;
 use App\Support\IssueSanitiser;
+use App\Support\Prompt;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -24,23 +30,6 @@ use Throwable;
 class ProcessRun implements ShouldQueue
 {
     use Queueable;
-
-    /** Where a review round writes its verdicts, relative to the worktree. */
-    public const REVIEW_FILE = '.foreman/review.json';
-
-    /** Where the agent says how it ended, relative to the worktree. Foreman acts on it. */
-    public const RESULT_FILE = '.foreman/result.json';
-
-    /** The scope judge's answer. */
-    private const JUDGE_SCHEMA = [
-        'type' => 'object',
-        'properties' => [
-            'in_scope' => ['type' => 'boolean'],
-            'weakens_tests' => ['type' => 'boolean'],
-            'reason' => ['type' => 'string'],
-        ],
-        'required' => ['in_scope', 'weakens_tests', 'reason'],
-    ];
 
     public int $tries = 1;
 
@@ -74,7 +63,7 @@ class ProcessRun implements ShouldQueue
             }
 
             // Clear the last run's result and verdicts, and keep them out of git
-            File::delete(["{$worktree}/".self::RESULT_FILE, "{$worktree}/".self::REVIEW_FILE]);
+            (new AgentReport($worktree))->clear();
             $this->worktree($run)->excludeFromGit('.foreman/');
 
             $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
@@ -231,22 +220,22 @@ class ProcessRun implements ShouldQueue
             $verdict = $this->judge($run, $issue);
 
             // No usable answer still goes on to the gate, and opens a draft if it passes
-            if ($verdict === null || self::judgePasses($verdict)) {
+            if ($verdict === null || $verdict->passes()) {
                 break;
             }
 
             if ($corrected) {
                 $this->handToHuman($run, $github,
-                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote(self::describeVerdict($verdict)),
-                    "Scope judge vetoed the change again: {$verdict['reason']} Flagged the issue for a human.", 'scope_vetoed');
+                    "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote($verdict->describe()),
+                    "Scope judge vetoed the change again: {$verdict->reason} Flagged the issue for a human.", 'scope_vetoed');
 
                 return;
             }
 
-            $run->log("Scope judge vetoed the change: {$verdict['reason']} Sending the agent back for one correction round.");
-            $agent = $this->runPass($run, $github, 'The correction round', strtr(file_get_contents(resource_path('prompts/scope-correction.md')), [
-                '{{base}}' => $this->worktree($run)->baseRef(),
-                '{{verdict}}' => self::describeVerdict($verdict),
+            $run->log("Scope judge vetoed the change: {$verdict->reason} Sending the agent back for one correction round.");
+            $agent = $this->runPass($run, $github, 'The correction round', Prompt::render('scope-correction', [
+                'base' => $this->worktree($run)->baseRef(),
+                'verdict' => $verdict->describe(),
             ]));
         }
 
@@ -265,15 +254,15 @@ class ProcessRun implements ShouldQueue
             $labels[] = 'scope:unchecked';
         } else {
             $passed = $corrected ? 'passed after one correction round' : 'passed';
-            $run->log("Scope judge {$passed}: {$verdict['reason']}");
-            $footer .= "\n- Scope judge: {$passed}. {$verdict['reason']}";
+            $run->log("Scope judge {$passed}: {$verdict->reason}");
+            $footer .= "\n- Scope judge: {$passed}. {$verdict->reason}";
         }
 
         $this->push($run);
 
-        $body = str_starts_with($result['body'], "Closes #{$run->issue_number}") ? $result['body'] : "Closes #{$run->issue_number}\n\n{$result['body']}";
+        $body = str_starts_with($result->body, "Closes #{$run->issue_number}") ? $result->body : "Closes #{$run->issue_number}\n\n{$result->body}";
         $body .= "\n\n{$footer}";
-        $prUrl = $github->openPullRequest($repo, $run->branch, $result['title'], $body, draft: $labels !== []);
+        $prUrl = $github->openPullRequest($repo, $run->branch, $result->title, $body, draft: $labels !== []);
 
         foreach (["risk:tier-{$run->risk_tier}", ...$labels] as $label) {
             $github->labelPullRequest($repo, $prUrl, $label);
@@ -291,19 +280,15 @@ class ProcessRun implements ShouldQueue
         $run->removeWorktree();
     }
 
-    /**
-     * The agent's `pr` result. Any other outcome is handed to a human and gives null; an unreadable result throws.
-     *
-     * @return array{outcome:string,title:string,body:string}|null
-     */
-    private function prResult(Run $run, GitHub $github, AgentResult $agent): ?array
+    /** The agent's `pr` outcome. Any other outcome is handed to a human and gives null; an unreadable result throws. */
+    private function prResult(Run $run, GitHub $github, AgentResult $agent): ?AgentOutcome
     {
-        $result = $this->readResult($run->worktree_path);
+        $result = (new AgentReport($run->worktree_path))->outcome();
 
         if ($result === null) {
             $reason = $agent->isError()
                 ? 'Claude stopped with an error ('.($agent->subtype() ?? 'unknown').').'
-                : 'The agent finished without a readable result file ('.self::RESULT_FILE.').';
+                : 'The agent finished without a readable result file ('.AgentReport::RESULT_FILE.').';
 
             // Its last message usually says why, so keep it where a human will see it
             $last = $agent->message();
@@ -311,15 +296,15 @@ class ProcessRun implements ShouldQueue
             throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
         }
 
-        if ($result['outcome'] !== 'pr') {
-            $github->flagForHuman($run->repository, $run->issue_number, $result['comment']);
+        if ($result->kind !== Outcome::Pr) {
+            $github->flagForHuman($run->repository, $run->issue_number, $result->comment);
             $run->moveTo(RunStatus::NeedsHuman, [
                 'finished_at' => now(),
-                'stop_reason' => $result['outcome'] === 'already_done' ? 'already_done' : 'agent_asked',
+                'stop_reason' => $result->kind === Outcome::AlreadyDone ? 'already_done' : 'agent_asked',
             ]);
-            $run->log($result['outcome'] === 'already_done'
+            $run->log($result->kind === Outcome::AlreadyDone
                 ? 'Agent says the issue is already done. Flagged it for a human.'
-                : 'Agent asked for a human'.(($result['reason'] ?? '') !== '' ? " ({$result['reason']})" : '').'.');
+                : "Agent asked for a human ({$result->reason}).");
 
             return null;
         }
@@ -343,11 +328,11 @@ class ProcessRun implements ShouldQueue
         $run->update(['risk_tier' => $tier]);
         $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort, then /simplify.");
 
-        $agent = $this->runPass($run, $github, 'The review pass', strtr(file_get_contents(resource_path('prompts/review-pass.md')), [
-            '{{tier}}' => (string) $tier,
-            '{{reason}}' => $reason,
-            '{{level}}' => $level,
-            '{{base}}' => $base,
+        $agent = $this->runPass($run, $github, 'The review pass', Prompt::render('review-pass', [
+            'tier' => (string) $tier,
+            'reason' => $reason,
+            'level' => $level,
+            'base' => $base,
         ]));
 
         if ($tier < 3) {
@@ -358,9 +343,9 @@ class ProcessRun implements ShouldQueue
         $worktree->pointOriginHeadAtBase();
 
         $run->log('Security review: /security-review.');
-        $agent = $this->runPass($run, $github, '/security-review', strtr(file_get_contents(resource_path('prompts/security-review.md')), [
-            '{{reason}}' => $reason,
-            '{{base}}' => $base,
+        $agent = $this->runPass($run, $github, '/security-review', Prompt::render('security-review', [
+            'reason' => $reason,
+            'base' => $base,
         ]));
 
         if ($agent->cost() === 0.0) {
@@ -370,49 +355,16 @@ class ProcessRun implements ShouldQueue
         return $agent;
     }
 
-    /**
-     * Ask a separate Haiku call with no tools whether the change stays within the issue and leaves the tests alone.
-     * It sees only the cleaned-up issue and the diff, never the agent's session or reasoning.
-     * An unusable answer is asked again once. A second one gives null.
-     *
-     * @return array{in_scope:bool,weakens_tests:bool,reason:string}|null
-     */
-    private function judge(Run $run, string $issue): ?array
+    /** The scope judge's verdict on the diff since the base branch, or null when it gave no usable answer twice. */
+    private function judge(Run $run, string $issue): ?ScopeVerdict
     {
-        $repo = $run->repository;
         $diff = $this->worktree($run)->diffSinceBase();
 
-        $prompt = strtr(file_get_contents(resource_path('prompts/scope-judge.md')), [
-            '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
-            '{{issue}}' => $issue,
-            '{{diff}}' => IssueSanitiser::wrapText($diff, clean: false),
-        ]);
-
-        foreach ([1, 2] as $attempt) {
+        return (new ScopeJudge($run->repository, function (string $message) use ($run) {
+            $run->log($message);
+            $run->update(['heartbeat_at' => now()]);
             $this->guardCancel($run);
-            $run->log('Scope judge: asking Haiku whether the change stays within the issue'.($attempt > 1 ? ', again.' : '.'));
-
-            try {
-                $answer = app(Claude::class)->oneShot($repo, $prompt, self::JUDGE_SCHEMA);
-                $verdict = $answer->structured;
-
-                if (is_array($verdict) && is_bool($verdict['in_scope'] ?? null) && is_bool($verdict['weakens_tests'] ?? null)
-                    && is_string($verdict['reason'] ?? null) && trim($verdict['reason']) !== '') {
-                    // Model output shaped by untrusted text, bound for a markdown list and a quote
-                    return ['reason' => (string) str($verdict['reason'])->squish()->limit(500)] + $verdict;
-                }
-
-                $problem = $answer->error ?? 'an answer without in_scope, weakens_tests and reason: '.str($answer->output)->limit(500);
-            } catch (Throwable $e) {
-                $problem = $e->getMessage();
-            } finally {
-                $run->update(['heartbeat_at' => now()]);
-            }
-
-            $run->log("Scope judge gave no usable answer ({$problem}).");
-        }
-
-        return null;
+        }))->verdict($issue, $diff);
     }
 
     /** Flag the issue for a human with `$comment`, and end the run as Needs you. */
@@ -427,21 +379,6 @@ class ProcessRun implements ShouldQueue
     private static function quote(string ...$parts): string
     {
         return collect(explode("\n", implode("\n\n", $parts)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
-    }
-
-    private static function judgePasses(array $verdict): bool
-    {
-        return $verdict['in_scope'] && ! $verdict['weakens_tests'];
-    }
-
-    private static function describeVerdict(array $verdict): string
-    {
-        $problems = array_filter([
-            $verdict['in_scope'] ? null : 'out of scope',
-            $verdict['weakens_tests'] ? 'weakens tests' : null,
-        ]);
-
-        return ucfirst(implode(', ', $problems)).": {$verdict['reason']}";
     }
 
     /** Resume the agent's session with `$prompt`. Throws when it ends with an error. */
@@ -527,24 +464,6 @@ class ProcessRun implements ShouldQueue
         $this->worktree($run)->push(sign: $run->repository->sandbox);
     }
 
-    /**
-     * What the agent wrote in its result file, or null when it is missing or not one of the three outcomes.
-     *
-     * @return array{outcome:string,title?:string,body?:string,comment?:string,reason?:string}|null
-     */
-    private function readResult(string $worktree): ?array
-    {
-        $result = json_decode((string) @file_get_contents("{$worktree}/".self::RESULT_FILE), true);
-        $text = fn (string $key) => is_array($result) && is_string($result[$key] ?? null) && trim($result[$key]) !== '';
-
-        return match (is_array($result) ? ($result['outcome'] ?? null) : null) {
-            'pr' => $text('title') && $text('body') ? $result : null,
-            'needs_human' => $text('comment') && $text('reason') ? $result : null,
-            'already_done' => $text('comment') ? $result : null,
-            default => null,
-        };
-    }
-
     /** Post the agent's verdicts on the bot threads it was given, then watch the new head. */
     private function settleRound(Run $run, GitHub $github): void
     {
@@ -561,7 +480,7 @@ class ProcessRun implements ShouldQueue
         $this->push($run);
         $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
         $pushed = $head !== $run->head_sha;
-        $verdicts = $this->readVerdicts($run->worktree_path);
+        $verdicts = (new AgentReport($run->worktree_path))->verdicts();
 
         foreach ($run->pr_feedback['threads'] ?? [] as $thread) {
             $verdict = $verdicts[$thread['id']] ?? null;
@@ -600,17 +519,6 @@ class ProcessRun implements ShouldQueue
         ]);
     }
 
-    /** @return array<string,array{verdict:string,reply?:string}> thread id => verdict; anything unreadable is left out */
-    private function readVerdicts(string $worktree): array
-    {
-        $entries = json_decode((string) @file_get_contents("{$worktree}/".self::REVIEW_FILE), true);
-
-        return collect(is_array($entries) ? $entries : [])
-            ->filter(fn ($e) => is_array($e) && is_string($e['thread_id'] ?? null) && is_string($e['verdict'] ?? null))
-            ->keyBy('thread_id')
-            ->all();
-    }
-
     private function roundPrompt(Run $run, GitHub $github): string
     {
         $notPassing = $run->pr_feedback['checks'] ?? [];
@@ -625,16 +533,16 @@ class ProcessRun implements ShouldQueue
             ->map(fn ($t) => "### {$t['id']}\n{$t['author']} on {$t['path']}".($t['line'] ? ":{$t['line']}" : '')."\n\n".IssueSanitiser::wrapText($t['body']))
             ->implode("\n\n") ?: 'None.';
 
-        return strtr(file_get_contents(resource_path('prompts/pr-round.md')), [
-            '{{issue}}' => (string) $run->issue_number,
-            '{{branch}}' => $run->branch,
-            '{{pr}}' => $run->pr_url,
-            '{{round}}' => (string) $run->pr_round,
-            '{{max_rounds}}' => (string) config('foreman.pr_watch.max_rounds'),
-            '{{review_file}}' => self::REVIEW_FILE,
-            '{{untrusted_note}}' => IssueSanitiser::TEXT_NOTE,
-            '{{checks}}' => $checks,
-            '{{threads}}' => $threads,
+        return Prompt::render('pr-round', [
+            'issue' => (string) $run->issue_number,
+            'branch' => $run->branch,
+            'pr' => $run->pr_url,
+            'round' => (string) $run->pr_round,
+            'max_rounds' => (string) config('foreman.pr_watch.max_rounds'),
+            'review_file' => AgentReport::REVIEW_FILE,
+            'untrusted_note' => IssueSanitiser::TEXT_NOTE,
+            'checks' => $checks,
+            'threads' => $threads,
         ]);
     }
 
@@ -654,7 +562,7 @@ class ProcessRun implements ShouldQueue
         }
 
         return $prompt."\n\n".IssueSanitiser::TEXT_NOTE
-            ."\n\nYour last ".self::RESULT_FILE.' was cleared. Write it again before you stop, even if your answer is the same.'
+            ."\n\nYour last ".AgentReport::RESULT_FILE.' was cleared. Write it again before you stop, even if your answer is the same.'
             ."\n\nContinue from where you stopped, following the same instructions as before.";
     }
 

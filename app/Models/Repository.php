@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RunStatus;
 use App\Guardrails\StackSet;
+use App\Support\Prompt;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
@@ -162,16 +163,13 @@ SH;
 
     public function renderPrompt(Run $run, string $issueText): string
     {
-        $template = $this->prompt_template
-            ?: file_get_contents(resource_path('prompts/default.md'));
-
-        return strtr($template, [
-            '{{issue}}' => (string) $run->issue_number,
-            '{{issue_text}}' => $issueText,
-            '{{branch}}' => $run->branch,
-            '{{base}}' => $this->base_branch,
-            '{{repo}}' => $this->github_repo,
-            '{{human_label}}' => $this->human_label,
+        return Prompt::fill($this->prompt_template ?: Prompt::template('default'), [
+            'issue' => (string) $run->issue_number,
+            'issue_text' => $issueText,
+            'branch' => $run->branch,
+            'base' => $this->base_branch,
+            'repo' => $this->github_repo,
+            'human_label' => $this->human_label,
         ]);
     }
 }

@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\AgentReport;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -179,7 +180,7 @@ class ResumeCatchUpTest extends TestCase
     {
         $this->process($this->makeRun(), comments: "owner wrote:\nGo ahead.");
 
-        $this->assertStringContainsString(ProcessRun::RESULT_FILE.' was cleared', $this->prompt());
+        $this->assertStringContainsString(AgentReport::RESULT_FILE.' was cleared', $this->prompt());
     }
 
     public function test_the_resume_prompt_lists_the_commits_merged_from_base(): void

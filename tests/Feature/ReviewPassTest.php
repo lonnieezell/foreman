@@ -8,6 +8,7 @@ use App\Livewire\Dashboard;
 use App\Livewire\RunDetail;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\AgentReport;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -97,7 +98,7 @@ class ReviewPassTest extends TestCase
 
             $result = $pass === 'review' && $answers['reviewResult'] ? $answers['reviewResult'] : ['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.'];
             File::ensureDirectoryExists("{$this->worktree}/.foreman");
-            File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode($result));
+            File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode($result));
 
             return FakeClaude::result($answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']);
         };
