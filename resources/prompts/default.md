@@ -26,8 +26,10 @@ Bash runs only commands on an allowlist. A "Permission to use Bash has been deni
 message covers only the commands in that call, not Bash as a whole. If one
 command in a chained call is not allowed, the whole call is refused. Split the
 call into single commands and retry without the refused one. Use the file tools
-for reading files and listing folders where you can. Write the `needs_human`
-result only when a command you truly need is refused, and name that command.
+for reading files and listing folders where you can. To copy a file the shell
+won't copy, Read it and Write the copy. Write the `needs_human` result only when
+a command you truly need is refused. Its reason names each refused command
+exactly, never "all of Bash".
 
 If {{base}} already does what the issue asks (an earlier commit fixed it), change
 nothing. Write the `already_done` result. The comment says where it is done: the

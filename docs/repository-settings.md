@@ -146,10 +146,11 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 
 - read and edit files, search, and use skills and sub-agents
 - run the git commands that inspect and commit: `git status`, `git diff`, `git log`, `git show`, `git add` and `git commit`
+- copy and move files and make folders: `cp`, `mv` and `mkdir`. `rm` is not on the list.
 - run `composer`, `php`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
 - run Rust tools (`cargo`, `rustfmt`) and Python tools (`python`, `python3`, `pytest`, `ruff`, `mypy`, `pyright`, `uv` and `poetry`)
 
-The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command.
+The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command. It also says that a `needs_human` result caused by a refusal must name each refused command.
 
 The form shows the list as chips, grouped into Files, Agents, Shell and Other. A shell chip shows what's inside `Bash(…)`, so `Bash(npm:*)` shows as `npm:*`. Hover a chip to see the full entry.
 
@@ -167,7 +168,7 @@ If the list can't run `git add` and `git commit`, the settings page shows a warn
 
 The `gh` entries do nothing now. The guard hook blocks every `gh` command and `git push`, whatever the list says. `Bash(git:*)` still matters, because it lets the agent run git commands beyond inspecting and committing. Keep it only if you need that.
 
-A saved list also misses entries added to the default later, such as `Bash(php:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it with **+ Add tool**, or click **Restore default**. Then click **Save changes**.
+A saved list also misses entries added to the default later, such as `Bash(php:*)`, `Bash(cp:*)`, `Bash(mv:*)` and `Bash(mkdir:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it with **+ Add tool**, or click **Restore default**. Then click **Save changes**.
 
 ### Locked paths
 
