@@ -81,6 +81,14 @@ class Run extends Model
         $query->whereIn('id', static::query()->selectRaw('max(id)')->groupBy('repository_id', 'issue_number'));
     }
 
+    /** The issues on the dashboard's cards: latest runs, not dismissed, not in an archived repository. */
+    public function scopeOnDashboard(Builder $query): void
+    {
+        $query->latestPerIssue()
+            ->whereNull('handled_at')
+            ->whereHas('repository', fn ($q) => $q->whereNull('archived_at'));
+    }
+
     /** Latest runs of issues that had a run finish today, except issues that are active again. */
     public function scopeDoneToday(Builder $query): void
     {

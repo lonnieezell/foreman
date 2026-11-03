@@ -63,4 +63,16 @@ enum RunStatus: string
             default => 'active',
         };
     }
+
+    /** The tab icon's dot for an issue at this status, if any. */
+    public function dot(): ?string
+    {
+        return match ($this) {
+            self::Failed => 'bad',
+            self::NeedsHuman => 'attention',
+            self::PrReady, self::PrOpened => 'good',
+            self::Queued, self::Preparing, self::Working, self::Checking, self::Reviewing => 'busy',
+            self::WatchingPr, self::Merged, self::Cancelled => null,
+        };
+    }
 }

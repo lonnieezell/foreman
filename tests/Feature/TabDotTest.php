@@ -69,9 +69,11 @@ class TabDotTest extends TestCase
 
     public function test_a_run_at_any_station_is_busy(): void
     {
-        foreach (RunStatus::stations() as $i => $station) {
+        $repo = $this->repository();
+
+        foreach (RunStatus::stations() as $station) {
             Run::query()->delete();
-            $this->makeRun($this->repository("app{$i}"), 1, $station);
+            $this->makeRun($repo, 1, $station);
 
             $this->assertDot('busy');
         }

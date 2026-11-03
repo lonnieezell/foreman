@@ -236,7 +236,11 @@ async function pollTabDot() {
 
     try {
         const response = await fetch('/status/tab-dot', { headers: { Accept: 'application/json' } });
-        const dot = response.ok ? (await response.json()).dot : tabDot;
+        if (!response.ok) {
+            return;
+        }
+
+        const dot = (await response.json()).dot;
 
         if (dot !== tabDot) {
             tabDot = dot;

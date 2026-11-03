@@ -159,7 +159,7 @@ class Dashboard extends Component
             ->whereHas('repository', fn ($q) => $q->whereNull('archived_at'))
             ->with('repository');
 
-        $runs = $latest()->latest('id')->whereNull('handled_at')
+        $runs = Run::onDashboard()->with('repository')->latest('id')
             ->whereIn('status', [RunStatus::NeedsHuman, RunStatus::Failed, RunStatus::PrReady, RunStatus::PrOpened, ...RunStatus::stations(), RunStatus::WatchingPr])->get();
         $handled = $latest()
             ->where(fn ($q) => $q->whereNotNull('handled_at')->orWhere('status', RunStatus::Cancelled))
