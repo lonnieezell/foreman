@@ -198,11 +198,13 @@ const tabDotColours = { bad: '#A9382B', attention: '#C98A00', good: '#3FA58C', b
 const tabIcon = new Image();
 tabIcon.src = '/icon-192.png';
 let tabDot = null;
+let tabDotPolling = false;
 
 function drawTabDot() {
     let url = null;
 
-    if (tabDot && tabIcon.complete) {
+    // naturalWidth stays 0 while loading and when the image failed, where drawImage would throw
+    if (tabDot && tabIcon.naturalWidth) {
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = 64;
         const ctx = canvas.getContext('2d');
@@ -224,16 +226,26 @@ function drawTabDot() {
     }
 }
 
+// One poll at a time, so a slow answer can't land after a newer one
 async function pollTabDot() {
+    if (tabDotPolling) {
+        return;
+    }
+
+    tabDotPolling = true;
+
     try {
         const response = await fetch('/status/tab-dot', { headers: { Accept: 'application/json' } });
+        const dot = response.ok ? (await response.json()).dot : tabDot;
 
-        if (response.ok) {
-            tabDot = (await response.json()).dot;
+        if (dot !== tabDot) {
+            tabDot = dot;
             drawTabDot();
         }
     } catch {
         // Keep the last dot; the next poll tries again
+    } finally {
+        tabDotPolling = false;
     }
 }
 

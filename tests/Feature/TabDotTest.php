@@ -111,6 +111,15 @@ class TabDotTest extends TestCase
         $this->assertDot(null);
     }
 
+    #[TestWith([RunStatus::Merged])]
+    #[TestWith([RunStatus::Cancelled])]
+    public function test_a_finished_issue_has_no_dot(RunStatus $status): void
+    {
+        $this->makeRun($this->repository(), 1, $status);
+
+        $this->assertDot(null);
+    }
+
     public function test_watching_a_pr_is_not_busy(): void
     {
         $this->makeRun($this->repository(), 1, RunStatus::WatchingPr);
