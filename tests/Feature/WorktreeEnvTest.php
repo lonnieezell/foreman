@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\AgentReport;
 use App\Services\Claude\ClaudeCli;
 use App\Services\GitHub;
 use App\Support\ForemanEnv;
@@ -57,8 +58,8 @@ class WorktreeEnvTest extends TestCase
 
         Process::fake(function (PendingProcess $process) use ($run) {
             if ($process->command[0] === 'claude' && ! in_array('--json-schema', $process->command, true)) {
-                File::ensureDirectoryExists(dirname("{$run->repository->worktreePath(7)}/".ProcessRun::RESULT_FILE));
-                File::put("{$run->repository->worktreePath(7)}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
+                File::ensureDirectoryExists(dirname("{$run->repository->worktreePath(7)}/".AgentReport::RESULT_FILE));
+                File::put("{$run->repository->worktreePath(7)}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
 
                 return Process::result(json_encode(['type' => 'result', 'num_turns' => 1]));
             }

@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Livewire\RepositoryForm;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\AgentReport;
 use App\Services\Claude\ClaudeCli;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,7 +72,7 @@ class ForemanActsTest extends TestCase
             if ($command[0] === 'claude') {
                 if ($result !== null) {
                     File::ensureDirectoryExists("{$this->worktree}/.foreman");
-                    File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, is_array($result) ? json_encode($result) : $result);
+                    File::put("{$this->worktree}/".AgentReport::RESULT_FILE, is_array($result) ? json_encode($result) : $result);
                 }
 
                 return Process::result(json_encode(['type' => 'result', 'num_turns' => 3, 'result' => $lastMessage]));
@@ -189,7 +190,7 @@ class ForemanActsTest extends TestCase
     public function test_a_result_file_left_by_an_earlier_run_is_ignored(): void
     {
         File::ensureDirectoryExists("{$this->worktree}/.foreman");
-        File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'already_done', 'comment' => 'stale']));
+        File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'already_done', 'comment' => 'stale']));
         $this->fakeAgent(null);
 
         $run = $this->settle($this->makeRun());

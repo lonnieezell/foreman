@@ -9,6 +9,7 @@ use App\Livewire\RunDetail;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Models\Setting;
+use App\Services\AgentReport;
 use App\Services\GitHub;
 use App\Services\PrWatcher;
 use App\Services\Usage;
@@ -297,7 +298,7 @@ class PrWatchTest extends TestCase
     private function writePrResult(): void
     {
         File::ensureDirectoryExists("{$this->worktree}/.foreman");
-        File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'Fix', 'body' => 'Done.']));
+        File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'Fix', 'body' => 'Done.']));
     }
 
     public function test_an_opened_pr_is_watched_and_its_worktree_kept(): void

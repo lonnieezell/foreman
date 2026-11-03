@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Livewire\Dashboard;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Services\AgentReport;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -77,7 +78,7 @@ class ForemanGateTest extends TestCase
 
             if ($command[0] === 'claude') {
                 File::ensureDirectoryExists("{$this->worktree}/.foreman");
-                File::put("{$this->worktree}/".ProcessRun::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
+                File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
 
                 return Process::result(json_encode(['type' => 'result', 'num_turns' => 1]));
             }

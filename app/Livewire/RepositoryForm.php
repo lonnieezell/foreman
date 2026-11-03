@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Guardrails\StackSet;
 use App\Models\Repository;
 use App\Services\GitHub;
+use App\Support\Prompt;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Validation\Rule;
@@ -101,7 +102,7 @@ class RepositoryForm extends Component
         $this->claude_profile = $this->claude_profile ?: (string) array_key_first(config('foreman.claude_profiles'));
 
         if ($this->prompt_template === '') {
-            $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
+            $this->prompt_template = Prompt::template('default');
         }
 
         $this->detectStacks();
@@ -210,7 +211,7 @@ class RepositoryForm extends Component
         $data['verify_script'] = $verify === '' || $verify === Repository::defaultVerifyScript($data['local_path'], "origin/{$data['base_branch']}") ? null : $verify;
 
         // Store null when the prompt is unchanged, so improvements to the default reach this repository
-        $default = file_get_contents(resource_path('prompts/default.md'));
+        $default = Prompt::template('default');
         $data['prompt_template'] = trim($data['prompt_template']) === trim($default) ? null : $data['prompt_template'];
 
         $repository = $this->repository ?? new Repository;
@@ -248,7 +249,7 @@ class RepositoryForm extends Component
 
     public function resetPrompt(): void
     {
-        $this->prompt_template = file_get_contents(resource_path('prompts/default.md'));
+        $this->prompt_template = Prompt::template('default');
     }
 
     public function resetAllowedTools(): void
@@ -287,7 +288,7 @@ class RepositoryForm extends Component
 
     public function getPromptIsEditedProperty(): bool
     {
-        return trim($this->prompt_template) !== trim(file_get_contents(resource_path('prompts/default.md')));
+        return trim($this->prompt_template) !== trim(Prompt::template('default'));
     }
 
     /** The known placeholders the prompt uses, in the order they first appear. */
@@ -310,7 +311,7 @@ class RepositoryForm extends Component
      */
     public function getPromptDiffProperty(): array
     {
-        $old = explode("\n", rtrim(file_get_contents(resource_path('prompts/default.md')), "\n"));
+        $old = explode("\n", rtrim(Prompt::template('default'), "\n"));
         $new = explode("\n", rtrim($this->prompt_template, "\n"));
 
         // Longest common subsequence lengths, filled from the end so the walk below can go forwards
@@ -352,19 +353,19 @@ class RepositoryForm extends Component
     /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */
     public function setupScriptPrompt(): string
     {
-        return strtr(file_get_contents(resource_path('prompts/setup-script.md')), [
-            '{{base}}' => $this->base_branch,
-            '{{allowed_tools}}' => $this->allowed_tools,
-            '{{setup_script}}' => $this->setup_script,
+        return Prompt::render('setup-script', [
+            'base' => $this->base_branch,
+            'allowed_tools' => $this->allowed_tools,
+            'setup_script' => $this->setup_script,
         ]);
     }
 
     /** For pasting into Claude Code in the project; built from the form so unsaved edits count. */
     public function verifyScriptPrompt(): string
     {
-        return strtr(file_get_contents(resource_path('prompts/verify-script.md')), [
-            '{{base}}' => $this->base_branch,
-            '{{verify_script}}' => $this->verify_script,
+        return Prompt::render('verify-script', [
+            'base' => $this->base_branch,
+            'verify_script' => $this->verify_script,
         ]);
     }
 
