@@ -144,7 +144,7 @@ Instead, the [test-integrity check](#test-integrity) fails a run that deletes te
 
 - Matching is on text. A command built from variables or run through `sh -c "…"` can get past the `git push` and `gh` rules. The guard works with the allowed-tools list, and doesn't replace it.
 - A `gh` or `git push` inside a quoted string can be blocked by mistake, and the agent sees the reason.
-- Edits made by a shell command, such as `sed -i`, `echo >` or a `php` script, are not edits to the guard. It only sees `Edit`-style tools. The [test-integrity check](#test-integrity) looks at the finished diff, so it catches those edits to tests and tool settings. Nothing checks locked paths, lock files or `CLAUDE.md` afterwards, so shell edits to those get through.
+- Edits made by a shell command, such as `sed -i`, `echo >`, `cp`, `mv` or a `php` script, are not edits to the guard. It only sees `Edit`-style tools. The [test-integrity check](#test-integrity) looks at the finished diff, so it catches those edits to tests and tool settings. Nothing checks locked paths, lock files or `CLAUDE.md` afterwards, so shell edits to those get through.
 - The skip-marker rule applies to every file, Markdown included. An `Edit` that quotes `.skip(` in a doc is blocked, even though the test-integrity check allows it.
 - Paths are matched as written. A file reached through a symlink to a protected file isn't recognized.
 

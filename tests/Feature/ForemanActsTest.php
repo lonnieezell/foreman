@@ -277,6 +277,24 @@ class ForemanActsTest extends TestCase
         $this->assertContains('Bash(php:*)', explode(',', Repository::DEFAULT_ALLOWED_TOOLS));
     }
 
+    public function test_the_default_tools_allow_copying_moving_and_making_folders_but_not_deleting(): void
+    {
+        $tools = explode(',', Repository::DEFAULT_ALLOWED_TOOLS);
+
+        foreach (['Bash(cp:*)', 'Bash(mv:*)', 'Bash(mkdir:*)'] as $tool) {
+            $this->assertContains($tool, $tools);
+        }
+        $this->assertNotContains('Bash(rm:*)', $tools);
+    }
+
+    public function test_the_default_prompt_shows_a_way_around_a_refusal_and_asks_for_the_exact_refused_commands(): void
+    {
+        $prompt = file_get_contents(resource_path('prompts/default.md'));
+
+        $this->assertStringContainsString('Read it and Write the copy', $prompt);
+        $this->assertStringContainsString('never "all of Bash"', $prompt);
+    }
+
     public function test_the_default_prompt_says_a_bash_denial_covers_only_that_call(): void
     {
         $prompt = file_get_contents(resource_path('prompts/default.md'));
