@@ -190,3 +190,54 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 });
+
+// Draws a status dot on the tab icon: the worst of failed, needs a reply, ready for review, then
+// busy. Polled on every page, since only some pages refresh themselves. The green and grey are
+// brighter than the page tones, which vanish on a dark tab bar.
+const tabDotColours = { bad: '#A9382B', attention: '#C98A00', good: '#3FA58C', busy: '#C9CFCC' };
+const tabIcon = new Image();
+tabIcon.src = '/icon-192.png';
+let tabDot = null;
+
+function drawTabDot() {
+    let url = null;
+
+    if (tabDot && tabIcon.complete) {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(tabIcon, 0, 0, 64, 64);
+        ctx.beginPath();
+        ctx.arc(48, 48, 15, 0, Math.PI * 2);
+        ctx.fillStyle = tabDotColours[tabDot];
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#131a22';
+        ctx.stroke();
+        url = canvas.toDataURL('image/png');
+    }
+
+    // Looked up each time, since a page swap may replace the head's links
+    for (const link of document.querySelectorAll('link[rel="icon"]')) {
+        link.dataset.original ??= link.href;
+        link.href = url ?? link.dataset.original;
+    }
+}
+
+async function pollTabDot() {
+    try {
+        const response = await fetch('/status/tab-dot', { headers: { Accept: 'application/json' } });
+
+        if (response.ok) {
+            tabDot = (await response.json()).dot;
+            drawTabDot();
+        }
+    } catch {
+        // Keep the last dot; the next poll tries again
+    }
+}
+
+tabIcon.onload = drawTabDot;
+document.addEventListener('livewire:navigated', drawTabDot);
+pollTabDot();
+setInterval(pollTabDot, 10000);

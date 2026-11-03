@@ -116,6 +116,19 @@ The **Issues** column groups each issue by its latest run:
 - **In progress** and **Watching PRs** are still moving.
 - **Handled** shows the last ten dismissed or cancelled issues.
 
+### Tab icon
+
+The browser tab icon shows a dot on every Foreman page, so a pinned tab tells you whether to look. It shows one dot, the first that applies:
+
+1. **Red**: an issue failed.
+2. **Amber**: an issue needs your reply.
+3. **Green**: a PR is ready for review.
+4. **Grey**: a run is at a station, from **Waiting** to **Reviewing**.
+
+With none of these, the icon has no dot. It counts the same issues as the dashboard, so dismissed issues and archived repositories don't count. **Watching PR** doesn't count as busy, since no worker is attached.
+
+The page checks every 10 seconds. Browsers slow down tabs in the background, so a hidden tab may update only about once a minute.
+
 ## History
 
 The **History** page lists every issue Foreman has worked on, newest first. It shows totals across all of an issue's runs: runs, turns, cost and tokens. Filter it by repository with the menu at the top.
