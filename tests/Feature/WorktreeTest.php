@@ -260,6 +260,24 @@ class WorktreeTest extends TestCase
         $this->assertSame(2, $worktree->changedLines(), 'a rename counts only its changed line; binary counts as none');
     }
 
+    public function test_lines_at_the_base_come_from_the_base_branch_not_the_branch(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->path, 'a.txt', "changed\n", 'branch work');
+
+        $this->assertSame("two\nthree", $worktree->linesAtBase('a.txt', 2, 3));
+        $this->assertSame('three', $worktree->linesAtBase('a.txt', 3, 50));
+    }
+
+    public function test_lines_at_the_base_are_null_for_a_file_the_base_lacks_or_a_range_past_its_end(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->path, 'new.txt', "branch only\n", 'branch work');
+
+        $this->assertNull($worktree->linesAtBase('new.txt', 1, 1));
+        $this->assertNull($worktree->linesAtBase('a.txt', 9, 10));
+    }
+
     public function test_a_diff_with_no_base_throws(): void
     {
         $worktree = new Worktree($this->prepared()->path, 'agent/issue-7', 'no-such-base', $this->source);

@@ -21,13 +21,37 @@ final class AgentReport
     {
         $result = $this->read(self::RESULT_FILE);
         $text = fn (string $key) => is_string($result[$key] ?? null) && trim($result[$key]) !== '';
+        [$claim, $evidence] = self::judgeReply($result['judge_reply'] ?? null);
 
         return match (Outcome::tryFrom(is_string($result['outcome'] ?? null) ? $result['outcome'] : '')) {
-            Outcome::Pr => $text('title') && $text('body') ? new AgentOutcome(Outcome::Pr, title: $result['title'], body: $result['body']) : null,
+            Outcome::Pr => $text('title') && $text('body') ? new AgentOutcome(Outcome::Pr, title: $result['title'], body: $result['body'], judgeClaim: $claim, judgeEvidence: $evidence) : null,
             Outcome::NeedsHuman => $text('comment') && $text('reason') ? new AgentOutcome(Outcome::NeedsHuman, comment: $result['comment'], reason: $result['reason']) : null,
             Outcome::AlreadyDone => $text('comment') ? new AgentOutcome(Outcome::AlreadyDone, comment: $result['comment']) : null,
             null => null,
         };
+    }
+
+    /**
+     * The agent's answer to a scope judge veto: its claim, and line ranges on the base branch that back it up.
+     * Without a claim it is left out. Only well-formed ranges count: the first 5, each cut to 80 lines.
+     *
+     * @return array{0:?string,1:list<array{path:string,start:int,end:int}>}
+     */
+    private static function judgeReply(mixed $reply): array
+    {
+        if (! is_string($reply['claim'] ?? null) || trim($reply['claim']) === '') {
+            return [null, []];
+        }
+
+        $evidence = collect(is_array($reply['evidence'] ?? null) ? $reply['evidence'] : [])
+            ->filter(fn ($e) => is_string($e['path'] ?? null) && $e['path'] !== ''
+                && is_int($e['start'] ?? null) && is_int($e['end'] ?? null) && $e['start'] >= 1 && $e['end'] >= $e['start'])
+            ->take(5)
+            ->map(fn ($e) => ['path' => $e['path'], 'start' => $e['start'], 'end' => min($e['end'], $e['start'] + 79)])
+            ->values()
+            ->all();
+
+        return [(string) str($reply['claim'])->limit(2000), $evidence];
     }
 
     /** @return array<string,array{thread_id:string,verdict:string,reply?:string}> thread id => verdict; anything unreadable is left out */

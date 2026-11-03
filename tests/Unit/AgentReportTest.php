@@ -49,6 +49,49 @@ class AgentReportTest extends TestCase
         $this->assertSame('Closes #7', $outcome->body);
     }
 
+    public function test_a_pr_result_can_answer_the_scope_judge_with_a_claim_and_line_ranges(): void
+    {
+        $outcome = $this->report(json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'B', 'judge_reply' => [
+            'claim' => 'The consent fix is already on develop.',
+            'evidence' => [['path' => 'src/ConsentFilter.php', 'start' => 10, 'end' => 20]],
+        ]]))->outcome();
+
+        $this->assertSame('The consent fix is already on develop.', $outcome->judgeClaim);
+        $this->assertSame([['path' => 'src/ConsentFilter.php', 'start' => 10, 'end' => 20]], $outcome->judgeEvidence);
+    }
+
+    public function test_the_judge_reply_keeps_five_well_formed_ranges_of_at_most_80_lines(): void
+    {
+        $evidence = [
+            ['path' => 'a.php', 'start' => 1, 'end' => 500],
+            ['path' => 'b.php', 'start' => 0, 'end' => 3],
+            ['path' => 'c.php', 'start' => 9, 'end' => 2],
+            ['path' => '', 'start' => 1, 'end' => 2],
+            ['path' => 'd.php', 'start' => '1', 'end' => 2],
+            'e.php',
+            ...array_map(fn ($n) => ['path' => "f{$n}.php", 'start' => 1, 'end' => 1], range(1, 6)),
+        ];
+
+        $outcome = $this->report(json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'B', 'judge_reply' => ['claim' => 'C', 'evidence' => $evidence]]))->outcome();
+
+        $this->assertSame([
+            ['path' => 'a.php', 'start' => 1, 'end' => 80],
+            ['path' => 'f1.php', 'start' => 1, 'end' => 1],
+            ['path' => 'f2.php', 'start' => 1, 'end' => 1],
+            ['path' => 'f3.php', 'start' => 1, 'end' => 1],
+            ['path' => 'f4.php', 'start' => 1, 'end' => 1],
+        ], $outcome->judgeEvidence);
+    }
+
+    public function test_a_judge_reply_without_a_claim_is_left_out_and_the_pr_result_still_stands(): void
+    {
+        $outcome = $this->report(json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'B', 'judge_reply' => ['claim' => ' ', 'evidence' => [['path' => 'a.php', 'start' => 1, 'end' => 2]]]]))->outcome();
+
+        $this->assertSame(Outcome::Pr, $outcome->kind);
+        $this->assertNull($outcome->judgeClaim);
+        $this->assertSame([], $outcome->judgeEvidence);
+    }
+
     public function test_a_needs_human_result_gives_its_comment_and_reason(): void
     {
         $outcome = $this->report(json_encode(['outcome' => 'needs_human', 'comment' => 'Which API?', 'reason' => 'unclear']))->outcome();

@@ -142,6 +142,15 @@ class Worktree
         return array_values(array_filter(explode("\0", $this->sinceBase(['diff', '--name-only', '-z', '--no-renames'], 'Could not list the changed files'))));
     }
 
+    /** Lines `$start` to `$end` of `$path` as the base branch has it, or null when the base lacks the file or those lines. */
+    public function linesAtBase(string $path, int $start, int $end): ?string
+    {
+        $file = $this->git(['show', "{$this->baseRef()}:{$path}"]);
+        $lines = array_slice(explode("\n", rtrim($file->output(), "\n")), $start - 1, $end - $start + 1);
+
+        return $file->successful() && $lines !== [] ? implode("\n", $lines) : null;
+    }
+
     /** Lines added plus deleted since the branch left the base branch. A diff that fails counts as 0: the count only labels the PR. */
     public function changedLines(): int
     {
