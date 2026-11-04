@@ -221,6 +221,16 @@ class ClaudeCliTest extends TestCase
         $this->assertSame('Out of turns.', $agent->message());
     }
 
+    public function test_a_skill_call_is_logged_with_the_skills_name(): void
+    {
+        $this->fakeClaude('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"code-review"}}]}}'."\n".self::RESULT);
+        $run = $this->makeRun();
+
+        (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+
+        $this->assertStringContainsString('Skill: code-review', File::get($run->logPath()));
+    }
+
     public function test_exiting_without_a_result_throws(): void
     {
         $this->fakeClaude('', 1);
