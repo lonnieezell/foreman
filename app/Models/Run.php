@@ -208,7 +208,7 @@ class Run extends Model
     {
         $title = "Foreman: {$this->repository->name} #{$this->issue_number}";
         $body = $this->askedQuestion()
-            ? 'Question: '.str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->limit(90, preserveWords: true)
+            ? 'Question: '.str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->squish()->limit(90, preserveWords: true)
             : 'Needs you'.($this->stop_reason ? ': '.str_replace('_', ' ', $this->stop_reason) : '');
 
         // The text goes in as arguments after `--`, so it is never read as AppleScript or as an osascript option
@@ -223,7 +223,8 @@ class Run extends Model
         }
 
         if ($error !== null) {
-            $this->log("Couldn’t send the macOS notification: {$error}");
+            // Not worded like the run errors, since it isn't why the run stopped
+            $this->log("macOS notification not sent: {$error}");
         }
     }
 

@@ -123,6 +123,29 @@ class NativeNotificationsTest extends TestCase
         );
     }
 
+    public function test_a_question_on_several_lines_is_shown_on_one(): void
+    {
+        Process::fake();
+        Setting::put('native_notifications', 1);
+        $run = $this->makeRun();
+        $run->messages()->create(['role' => 'agent', 'body' => "\n## Scope\n\nShould archived repositories be included?"]);
+
+        $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'question']);
+
+        $this->assertSame(['Foreman: app #42', 'Question: ## Scope Should archived repositories be included?'], $this->notifiedWith());
+    }
+
+    public function test_a_failed_notification_is_not_shown_as_a_run_error(): void
+    {
+        Process::fake(['*' => Process::result(errorOutput: 'boom', exitCode: 1)]);
+        Setting::put('native_notifications', 1);
+        $run = $this->makeRun();
+
+        $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
+
+        $this->assertSame('message', collect($run->logEntries())->last()['kind']);
+    }
+
     public function test_a_failed_notification_is_logged_and_the_move_still_happens(): void
     {
         Process::fake(['*' => Process::result(errorOutput: 'Not authorised to send Apple events', exitCode: 1)]);
@@ -132,7 +155,7 @@ class NativeNotificationsTest extends TestCase
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->fresh()->status);
-        $this->assertStringContainsString('Couldn’t send the macOS notification: Not authorised to send Apple events', $run->tail());
+        $this->assertStringContainsString('macOS notification not sent: Not authorised to send Apple events', $run->tail());
     }
 
     public function test_a_notification_that_throws_is_logged_and_does_not_fail_the_run(): void
@@ -144,6 +167,6 @@ class NativeNotificationsTest extends TestCase
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->fresh()->status);
-        $this->assertStringContainsString('Couldn’t send the macOS notification: The process exceeded the timeout of 5 seconds.', $run->tail());
+        $this->assertStringContainsString('macOS notification not sent: The process exceeded the timeout of 5 seconds.', $run->tail());
     }
 }

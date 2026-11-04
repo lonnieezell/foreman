@@ -50,7 +50,7 @@ Turn this on only if you trust every bot that can label issues in your repositor
 - It works only when the queue workers and the scheduler run in your login session, such as `composer run foreman` in a terminal. A worker started outside your session, such as a system daemon or over SSH, may fail with no notification and no error.
 - Foreman sends them with `osascript`. If none appear, check **System Settings → Notifications** for Script Editor and for your terminal app.
 - Clicking the notification doesn't open the run. Look for the issue under **Needs your reply** on the dashboard.
-- A failed notification never stops or fails the run. The reason goes in the run log, starting with "Couldn’t send the macOS notification".
+- A failed notification never stops or fails the run. The reason goes in the run log, starting with "macOS notification not sent".
 
 ### Usage holds
 
