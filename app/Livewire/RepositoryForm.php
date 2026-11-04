@@ -217,6 +217,11 @@ class RepositoryForm extends Component
         $repository = $this->repository ?? new Repository;
         $repository->fill($data)->save();
 
+        // Each label is a gh call, so skip them when the labels and their repository are unchanged
+        if (! $repository->wasRecentlyCreated && ! $repository->wasChanged(['github_repo', 'ready_label', 'working_label', 'human_label'])) {
+            return $this->redirectRoute('dashboard', navigate: true);
+        }
+
         try {
             $github->ensureLabels($repository);
         } catch (Throwable $e) {

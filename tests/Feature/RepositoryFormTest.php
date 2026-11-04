@@ -8,6 +8,7 @@ use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Livewire\Livewire;
+use Mockery;
 use Tests\TestCase;
 
 class RepositoryFormTest extends TestCase
@@ -179,5 +180,40 @@ class RepositoryFormTest extends TestCase
         Livewire::test(RepositoryForm::class, ['repository' => $this->repository()])
             ->assertSee('Up to 3 rounds')
             ->assertSeeHtml('href="'.route('settings').'"');
+    }
+
+    public function test_saving_without_label_changes_skips_github(): void
+    {
+        $github = Mockery::mock(GitHub::class);
+        $github->shouldNotReceive('ensureLabels');
+
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository()])
+            ->set('model', 'opus')
+            ->call('save', $github)
+            ->assertHasNoErrors();
+    }
+
+    public function test_saving_a_changed_label_creates_the_labels(): void
+    {
+        $github = Mockery::mock(GitHub::class);
+        $github->shouldReceive('ensureLabels')->once();
+
+        Livewire::test(RepositoryForm::class, ['repository' => $this->repository()])
+            ->set('human_label', 'stuck')
+            ->call('save', $github)
+            ->assertHasNoErrors();
+    }
+
+    public function test_adding_a_repository_creates_the_labels(): void
+    {
+        $github = Mockery::mock(GitHub::class);
+        $github->shouldReceive('ensureLabels')->once();
+
+        Livewire::test(RepositoryForm::class)
+            ->set('name', 'app')
+            ->set('local_path', $this->dir)
+            ->set('github_repo', 'owner/app')
+            ->call('save', $github)
+            ->assertHasNoErrors();
     }
 }
