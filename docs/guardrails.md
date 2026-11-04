@@ -52,7 +52,7 @@ This lowers the risk of prompt injection. It does not remove it.
 
 ## Foreman pushes, not the agent
 
-The agent never acts on GitHub. It commits in its worktree and writes `.foreman/result.json`. Foreman reads the file and then comments, labels, pushes and opens the PR. The three outcomes are listed in [Runs and statuses](runs.md#how-a-run-ends).
+The agent never acts on GitHub. It commits in its worktree and writes `.foreman/result.json`. Foreman reads the file and then comments, labels, pushes and opens the PR. The four outcomes are listed in [Runs and statuses](runs.md#how-a-run-ends).
 
 ### How it works
 

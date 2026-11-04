@@ -38,15 +38,18 @@ An agent that can run commands and reads text anyone can write should hold as li
 
 The agent finishes by writing a result file in its worktree, `.foreman/result.json`. Foreman reads it and does everything on GitHub itself.
 
-The file says one of three things:
+The file says one of four things:
 
 | Outcome | What the file holds | What Foreman does | The run ends as |
 | --- | --- | --- | --- |
 | `pr` | A title and a body | Runs the checks below, then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body unless the body already starts with it, and its own footer at the bottom. It also adds a `risk:tier-<n>` label to the PR. | **Watching PR**, or **PR opened** if Watch PRs is off |
+| `question` | One or more questions | Saves each question in Foreman, adds the human label and posts one fixed comment: "Foreman's agent has a question. It's being answered in Foreman." The questions themselves never go on the issue. | **Needs you** |
 | `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
 | `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
 
 A missing file, or one that isn't valid JSON or lacks a field its outcome needs, fails the run. The agent's last message goes on the run page and in a comment on the issue. Foreman never guesses what the agent meant.
+
+A `question` is a doubt you can settle with an answer, such as what an unclear spec means. A `needs_human` result is a blocker: it needs you to change the repo, the issue or the settings. The agent asks questions on the first run, in the review pass and in a scope correction round. It can't ask them in a PR fix-up round. A `question` result needs a list of questions that aren't blank. Anything else fails the run.
 
 The reason on a `needs_human` result shows in the run log. One reason is `test_looks_wrong`. It gives the agent an honest way out when a test seems wrong, instead of changing or skipping the test to get green.
 
@@ -67,7 +70,10 @@ The agent's own hooks already ran the same checks. Foreman runs them again becau
 Two kinds of run pick up where an earlier run stopped. Both resume the agent's Claude session in the same worktree, so it keeps everything it learned.
 
 - **Continue after my reply.** For a run that stopped at **Needs you** before opening a PR. The agent reads the new issue comments, but only those from people with write access. A `pr` result then goes through all the checks above.
+- **Continue after a question.** For a run that stopped with a `question`. You answer in the thread on the run page, then click **Continue**. The agent gets every message you posted on that run first, as trusted operator text. New issue comments from people with write access follow, marked as untrusted. If the two conflict, the agent is told your answer wins. Each round of questions is a new run with its own spend cap. There is no limit on rounds, because each one waits for you.
 - **Fix-up rounds.** For a watched PR with failing checks or open bot threads. The agent gets the CI logs and the bot threads, commits its fixes, and gives a verdict for each thread. Foreman pushes and replies. A round's push skips the gate, the review pass and the scope judge, so CI on the PR is the check. See [PR watching](pr-watching.md#fix-up-rounds).
+
+**Start over** begins a fresh session, so it can't remember earlier answers. Instead, its prompt gets every earlier question and answer for the same repository and issue, oldest first, under "Decisions your operator already made".
 
 Text from other people reaches the agent marked as untrusted. See [Rounds and resumes follow the same rules](guardrails.md#rounds-and-resumes-follow-the-same-rules).
 

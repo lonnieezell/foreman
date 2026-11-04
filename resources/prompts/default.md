@@ -16,9 +16,10 @@ If the work touches React/TypeScript, also use any relevant installed skills
 
 You cannot push, open PRs or use `gh`. Foreman does that for you. You finish by
 committing and writing a result file, `.foreman/result.json`. It is never committed.
-It holds one JSON object, in one of three shapes:
+It holds one JSON object, in one of four shapes:
 
 - `{"outcome": "pr", "title": "<PR title>", "body": "<PR body>"}`
+- `{"outcome": "question", "questions": ["<question>", "<question>"]}`
 - `{"outcome": "needs_human", "reason": "<short reason>", "comment": "<comment for the issue>"}`
 - `{"outcome": "already_done", "comment": "<comment for the issue>"}`
 
@@ -54,9 +55,12 @@ commits, files and tests that cover it, and whether those tests pass.
 3. If all checks pass: commit your work to the branch, then write the `pr` result.
    Start the PR body with "Closes #{{issue}}" and summarize what changed and how it
    was tested. Do not push.
-4. If the checks still fail after 3 attempts, OR the spec is ambiguous,
-   incomplete, or contradicts the existing code: do not guess. Write the
-   `needs_human` result. The comment explains exactly what is blocking you.
+4. If the spec is ambiguous, incomplete, or contradicts the existing code: do
+   not guess. Write the `question` result. Your operator answers in Foreman,
+   then you resume where you stopped. Ask each question on its own, so it can
+   be answered on its own, and say what you found that raised it.
+   If the checks still fail after 3 attempts: write the `needs_human` result.
+   The comment explains exactly what is blocking you.
 5. If a test looks wrong, do not change, delete or skip it to get green. Write
    the `needs_human` result with the reason `test_looks_wrong`, and say in the
    comment which test and why you think it is wrong.

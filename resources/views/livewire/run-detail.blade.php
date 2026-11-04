@@ -35,7 +35,9 @@
             @if ($run->pr_url)
                 <a class="btn btn-go" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a>
             @endif
-            @if ($run->canContinueAfterReply())
+            @if ($run->canContinueAfterReply() && $run->stop_reason === 'question')
+                <button class="btn btn-go" wire:click="continueRun" @unless ($run->hasOperatorReply()) wire:confirm="You haven’t answered yet. Continue anyway? The agent resumes with no answer from you." @endunless>Continue</button>
+            @elseif ($run->canContinueAfterReply())
                 <button class="btn btn-go" wire:click="continueRun" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>
             @endif
             @if ($run->status->isActive())
@@ -72,6 +74,10 @@
         <div class="notice">
             <p>Foreman’s scope judge gave no usable answer twice, so nothing was pushed. The details are in the comment on the issue. Choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
         </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'question')
+        <div class="notice">
+            <p>The agent has a question. Answer it in the thread below, then choose <strong>Continue</strong> to resume with everything it already knows. Or choose <strong>Start over</strong> for a fresh run, which also gets the questions and your answers.</p>
+        </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'already_done')
         <div class="notice">
             <p>The agent says the issue is already done, so nothing was pushed. Its explanation is in the comment on the issue. Reply there if you disagree, then choose <strong>Continue after my reply</strong> to resume with everything it already knows, or <strong>Start over</strong> for a fresh run.</p>
@@ -84,6 +90,27 @@
 
     @if ($run->error)
         <div class="notice notice-halt"><p>{{ $run->error }}</p></div>
+    @endif
+
+    @if ($thread->isNotEmpty() || $run->takesMessages())
+        <section class="thread" aria-labelledby="thread-title">
+            <h2 id="thread-title" class="thread-title">Thread <span class="hint">Round {{ $chain->count() }} · ${{ number_format($chain->sum('cost_usd'), 2) }} across {{ trans_choice('{1} 1 run|[2,*] :count runs', $chain->count()) }}</span></h2>
+            @foreach ($thread as $message)
+                <div @class(['thread-message', 'is-human' => $message->role === \App\Models\RunMessage::HUMAN]) wire:key="message-{{ $message->id }}">
+                    <span class="thread-who">{{ $message->role === \App\Models\RunMessage::HUMAN ? 'You' : 'Agent' }}</span>
+                    <p class="thread-body">{{ $message->body }}</p>
+                </div>
+            @endforeach
+            @if ($run->takesMessages())
+                <form class="thread-form field" wire:submit="postMessage">
+                    <label for="message">{{ $run->stop_reason === 'question' ? 'Your answer' : 'A message for the agent' }}</label>
+                    <textarea id="message" rows="3" wire:model="message"></textarea>
+                    @error('message')<p class="hint">{{ $message }}</p>@enderror
+                    <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
+                    <div><button class="btn" type="submit">Post</button></div>
+                </form>
+            @endif
+        </section>
     @endif
 
     <dl class="facts">

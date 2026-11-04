@@ -29,5 +29,5 @@ Give at most 5 ranges of at most 80 lines each. Paths are relative to the repo r
 Take the line numbers from `git show {{base}}:<path>`, not from the files in your
 worktree: your own edits move the lines.
 
-If the fix needs a decision you cannot make, write the `needs_human` result instead
-and explain why.
+If the fix needs a decision you cannot make, write the `question` result instead
+and ask it.

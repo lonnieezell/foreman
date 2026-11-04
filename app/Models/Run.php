@@ -10,7 +10,10 @@ use App\Support\ForemanEnv;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -43,6 +46,24 @@ class Run extends Model
     public function previousRun(): BelongsTo
     {
         return $this->belongsTo(Run::class, 'previous_run_id');
+    }
+
+    /** The run's thread: the agent's questions and what the operator wrote, in order. */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(RunMessage::class)->orderBy('id');
+    }
+
+    /** @return Collection<int,Run> This run and the runs it continues, oldest first. */
+    public function chain(): Collection
+    {
+        $runs = collect([$this]);
+
+        while ($previous = $runs->first()->previousRun) {
+            $runs->prepend($previous);
+        }
+
+        return $runs;
     }
 
     /**
@@ -93,15 +114,44 @@ class Run extends Model
                 ->whereRaw('coalesce(earlier.finished_at, earlier.updated_at) >= ?', [now()->startOfDay()]));
     }
 
-    /** Continuing needs a session and a worktree to resume, and a run with a PR is the human's from here. */
+    /**
+     * Continuing needs a session and a worktree to resume, and a run with a PR is the human's from here.
+     * A run is continued once.
+     */
     public function canContinueAfterReply(): bool
     {
-        return $this->status === RunStatus::NeedsHuman && $this->session_id && $this->worktree_path && ! $this->pr_url;
+        return $this->status === RunStatus::NeedsHuman && $this->session_id && $this->worktree_path && ! $this->pr_url
+            && ! static::where('previous_run_id', $this->id)->exists();
     }
 
-    /** Resume the same Claude session in the same worktree, after the human replied on the issue. */
-    public function continueAfterReply(GitHub $github): self
+    /** The operator can post in the thread once the run stops. A run with a PR is the human's from here, so it takes no messages. */
+    public function takesMessages(): bool
     {
+        return ! $this->status->isActive() && ! $this->pr_url;
+    }
+
+    /** Whether the operator wrote anything in Foreman since the run stopped. */
+    public function hasOperatorReply(): bool
+    {
+        return $this->messages()->where('role', RunMessage::HUMAN)->exists();
+    }
+
+    /**
+     * Resume the same Claude session in the same worktree, after the human replied on the issue or in Foreman.
+     * Null when the run can't be continued, such as when another click or tab already continued it.
+     */
+    public function continueAfterReply(GitHub $github): ?self
+    {
+        // The lock makes the check and the new run one step, so two clicks can't both pass the check
+        return Cache::lock("foreman:continue-run-{$this->id}", 30)->get(fn () => $this->startContinuing($github)) ?: null;
+    }
+
+    private function startContinuing(GitHub $github): ?self
+    {
+        if (! $this->canContinueAfterReply()) {
+            return null;
+        }
+
         $github->reclaim($this->repository, $this->issue_number);
 
         $next = $this->repository->runs()->create([
