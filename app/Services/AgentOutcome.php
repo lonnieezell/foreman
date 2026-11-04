@@ -14,5 +14,7 @@ final class AgentOutcome
         public readonly ?string $comment = null,
         public readonly ?string $reason = null,
         public readonly ?JudgeReply $judgeReply = null,
+        /** @var list<string> */
+        public readonly array $questions = [],
     ) {}
 }

@@ -227,6 +227,7 @@
     .issue-card .btn { text-decoration: none; }
     .issue-card .run-repo { color: var(--muted); }
     .risk-tier { color: var(--muted); font-size: .85rem; }
+    .question-badge { border: 1px solid currentColor; border-radius: 3px; padding: 0 .3rem; font-size: .75rem; }
     .issue-card-head .status { margin-left: .75rem; font-size: .85rem; }
     .issue-age { margin-left: auto; color: var(--muted); font-size: .85rem; }
     .issue-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -391,6 +392,12 @@
     .attempt { padding: .2rem .6rem; border: 1px solid var(--rule); background: var(--panel); font-size: .85rem; }
     .attempt:hover { border-color: var(--ink); }
     .attempt.is-current { border-color: var(--ink); box-shadow: inset 0 -2px 0 currentColor; font-weight: 600; }
+    .thread { border: 1px solid var(--rule); background: var(--panel); padding: .9rem 1.1rem; margin-bottom: 1.5rem; display: grid; gap: .75rem; }
+    .thread-title { font-size: 1rem; font-weight: 600; }
+    .thread-message { display: grid; gap: .15rem; }
+    .thread-who { color: var(--muted); font-size: .8rem; }
+    .thread-message.is-human .thread-who { color: var(--ink); font-weight: 500; }
+    .thread-body { white-space: pre-wrap; overflow-wrap: anywhere; }   /* plain text, line breaks kept */
     .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 1px; background: var(--rule); margin-bottom: 1.5rem; }
     .facts div { background: var(--panel); padding: .8rem 1rem; }
     .facts dt { color: var(--muted); font-size: .8rem; }

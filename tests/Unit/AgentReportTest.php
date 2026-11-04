@@ -49,6 +49,32 @@ class AgentReportTest extends TestCase
         $this->assertSame('Closes #7', $outcome->body);
     }
 
+    public function test_a_question_result_gives_its_questions_in_order(): void
+    {
+        $outcome = $this->report(json_encode(['outcome' => 'question', 'questions' => ['Include archived rows?', 'CSV or JSON?']]))->outcome();
+
+        $this->assertSame(Outcome::Question, $outcome->kind);
+        $this->assertSame(['Include archived rows?', 'CSV or JSON?'], $outcome->questions);
+    }
+
+    public static function badQuestions(): array
+    {
+        return [
+            'missing' => [['outcome' => 'question']],
+            'empty list' => [['outcome' => 'question', 'questions' => []]],
+            'a string' => [['outcome' => 'question', 'questions' => 'Include archived rows?']],
+            'a blank question' => [['outcome' => 'question', 'questions' => ['Include archived rows?', ' ']]],
+            'a non-string question' => [['outcome' => 'question', 'questions' => [7]]],
+            'keyed, not a list' => [['outcome' => 'question', 'questions' => ['a' => 'Include archived rows?']]],
+        ];
+    }
+
+    #[DataProvider('badQuestions')]
+    public function test_a_question_result_without_a_list_of_questions_is_unreadable(array $result): void
+    {
+        $this->assertNull($this->report(json_encode($result))->outcome());
+    }
+
     public function test_a_pr_result_can_answer_the_scope_judge_with_a_claim_and_line_ranges(): void
     {
         $outcome = $this->report(json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'B', 'judge_reply' => [

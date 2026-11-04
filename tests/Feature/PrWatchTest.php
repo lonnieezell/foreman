@@ -441,7 +441,8 @@ class PrWatchTest extends TestCase
 
     public function test_continuing_after_a_reply_links_the_run_it_resumes(): void
     {
-        $previous = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'session_id' => 's']);
+        // A run with a PR can't be continued, so this one stopped before opening it
+        $previous = $this->watchedRun(['status' => RunStatus::NeedsHuman, 'session_id' => 's', 'pr_url' => null]);
         Queue::fake();
 
         $next = $previous->continueAfterReply(Mockery::mock(GitHub::class)->shouldIgnoreMissing());

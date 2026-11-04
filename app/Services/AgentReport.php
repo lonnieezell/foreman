@@ -21,10 +21,14 @@ final class AgentReport
     {
         $result = $this->read(self::RESULT_FILE);
         $text = fn (string $key) => is_string($result[$key] ?? null) && trim($result[$key]) !== '';
+        $questions = $result['questions'] ?? null;
+        $asks = is_array($questions) && $questions !== [] && array_is_list($questions)
+            && collect($questions)->every(fn ($q) => is_string($q) && trim($q) !== '');
 
         return match (Outcome::tryFrom(is_string($result['outcome'] ?? null) ? $result['outcome'] : '')) {
             Outcome::Pr => $text('title') && $text('body') ? new AgentOutcome(Outcome::Pr, title: $result['title'], body: $result['body'], judgeReply: self::judgeReply($result['judge_reply'] ?? null)) : null,
             Outcome::NeedsHuman => $text('comment') && $text('reason') ? new AgentOutcome(Outcome::NeedsHuman, comment: $result['comment'], reason: $result['reason']) : null,
+            Outcome::Question => $asks ? new AgentOutcome(Outcome::Question, questions: $questions) : null,
             Outcome::AlreadyDone => $text('comment') ? new AgentOutcome(Outcome::AlreadyDone, comment: $result['comment']) : null,
             null => null,
         };

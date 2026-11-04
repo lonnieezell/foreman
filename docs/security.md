@@ -5,6 +5,7 @@ Foreman runs an AI agent on your machine, against issue text that other people c
 ## What protects you
 
 - **There is no login.** The dashboard is meant for `localhost` only. Don't expose it to a network.
+- **Your answers in Foreman are trusted.** What you post in a run's thread reaches the agent as operator text, not wrapped as untrusted. That is safe only because Foreman runs on `localhost`. If Foreman were reachable from a network, anyone who could open it could instruct the agent. A login would have to come first. Guardrails, Foreman's gate and the scope judge still apply to the agent's work.
 - **Only trusted people can queue work.** The [intake gate](guardrails.md#intake-gate) skips a ready label added by a bot or by someone without write access, and an issue edited after the label was added.
 - **The agent doesn't act with your push and `gh` rights.** It commits in its worktree and writes a result file. Foreman reads that file, then pushes the branch and opens the PR itself. The agent's environment has no push URL, no git credential helper and no GitHub tokens. The default **allowed tools** list has no `gh` and no `git push`, and the guard blocks both anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent).
 - **Text from other people is marked as untrusted.** The issue, bot threads, CI logs and issue comments reach the agent wrapped as data, not instructions. This lowers the risk of prompt injection. It doesn't remove it. See [Sanitised issue](guardrails.md#sanitised-issue).

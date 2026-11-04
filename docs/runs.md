@@ -49,7 +49,7 @@ The agent wrote a `pr` result. Before Foreman pushes, it runs the verify script 
 
 ## How a run ends
 
-The agent finishes by writing a result file in its worktree, `.foreman/result.json`. It says `pr`, `needs_human` or `already_done`. Foreman reads it and does everything on GitHub itself. A missing or unreadable file fails the run. See [How a run ends](how-foreman-works.md#how-a-run-ends) for what each outcome holds and what Foreman does with it.
+The agent finishes by writing a result file in its worktree, `.foreman/result.json`. It says `pr`, `question`, `needs_human` or `already_done`. Foreman reads it and does everything on GitHub itself. A missing or unreadable file fails the run. See [How a run ends](how-foreman-works.md#how-a-run-ends) for what each outcome holds and what Foreman does with it.
 
 ## The statuses
 
@@ -71,15 +71,31 @@ The PR was merged, or all its checks pass and no review-bot threads are open. Re
 
 ### Needs you
 
-Foreman stopped and wants a human. There are seven ways to get here:
+Foreman stopped and wants a human. There are eight ways to get here:
 
-- **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when the spec is unclear or contradicts the code, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
+- **The agent has a question.** Its result file said `question`. The card shows a **question** badge, and an **Answer** button that opens the run page. See [Answering a question](#answering-a-question).
+- **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when a command it needs is refused, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
 - **The agent thinks a test is wrong.** The reason is `test_looks_wrong`. The agent was told not to change, delete or skip the test, so it stopped and explained which test and why. Decide whether the test or the code is wrong, then reply on the issue.
 - **Foreman's gate failed.** The verify script or the integrity check failed when Foreman ran it before pushing. Nothing was pushed. Foreman commented on the issue with the output. Fix the cause or reply on the issue, then click **Continue after my reply**.
 - **The scope judge vetoed the change twice.** The [scope judge](guardrails.md#scope-judge) said the change adds work the issue didn't ask for, or weakens tests. The agent got one round to correct it, and the judge vetoed it again. Nothing was pushed. Foreman's comment on the issue gives the judge's reason and the agent's answer. A veto only for missing work opens a draft PR instead. Decide whether the judge is right. Then reply on the issue and click **Continue after my reply**, or open the PR yourself from the worktree.
 - **The issue was already done.** The result file said `already_done`. The comment says where the work is and whether its tests pass.
 - **Fix-up rounds ran out.** The PR still has failing checks or open bot threads after the last round. Foreman left a summary comment on the PR. The PR is yours from here.
 - **Someone else pushed to the PR's branch.** Foreman stops watching so it doesn't fight you over the branch.
+
+### Answering a question
+
+When the agent has a question, Foreman adds the human label to the issue and posts one fixed comment there. The questions stay in Foreman.
+
+The run page shows a **Thread**. It holds the agent's questions and your messages for the whole chain of runs, oldest first. Its heading shows which round this is and the total cost across the chain.
+
+1. Type your answer and click **Post**. It is saved straight away. Posting doesn't resume anything, so you can post more than one message.
+2. Click **Continue**. The agent resumes the same session and reads every message you posted since its question. If you haven't posted anything, Foreman asks you to confirm first.
+
+**Continue** starts one run only. A second click, or a click in another tab, shows an error instead of a second run. Only the issue's newest run can be continued, so a run you started over can't be resumed beside the fresh one.
+
+The message box shows on the issue's newest run once it stops, not just on question runs. Older runs, and runs with a PR, take no messages. Use it to post a correction before **Continue after my reply** or **Start over**. **Start over** gives the fresh run every earlier question and answer for the issue, under "Decisions your operator already made".
+
+Your answers live only in Foreman's database. They don't appear on the issue, so teammates can't see them on GitHub. The [scope judge](guardrails.md#scope-judge) doesn't see them either. If an answer widens the scope, the judge may veto the change. Edit the issue to settle it.
 
 ### Failed
 
@@ -102,6 +118,8 @@ Someone cancelled the run, stopped watching its PR, or closed the PR without mer
 | --- | --- | --- |
 | **Cancel run** | Run page, active runs | Stops Claude and ends the run as Cancelled. A run still Waiting is cancelled at once. |
 | **Stop watching** | Run page, Watching PR | Ends the run as Cancelled. The PR stays open. |
+| **Post** | Run page, the issue's newest run once it stops | Saves your message in the run's thread. Nothing resumes. |
+| **Continue** | Run page, after a question | Resumes the agent's session with the messages you posted. Asks you to confirm when you posted none. |
 | **Continue after my reply** | Run page and dashboard, Needs you | Swaps the human label back to the working label and resumes the agent's session. Use it when the agent asked a question before opening a PR. |
 | **Start over** / **Retry** | Run page / dashboard, after a run ends without a PR | Puts the ready label back on the issue so it's queued again. If a slot is free, it starts at once. The new run starts from a fresh worktree. |
 | **Dismiss** | Dashboard | Marks the issue as handled outside Foreman and moves it to **Handled**. Nothing is sent to GitHub. **Restore** undoes it. |

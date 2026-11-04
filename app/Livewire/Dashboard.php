@@ -118,11 +118,9 @@ class Dashboard extends Component
     {
         $run = Run::findOrFail($id);
 
-        if (! $run->canContinueAfterReply()) {
+        if (! $run->continueAfterReply(app(GitHub::class))) {
             return;   // the card hides the button for this run, so a stale or forged call does nothing
         }
-
-        $run->continueAfterReply(app(GitHub::class));
 
         $this->flash = "#{$run->issue_number} is continuing after your reply in {$run->repository->name}.";
     }
@@ -197,12 +195,15 @@ class Dashboard extends Component
             ->filter(fn (Run $run) => ! $run->handled_at && ! $run->repository->archived_at)
             ->map(fn (Run $run) => [
                 'id' => $run->id,
-                'title' => "#{$run->issue_number} {$run->repository->name} ".match ($run->status) {
-                    RunStatus::NeedsHuman => 'needs your reply',
-                    RunStatus::Failed => 'failed',
+                'title' => "#{$run->issue_number} {$run->repository->name} ".match (true) {
+                    $run->askedQuestion() => 'has a question',
+                    $run->status === RunStatus::NeedsHuman => 'needs your reply',
+                    $run->status === RunStatus::Failed => 'failed',
                     default => 'is ready for review',
                 },
-                'body' => $run->error ?: (string) $run->issue_title,
+                'body' => $run->askedQuestion()
+                    ? (string) str($run->messages()->value('body'))->squish()->limit(120)
+                    : ($run->error ?: (string) $run->issue_title),
                 'url' => route('runs.show', $run),
             ])
             ->values()->all();

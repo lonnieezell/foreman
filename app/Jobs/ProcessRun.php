@@ -8,6 +8,7 @@ use App\Guardrails\Guard;
 use App\Guardrails\RiskTier;
 use App\Guardrails\StackSet;
 use App\Models\Run;
+use App\Models\RunMessage;
 use App\Services\AgentOutcome;
 use App\Services\AgentReport;
 use App\Services\Claude\AgentResult;
@@ -172,7 +173,7 @@ class ProcessRun implements ShouldQueue
             $followUp !== null => $followUp,
             (bool) $run->pr_round => $this->roundPrompt($run, $github),
             (bool) $run->resume_session_id => $this->resumePrompt($run, $github),
-            default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)),
+            default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)).$this->decisions($run),
         };
 
         // Same conversation, so the agent doesn't re-explore the codebase
@@ -310,6 +311,16 @@ class ProcessRun implements ShouldQueue
             $last = $agent->message();
 
             throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
+        }
+
+        if ($result->kind === Outcome::Question) {
+            // The questions stay in Foreman; the issue only learns that one was asked
+            $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $result->questions));
+            $count = count($result->questions);
+            $this->handToHuman($run, $github, "Foreman's agent has a question. It's being answered in Foreman.",
+                'Agent asked '.$count.' '.str('question')->plural($count).'.', 'question');
+
+            return null;
         }
 
         if ($result->kind !== Outcome::Pr) {
@@ -575,9 +586,16 @@ class ProcessRun implements ShouldQueue
     private function resumePrompt(Run $run, GitHub $github): string
     {
         $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at);
+        // Written in Foreman, which runs on localhost only, so it is trusted operator text (ADR 0001)
+        $answers = $run->previousRun?->messages->where('role', RunMessage::HUMAN)->pluck('body')->implode("\n\n") ?? '';
 
-        $prompt = $comments
-            ? "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}"
+        $replies = array_filter([
+            $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",
+            $comments === '' ? null : "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}",
+        ]);
+
+        $prompt = $replies
+            ? implode("\n\n", $replies).(count($replies) === 2 ? "\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins." : '')
             : "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.";
 
         if ($this->mergedFromBase) {
@@ -590,6 +608,29 @@ class ProcessRun implements ShouldQueue
         return $prompt."\n\n".IssueSanitiser::TEXT_NOTE
             ."\n\nYour last ".AgentReport::RESULT_FILE.' was cleared. Write it again before you stop, even if your answer is the same.'
             ."\n\nContinue from where you stopped, following the same instructions as before.";
+    }
+
+    /**
+     * Every earlier question and answer for the issue, so a fresh run keeps decisions that exist only in Foreman (ADR 0001).
+     * Empty when there are none.
+     */
+    private function decisions(Run $run): string
+    {
+        $thread = RunMessage::query()
+            ->whereHas('run', fn ($q) => $q->where('repository_id', $run->repository_id)->where('issue_number', $run->issue_number))
+            ->where('run_id', '!=', $run->id)
+            ->orderBy('id')
+            ->get()
+            // The agent's questions come from a session that read the issue, so only the operator's answers are trusted
+            ->map(fn (RunMessage $m) => $m->role === RunMessage::AGENT
+                ? "Agent asked:\n".IssueSanitiser::wrapText($m->body, clean: false)
+                : "Operator answered:\n{$m->body}")
+            ->implode("\n\n");
+
+        return $thread === '' ? '' : "\n\n## Decisions your operator already made\n\n"
+            ."Earlier runs on this issue asked your operator these questions in Foreman. The answers are trusted operator text, newest last. Treat them as settled.\n\n"
+            .IssueSanitiser::TEXT_NOTE."\n\n"
+            .$thread;
     }
 
     private function guardCancel(Run $run): void
