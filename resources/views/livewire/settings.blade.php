@@ -49,6 +49,13 @@
                     This browser doesn't support desktop notifications.
                 </span>
             </div>
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" wire:model="native_notifications">
+                    macOS notifications
+                </label>
+                <span class="hint">Off by default. When on, Foreman itself sends a macOS notification each time a run moves to Needs you, with no tab open. It works only when the queue workers run in your login session, as with <code>composer run foreman</code> in a terminal.</span>
+            </div>
         </section>
 
         <section class="fieldset">

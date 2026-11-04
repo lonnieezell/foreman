@@ -43,6 +43,8 @@ class Settings extends Component
     // Saved as soon as it's toggled, since the browser asks for permission at the same moment
     public bool $desktop_notifications = false;
 
+    public bool $native_notifications = false;
+
     public ?string $flash = null;
 
     public function mount(): void
@@ -56,6 +58,7 @@ class Settings extends Component
 
         $this->global_daily_budget = (string) (Setting::globalBudget() ?? '');
         $this->trust_bot_labels = Setting::trustBotLabels();
+        $this->native_notifications = Setting::nativeNotifications();
     }
 
     public function updatedDesktopNotifications(): void
@@ -84,6 +87,7 @@ class Settings extends Component
 
         Setting::put('global_daily_budget', $this->global_daily_budget === '' ? null : $this->global_daily_budget);
         Setting::put('trust_bot_labels', $this->trust_bot_labels ? 1 : 0);
+        Setting::put('native_notifications', $this->native_notifications ? 1 : 0);
         Setting::applyToConfig();
 
         $this->flash = 'Settings saved.';
