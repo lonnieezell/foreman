@@ -87,6 +87,8 @@ class RunDetail extends Component
         $chain = $this->run->chain();
 
         return view('livewire.run-detail', [
+            'canContinue' => $this->run->canContinueAfterReply(),
+            'takesMessages' => $this->run->takesMessages(),
             'chain' => $chain,
             'thread' => RunMessage::whereIn('run_id', $chain->pluck('id'))->orderBy('id')->get(),
             'log' => $this->run->logEntries(),

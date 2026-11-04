@@ -196,12 +196,12 @@ class Dashboard extends Component
             ->map(fn (Run $run) => [
                 'id' => $run->id,
                 'title' => "#{$run->issue_number} {$run->repository->name} ".match (true) {
-                    $run->stop_reason === 'question' => 'has a question',
+                    $run->askedQuestion() => 'has a question',
                     $run->status === RunStatus::NeedsHuman => 'needs your reply',
                     $run->status === RunStatus::Failed => 'failed',
                     default => 'is ready for review',
                 },
-                'body' => $run->stop_reason === 'question'
+                'body' => $run->askedQuestion()
                     ? (string) str($run->messages()->value('body'))->squish()->limit(120)
                     : ($run->error ?: (string) $run->issue_title),
                 'url' => route('runs.show', $run),

@@ -594,11 +594,9 @@ class ProcessRun implements ShouldQueue
             $comments === '' ? null : "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}",
         ]);
 
-        $prompt = match (count($replies)) {
-            0 => "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.",
-            1 => implode('', $replies),
-            default => implode("\n\n", $replies)."\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins.",
-        };
+        $prompt = $replies
+            ? implode("\n\n", $replies).(count($replies) === 2 ? "\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins." : '')
+            : "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.";
 
         if ($this->mergedFromBase) {
             $commits = collect($this->mergedFromBase)->map(fn ($s) => "- {$s}")->implode("\n");

@@ -135,8 +135,13 @@ class Run extends Model
 
     private function isNewestForIssue(): bool
     {
-        return ! static::where('repository_id', $this->repository_id)->where('issue_number', $this->issue_number)
-            ->where('id', '>', $this->id)->exists();
+        return static::latestPerIssue()->whereKey($this->id)->exists();
+    }
+
+    /** Stopped on the agent's `question` outcome, waiting for the operator's answer in Foreman. */
+    public function askedQuestion(): bool
+    {
+        return $this->status === RunStatus::NeedsHuman && $this->stop_reason === 'question';
     }
 
     /** Whether the operator wrote anything in Foreman since the run stopped. */

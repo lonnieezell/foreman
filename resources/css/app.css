@@ -227,7 +227,7 @@
     .issue-card .btn { text-decoration: none; }
     .issue-card .run-repo { color: var(--muted); }
     .risk-tier { color: var(--muted); font-size: .85rem; }
-    .question-badge { color: var(--signal); border: 1px solid currentColor; border-radius: 3px; padding: 0 .3rem; font-size: .75rem; }
+    .question-badge { border: 1px solid currentColor; border-radius: 3px; padding: 0 .3rem; font-size: .75rem; }
     .issue-card-head .status { margin-left: .75rem; font-size: .85rem; }
     .issue-age { margin-left: auto; color: var(--muted); font-size: .85rem; }
     .issue-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

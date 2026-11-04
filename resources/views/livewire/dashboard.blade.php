@@ -264,7 +264,7 @@
                     <div class="issue-card-head">
                         <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
                         <span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span>
-                        @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->stop_reason === 'question')<span class="question-badge">question</span>@endif
+                        @if ($run->askedQuestion())<span class="question-badge tone-attention">question</span>@endif
                         @if ($run->risk_tier)<span class="risk-tier" title="Risk tier, from the diff">Tier {{ $run->risk_tier }}</span>@endif
                         <span class="issue-age">{{ ($run->finished_at ?? $run->updated_at)->diffForHumans(['short' => true]) }}</span>
                     </div>
@@ -280,7 +280,7 @@
                         @case(\App\Enums\RunStatus::NeedsHuman)
                             <div class="issue-actions">
                                 @if ($run->issue_url)<a class="btn btn-quiet" href="{{ $run->issue_url }}" target="_blank" rel="noopener">Open issue</a>@endif
-                                @if ($run->stop_reason === 'question')<a class="btn btn-go" href="{{ route('runs.show', $run) }}" wire:navigate>Answer</a>
+                                @if ($run->askedQuestion())<a class="btn btn-go" href="{{ route('runs.show', $run) }}" wire:navigate>Answer</a>
                                 @elseif ($run->canContinueAfterReply())<button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>@endif
                                 <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
                             </div>
