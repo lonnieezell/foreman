@@ -152,6 +152,12 @@ class Run extends Model
         return $this->status === RunStatus::NeedsHuman && $this->stop_reason === 'question';
     }
 
+    /** The agent's first question on one line, for a notification. */
+    public function firstQuestion(): string
+    {
+        return (string) str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->squish();
+    }
+
     /** Whether the operator wrote anything in Foreman since the run stopped. */
     public function hasOperatorReply(): bool
     {
@@ -208,7 +214,7 @@ class Run extends Model
     {
         $title = "Foreman: {$this->repository->name} #{$this->issue_number}";
         $body = $this->askedQuestion()
-            ? 'Question: '.str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->squish()->limit(90, preserveWords: true)
+            ? 'Question: '.str($this->firstQuestion())->limit(90, preserveWords: true)
             : 'Needs you'.($this->stop_reason ? ': '.str_replace('_', ' ', $this->stop_reason) : '');
 
         // The text goes in as arguments after `--`, so it is never read as AppleScript or as an osascript option

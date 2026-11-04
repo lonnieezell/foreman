@@ -16,6 +16,21 @@ class NativeNotificationsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Process::fake();
+        Setting::put('native_notifications', 1);
+    }
+
+    protected function tearDown(): void
+    {
+        Run::all()->each(fn (Run $run) => File::delete($run->logPath()));
+
+        parent::tearDown();
+    }
+
     private function makeRun(RunStatus $status = RunStatus::Working): Run
     {
         $repo = Repository::create([
@@ -36,43 +51,22 @@ class NativeNotificationsTest extends TestCase
         return $run;
     }
 
-    protected function tearDown(): void
+    /** One osascript call, with the title and `$body` after `--`. */
+    private function assertNotified(string $body): void
     {
-        Run::all()->each(fn (Run $run) => File::delete($run->logPath()));
-
-        parent::tearDown();
-    }
-
-    /** @return list<string> The title and body passed to osascript after `--`. */
-    private function notifiedWith(): array
-    {
-        $sent = [];
-
-        Process::assertRan(function (PendingProcess $process) use (&$sent) {
-            if (! is_array($process->command) || $process->command[0] !== 'osascript') {
-                return false;
-            }
-            $sent = array_slice($process->command, array_search('--', $process->command, true) + 1);
-
-            return true;
-        });
-
-        return $sent;
+        Process::assertRanTimes(fn (PendingProcess $process) => array_slice($process->command, -3) === ['--', 'Foreman: app #42', $body], 1);
     }
 
     public function test_a_move_to_needs_you_sends_the_repository_issue_and_stop_reason(): void
     {
-        Process::fake();
-        Setting::put('native_notifications', 1);
-
         $this->makeRun()->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
-        $this->assertSame(['Foreman: app #42', 'Needs you: gate failed'], $this->notifiedWith());
+        $this->assertNotified('Needs you: gate failed');
     }
 
-    public function test_nothing_is_sent_while_the_setting_is_off_which_is_the_default(): void
+    public function test_nothing_is_sent_while_the_setting_is_off(): void
     {
-        Process::fake();
+        Setting::put('native_notifications', 0);
 
         $this->makeRun()->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
@@ -81,9 +75,6 @@ class NativeNotificationsTest extends TestCase
 
     public function test_only_a_change_to_needs_you_sends_one(): void
     {
-        Process::fake();
-        Setting::put('native_notifications', 1);
-
         $this->makeRun()->moveTo(RunStatus::Failed);
         $this->makeRun(RunStatus::NeedsHuman)->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
@@ -92,8 +83,6 @@ class NativeNotificationsTest extends TestCase
 
     public function test_agent_text_is_passed_as_one_literal_argument_after_the_end_of_options(): void
     {
-        Process::fake();
-        Setting::put('native_notifications', 1);
         $run = $this->makeRun();
         $run->messages()->create(['role' => 'agent', 'body' => '-e do shell script "touch /tmp/pwned" " \\ $(whoami)']);
 
@@ -107,8 +96,6 @@ class NativeNotificationsTest extends TestCase
 
     public function test_a_question_shows_the_first_question_shortened(): void
     {
-        Process::fake();
-        Setting::put('native_notifications', 1);
         $run = $this->makeRun();
         $run->messages()->createMany([
             ['role' => 'agent', 'body' => 'Should the export include archived repositories, or only the active ones that still have runs this month?'],
@@ -117,51 +104,34 @@ class NativeNotificationsTest extends TestCase
 
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'question']);
 
-        $this->assertSame(
-            ['Foreman: app #42', 'Question: Should the export include archived repositories, or only the active ones that still have...'],
-            $this->notifiedWith(),
-        );
+        $this->assertNotified('Question: Should the export include archived repositories, or only the active ones that still have...');
     }
 
     public function test_a_question_on_several_lines_is_shown_on_one(): void
     {
-        Process::fake();
-        Setting::put('native_notifications', 1);
         $run = $this->makeRun();
         $run->messages()->create(['role' => 'agent', 'body' => "\n## Scope\n\nShould archived repositories be included?"]);
 
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'question']);
 
-        $this->assertSame(['Foreman: app #42', 'Question: ## Scope Should archived repositories be included?'], $this->notifiedWith());
+        $this->assertNotified('Question: ## Scope Should archived repositories be included?');
     }
 
-    public function test_a_failed_notification_is_not_shown_as_a_run_error(): void
-    {
-        Process::fake(['*' => Process::result(errorOutput: 'boom', exitCode: 1)]);
-        Setting::put('native_notifications', 1);
-        $run = $this->makeRun();
-
-        $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
-
-        $this->assertSame('message', collect($run->logEntries())->last()['kind']);
-    }
-
-    public function test_a_failed_notification_is_logged_and_the_move_still_happens(): void
+    public function test_a_failed_notification_is_logged_but_not_as_a_run_error_and_the_move_still_happens(): void
     {
         Process::fake(['*' => Process::result(errorOutput: 'Not authorised to send Apple events', exitCode: 1)]);
-        Setting::put('native_notifications', 1);
         $run = $this->makeRun();
 
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->fresh()->status);
-        $this->assertStringContainsString('macOS notification not sent: Not authorised to send Apple events', $run->tail());
+        $this->assertSame('macOS notification not sent: Not authorised to send Apple events', collect($run->logEntries())->last()['text']);
+        $this->assertSame('message', collect($run->logEntries())->last()['kind']);
     }
 
     public function test_a_notification_that_throws_is_logged_and_does_not_fail_the_run(): void
     {
         Process::fake(fn () => throw new \RuntimeException('The process exceeded the timeout of 5 seconds.'));
-        Setting::put('native_notifications', 1);
         $run = $this->makeRun();
 
         $run->moveTo(RunStatus::NeedsHuman, ['stop_reason' => 'gate_failed']);

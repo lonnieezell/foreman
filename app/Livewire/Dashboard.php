@@ -202,7 +202,7 @@ class Dashboard extends Component
                     default => 'is ready for review',
                 },
                 'body' => $run->askedQuestion()
-                    ? (string) str($run->messages()->value('body'))->squish()->limit(120)
+                    ? (string) str($run->firstQuestion())->limit(120)
                     : ($run->error ?: (string) $run->issue_title),
                 'url' => route('runs.show', $run),
             ])
