@@ -292,6 +292,7 @@ class ClaudeCli implements Claude
         $summary = match ($name) {
             'Bash' => '$ '.($input['command'] ?? ''),
             'Edit', 'Write', 'Read' => "{$name} ".($input['file_path'] ?? ''),
+            'Skill' => 'Skill: '.($input['skill'] ?? ''),
             default => $name,
         };
 
