@@ -82,7 +82,7 @@ A wall-clock limit each time Foreman starts the agent, from 1 to 600. Default: 4
 
 ## Labels
 
-Foreman uses three GitHub labels. It creates them when you save. If a label already exists, Foreman updates its colour and description.
+Foreman uses three GitHub labels. It creates them when you add the repository, and again when you save a change to a label or to the GitHub repository. Other saves skip GitHub, so they're quick. If a label already exists, Foreman updates its colour and description.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
