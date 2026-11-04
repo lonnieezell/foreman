@@ -94,20 +94,31 @@
 
     @if ($thread->isNotEmpty() || $takesMessages)
         <section class="thread" aria-labelledby="thread-title">
-            <h2 id="thread-title" class="thread-title">Thread <span class="hint">Round {{ $chain->count() }} · ${{ number_format($chain->sum('cost_usd'), 2) }} across {{ trans_choice('{1} 1 run|[2,*] :count runs', $chain->count()) }}</span></h2>
-            @foreach ($thread as $message)
-                <div @class(['thread-message', 'is-human' => $message->role === \App\Models\RunMessage::HUMAN]) wire:key="message-{{ $message->id }}">
-                    <span class="thread-who">{{ $message->role === \App\Models\RunMessage::HUMAN ? 'You' : 'Agent' }}</span>
-                    <p class="thread-body">{{ $message->body }}</p>
-                </div>
-            @endforeach
+            <header class="thread-head">
+                <h2 id="thread-title" class="thread-title">Thread</h2>
+                <span class="hint">Round {{ $chain->count() }} · ${{ number_format($chain->sum('cost_usd'), 2) }} across {{ trans_choice('{1} 1 run|[2,*] :count runs', $chain->count()) }}</span>
+            </header>
+            @if ($thread->isNotEmpty())
+                <ol class="thread-list">
+                    @php($question = 0)
+                    @foreach ($thread as $message)
+                        @php($human = $message->role === \App\Models\RunMessage::HUMAN)
+                        <li @class(['thread-message', 'is-human' => $human]) wire:key="message-{{ $message->id }}">
+                            <span class="thread-who">{{ $human ? 'You' : 'Agent' }}@unless ($human)<span class="thread-num">Question {{ ++$question }}</span>@endunless</span>
+                            <p class="thread-body">{{ $message->bodyHtml() }}</p>
+                        </li>
+                    @endforeach
+                </ol>
+            @endif
             @if ($takesMessages)
                 <form class="thread-form field" wire:submit="postMessage">
                     <label for="message">{{ $run->askedQuestion() ? 'Your answer' : 'A message for the agent' }}</label>
-                    <textarea id="message" rows="3" wire:model="message"></textarea>
+                    <textarea id="message" rows="5" wire:model="message"></textarea>
                     @error('message')<p class="hint">{{ $message }}</p>@enderror
-                    <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
-                    <div><button class="btn" type="submit">Post</button></div>
+                    <div class="thread-form-foot">
+                        <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
+                        <button class="btn btn-go" type="submit">Post</button>
+                    </div>
                 </form>
             @endif
         </section>
