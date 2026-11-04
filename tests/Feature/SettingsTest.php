@@ -56,6 +56,20 @@ class SettingsTest extends TestCase
         Livewire::test(Settings::class)->assertSet('trust_bot_labels', true);
     }
 
+    public function test_native_notifications_are_off_by_default_and_saved_with_the_form(): void
+    {
+        $this->assertFalse(Setting::nativeNotifications());
+
+        Livewire::test(Settings::class)
+            ->assertSet('native_notifications', false)
+            ->set('native_notifications', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertTrue(Setting::nativeNotifications());
+        Livewire::test(Settings::class)->assertSet('native_notifications', true);
+    }
+
     public function test_clearing_a_field_goes_back_to_the_default(): void
     {
         Setting::put('usage.weekly_cap', 0.5);

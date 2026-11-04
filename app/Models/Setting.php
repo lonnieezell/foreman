@@ -61,6 +61,12 @@ class Setting extends Model
         return (bool) static::get('desktop_notifications', false);
     }
 
+    // macOS notifications sent by the job itself, so they don't need an open tab
+    public static function nativeNotifications(): bool
+    {
+        return (bool) static::get('native_notifications', false);
+    }
+
     // When on, the intake gate trusts a ready label added by a bot
     public static function trustBotLabels(): bool
     {

@@ -198,6 +198,33 @@ class Run extends Model
     public function moveTo(RunStatus $status, array $extra = []): void
     {
         $this->update(['status' => $status, ...$extra]);
+
+        if ($status === RunStatus::NeedsHuman && $this->wasChanged('status') && Setting::nativeNotifications()) {
+            $this->notifyNeedsYou();
+        }
+    }
+
+    private function notifyNeedsYou(): void
+    {
+        $title = "Foreman: {$this->repository->name} #{$this->issue_number}";
+        $body = $this->askedQuestion()
+            ? 'Question: '.str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->limit(90, preserveWords: true)
+            : 'Needs you'.($this->stop_reason ? ': '.str_replace('_', ' ', $this->stop_reason) : '');
+
+        // The text goes in as arguments after `--`, so it is never read as AppleScript or as an osascript option
+        $script = ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run'];
+
+        // A notification is a courtesy: whatever goes wrong is logged and the run carries on
+        try {
+            $result = Process::timeout(5)->run(['osascript', ...$script, '--', $title, $body]);
+            $error = $result->successful() ? null : trim($result->errorOutput() ?: $result->output());
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if ($error !== null) {
+            $this->log("Couldn’t send the macOS notification: {$error}");
+        }
     }
 
     public function statusLabel(): string

@@ -44,6 +44,14 @@ Turn this on only if you trust every bot that can label issues in your repositor
 - It only works while a Foreman dashboard tab is open somewhere. The dashboard is what checks for changes.
 - Turning it on asks the browser for permission. If the browser blocks notifications, the page tells you how to allow them.
 
+**macOS notifications.** Off by default. When on, Foreman sends a native macOS notification each time a run moves to **Needs you**. It doesn't need a Foreman tab open. Save the form to apply it.
+
+- The notification shows the repository, the issue number and why the run stopped. When the agent asked a question, it shows the first question, shortened.
+- It works only when the queue workers and the scheduler run in your login session, such as `composer run foreman` in a terminal. A worker started outside your session, such as a system daemon or over SSH, may fail with no notification and no error.
+- Foreman sends them with `osascript`. If none appear, check **System Settings → Notifications** for Script Editor and for your terminal app.
+- Clicking the notification doesn't open the run. Look for the issue under **Needs your reply** on the dashboard.
+- A failed notification never stops or fails the run. The reason goes in the run log, starting with "Couldn’t send the macOS notification".
+
 ### Usage holds
 
 When to hold new runs on a Claude profile, based on its usage numbers. Leave a field empty to use the default shown in it.
