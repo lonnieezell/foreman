@@ -116,18 +116,27 @@ class Run extends Model
 
     /**
      * Continuing needs a session and a worktree to resume, and a run with a PR is the human's from here.
-     * A run is continued once.
+     * Only the issue's newest run continues, so a run is continued once and never beside a Start over.
      */
     public function canContinueAfterReply(): bool
     {
         return $this->status === RunStatus::NeedsHuman && $this->session_id && $this->worktree_path && ! $this->pr_url
-            && ! static::where('previous_run_id', $this->id)->exists();
+            && $this->isNewestForIssue();
     }
 
-    /** The operator can post in the thread once the run stops. A run with a PR is the human's from here, so it takes no messages. */
+    /**
+     * The operator can post in the thread once the run stops. A run with a PR is the human's from here.
+     * Only the issue's newest run takes messages, because a resume reads them from the run it continues.
+     */
     public function takesMessages(): bool
     {
-        return ! $this->status->isActive() && ! $this->pr_url;
+        return ! $this->status->isActive() && ! $this->pr_url && $this->isNewestForIssue();
+    }
+
+    private function isNewestForIssue(): bool
+    {
+        return ! static::where('repository_id', $this->repository_id)->where('issue_number', $this->issue_number)
+            ->where('id', '>', $this->id)->exists();
     }
 
     /** Whether the operator wrote anything in Foreman since the run stopped. */

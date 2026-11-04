@@ -91,9 +91,9 @@ The run page shows a **Thread**. It holds the agent's questions and your message
 1. Type your answer and click **Post**. It is saved straight away. Posting doesn't resume anything, so you can post more than one message.
 2. Click **Continue**. The agent resumes the same session and reads every message you posted since its question. If you haven't posted anything, Foreman asks you to confirm first.
 
-**Continue** starts one run only. A second click, or a click in another tab, shows an error instead of a second run.
+**Continue** starts one run only. A second click, or a click in another tab, shows an error instead of a second run. Only the issue's newest run can be continued, so a run you started over can't be resumed beside the fresh one.
 
-The message box shows on every finished run, not just question runs. Use it to post a correction before **Continue after my reply** or **Start over**. **Start over** gives the fresh run every earlier question and answer for the issue, under "Decisions your operator already made".
+The message box shows on the issue's newest run once it stops, not just on question runs. Older runs, and runs with a PR, take no messages. Use it to post a correction before **Continue after my reply** or **Start over**. **Start over** gives the fresh run every earlier question and answer for the issue, under "Decisions your operator already made".
 
 Your answers live only in Foreman's database. They don't appear on the issue, so teammates can't see them on GitHub. The [scope judge](guardrails.md#scope-judge) doesn't see them either. If an answer widens the scope, the judge may veto the change. Edit the issue to settle it.
 
@@ -118,7 +118,7 @@ Someone cancelled the run, stopped watching its PR, or closed the PR without mer
 | --- | --- | --- |
 | **Cancel run** | Run page, active runs | Stops Claude and ends the run as Cancelled. A run still Waiting is cancelled at once. |
 | **Stop watching** | Run page, Watching PR | Ends the run as Cancelled. The PR stays open. |
-| **Post** | Run page, any finished run | Saves your message in the run's thread. Nothing resumes. |
+| **Post** | Run page, the issue's newest run once it stops | Saves your message in the run's thread. Nothing resumes. |
 | **Continue** | Run page, after a question | Resumes the agent's session with the messages you posted. Asks you to confirm when you posted none. |
 | **Continue after my reply** | Run page and dashboard, Needs you | Swaps the human label back to the working label and resumes the agent's session. Use it when the agent asked a question before opening a PR. |
 | **Start over** / **Retry** | Run page / dashboard, after a run ends without a PR | Puts the ready label back on the issue so it's queued again. If a slot is free, it starts at once. The new run starts from a fresh worktree. |

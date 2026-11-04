@@ -623,11 +623,15 @@ class ProcessRun implements ShouldQueue
             ->where('run_id', '!=', $run->id)
             ->orderBy('id')
             ->get()
-            ->map(fn (RunMessage $m) => ($m->role === RunMessage::AGENT ? 'Agent asked:' : 'Operator answered:')."\n{$m->body}")
+            // The agent's questions come from a session that read the issue, so only the operator's answers are trusted
+            ->map(fn (RunMessage $m) => $m->role === RunMessage::AGENT
+                ? "Agent asked:\n".IssueSanitiser::wrapText($m->body, clean: false)
+                : "Operator answered:\n{$m->body}")
             ->implode("\n\n");
 
         return $thread === '' ? '' : "\n\n## Decisions your operator already made\n\n"
             ."Earlier runs on this issue asked your operator these questions in Foreman. The answers are trusted operator text, newest last. Treat them as settled.\n\n"
+            .IssueSanitiser::TEXT_NOTE."\n\n"
             .$thread;
     }
 

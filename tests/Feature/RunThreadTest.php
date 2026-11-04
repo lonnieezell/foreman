@@ -128,4 +128,29 @@ class RunThreadTest extends TestCase
 
         $this->assertSame(1, Run::where('previous_run_id', $run->id)->count());
     }
+
+    public static function laterRuns(): array
+    {
+        return [
+            'continued' => [true],
+            'started over' => [false],
+        ];
+    }
+
+    /** Only the newest run's messages reach the next resume, and two runs must never share the worktree. */
+    #[DataProvider('laterRuns')]
+    public function test_once_the_issue_has_a_later_run_the_old_run_takes_no_message_and_cannot_be_continued(bool $continued): void
+    {
+        $run = $this->makeRun();
+        $this->makeRun(['status' => RunStatus::Working, 'stop_reason' => null, 'finished_at' => null, 'previous_run_id' => $continued ? $run->id : null]);
+
+        Livewire::test(RunDetail::class, ['run' => $run])
+            ->assertDontSeeHtml('wire:click="continueRun"')
+            ->assertDontSeeHtml('wire:submit="postMessage"')
+            ->set('message', 'Late answer')
+            ->call('postMessage');
+
+        $this->assertFalse($run->canContinueAfterReply());
+        $this->assertSame(0, $run->messages()->count());
+    }
 }
