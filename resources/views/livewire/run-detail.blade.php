@@ -35,6 +35,9 @@
             @if ($run->pr_url)
                 <a class="btn btn-go" href="{{ $run->pr_url }}" target="_blank" rel="noopener">Open PR</a>
             @endif
+            @if ($canFixConflicts)
+                <button class="btn btn-go" wire:click="fixConflicts" wire:confirm="The PR conflicts with {{ $run->repository->base_branch }}. Resume the agent to merge {{ $run->repository->base_branch }} and resolve the conflicts? This spends tokens.">Fix conflicts</button>
+            @endif
             @if ($canContinue && $run->askedQuestion())
                 <button class="btn btn-go" wire:click="continueRun" @unless ($run->hasOperatorReply()) wire:confirm="You haven’t answered yet. Continue anyway? The agent resumes with no answer from you." @endunless>Continue</button>
             @elseif ($canContinue)
@@ -53,6 +56,14 @@
     @if ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && $run->stop_reason === 'someone_pushed')
         <div class="notice">
             <p>Someone else pushed to the PR’s branch, so Foreman stopped watching to avoid fighting over it. It’s yours from here.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && $run->stop_reason === 'merge_conflict')
+        <div class="notice">
+            <p>The PR conflicts with <code>{{ $run->repository->base_branch }}</code>. Choose <strong>Fix conflicts</strong> to have the agent merge <code>{{ $run->repository->base_branch }}</code> and resolve them, or fix it yourself.</p>
+        </div>
+    @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && $run->stop_reason === 'conflict_fix_failed')
+        <div class="notice">
+            <p>The agent couldn’t resolve the conflicts, so nothing was pushed. Its explanation is in the thread below. It’s yours from here.</p>
         </div>
     @elseif ($run->status === \App\Enums\RunStatus::NeedsHuman && $run->pr_url && in_array($run->stop_reason, ['tier_rose', 'human_review', 'merge_failed'], true))
         <div class="notice">
@@ -94,20 +105,33 @@
 
     @if ($thread->isNotEmpty() || $takesMessages)
         <section class="thread" aria-labelledby="thread-title">
-            <h2 id="thread-title" class="thread-title">Thread <span class="hint">Round {{ $chain->count() }} · ${{ number_format($chain->sum('cost_usd'), 2) }} across {{ trans_choice('{1} 1 run|[2,*] :count runs', $chain->count()) }}</span></h2>
-            @foreach ($thread as $message)
-                <div @class(['thread-message', 'is-human' => $message->role === \App\Models\RunMessage::HUMAN]) wire:key="message-{{ $message->id }}">
-                    <span class="thread-who">{{ $message->role === \App\Models\RunMessage::HUMAN ? 'You' : 'Agent' }}</span>
-                    <p class="thread-body">{{ $message->body }}</p>
-                </div>
-            @endforeach
+            <header class="thread-head">
+                <h2 id="thread-title" class="thread-title">Thread</h2>
+                <span class="hint">Round {{ $chain->count() }} · ${{ number_format($chain->sum('cost_usd'), 2) }} across {{ trans_choice('{1} 1 run|[2,*] :count runs', $chain->count()) }}</span>
+            </header>
+            @if ($thread->isNotEmpty())
+                <ol class="thread-list">
+                    @php($question = 0)
+                    @foreach ($thread as $message)
+                        @php($human = $message->role === \App\Models\RunMessage::HUMAN)
+                        {{-- A failed conflict fix's explanation is an agent message, but not a question --}}
+                        @php($asks = ! $human && ! $chain->firstWhere('id', $message->run_id)?->isConflictFix())
+                        <li @class(['thread-message', 'is-human' => $human]) wire:key="message-{{ $message->id }}">
+                            <span class="thread-who">{{ $human ? 'You' : 'Agent' }}@if ($asks)<span class="thread-num">Question {{ ++$question }}</span>@endif</span>
+                            <p class="thread-body">{{ $message->bodyHtml() }}</p>
+                        </li>
+                    @endforeach
+                </ol>
+            @endif
             @if ($takesMessages)
                 <form class="thread-form field" wire:submit="postMessage">
                     <label for="message">{{ $run->askedQuestion() ? 'Your answer' : 'A message for the agent' }}</label>
-                    <textarea id="message" rows="3" wire:model="message"></textarea>
+                    <textarea id="message" rows="5" wire:model="message"></textarea>
                     @error('message')<p class="hint">{{ $message }}</p>@enderror
-                    <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
-                    <div><button class="btn" type="submit">Post</button></div>
+                    <div class="thread-form-foot">
+                        <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
+                        <button class="btn btn-go" type="submit">Post</button>
+                    </div>
                 </form>
             @endif
         </section>

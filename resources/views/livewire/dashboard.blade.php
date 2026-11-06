@@ -280,7 +280,8 @@
                         @case(\App\Enums\RunStatus::NeedsHuman)
                             <div class="issue-actions">
                                 @if ($run->issue_url)<a class="btn btn-quiet" href="{{ $run->issue_url }}" target="_blank" rel="noopener">Open issue</a>@endif
-                                @if ($run->askedQuestion())<a class="btn btn-go" href="{{ route('runs.show', $run) }}" wire:navigate>Answer</a>
+                                @if ($run->canFixConflicts())<button class="btn btn-go" wire:click="fixConflicts({{ $run->id }})" wire:confirm="The PR conflicts with {{ $run->repository->base_branch }}. Resume the agent to merge {{ $run->repository->base_branch }} and resolve the conflicts? This spends tokens.">Fix conflicts</button>
+                                @elseif ($run->askedQuestion())<a class="btn btn-go" href="{{ route('runs.show', $run) }}" wire:navigate>Answer</a>
                                 @elseif ($run->canContinueAfterReply())<button class="btn btn-go" wire:click="continueRun({{ $run->id }})" wire:confirm="Have you answered on the issue? The agent will pick up where it stopped and read your reply.">Continue after my reply</button>@endif
                                 <button class="btn btn-quiet" wire:click="dismissRun({{ $run->id }})">Dismiss</button>
                             </div>

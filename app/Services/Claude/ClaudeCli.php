@@ -92,6 +92,11 @@ class ClaudeCli implements Claude
 
         $this->holdIfOutOfUsage($run);
 
+        // Claude also sends an error result here, so this can't wait for a missing outcome
+        if ($resume && $exit->failed() && str_contains($exit->errorOutput(), 'No conversation found')) {
+            throw new SessionNotFound("Claude found no conversation for session {$resume}.");
+        }
+
         if ($this->outcome === null && $exit->failed()) {
             throw new RuntimeException('Claude exited without a result: '.str($exit->errorOutput())->limit(500));
         }

@@ -126,6 +126,74 @@ class Worktree
         return [];
     }
 
+    /**
+     * Merge the fetched base branch into the branch for a conflict fix. Unlike catching up, a conflict is left in place, markers and all.
+     * Changes to tracked files are thrown away first: only the setup script ran since the worktree was built, and an install
+     * that rewrote a lock file would otherwise stop the merge.
+     * `base` is the commit merged, and `conflicts` lists the conflicted paths. Throws when the merge fails for any other reason.
+     *
+     * @return array{base:string,conflicts:list<string>}
+     */
+    public function mergeInBase(): array
+    {
+        $base = trim($this->git(['rev-parse', '--verify', $this->baseRef()])->output());
+        $this->git(['reset', '--hard', '--quiet', 'HEAD']);
+        $merge = $this->git(['merge', '--no-edit', $base], timeout: 120);
+        $this->beat();
+
+        $conflicts = $merge->successful() ? [] : array_values(array_filter(explode("\0", $this->git(['diff', '--name-only', '--diff-filter=U', '-z'])->output())));
+
+        if ($merge->failed() && $conflicts === []) {
+            throw new RuntimeException("Couldn't merge {$this->baseRef()}: ".str(trim($merge->errorOutput()."\n".$merge->output()))->limit(500));
+        }
+
+        return ['base' => $base, 'conflicts' => $conflicts];
+    }
+
+    /** The checked-out commit's SHA. */
+    public function head(): string
+    {
+        return trim($this->git(['rev-parse', 'HEAD'])->throw()->output());
+    }
+
+    /** Whether `$sha` is in the branch's history. */
+    public function contains(string $sha): bool
+    {
+        return $this->git(['merge-base', '--is-ancestor', $sha, 'HEAD'])->successful();
+    }
+
+    /**
+     * Which of `$paths` still hold conflict markers in the committed HEAD, not the working copy.
+     *
+     * @param  list<string>  $paths
+     * @return list<string>
+     */
+    public function markersAt(array $paths): array
+    {
+        $grep = $this->git(['grep', '-l', '-E', '^(<<<<<<<|>>>>>>>)( |$)', 'HEAD', '--', ...$paths]);
+
+        // Exit 1 is "no match"; anything above is git failing
+        if ($grep->exitCode() > 1) {
+            throw new RuntimeException("Couldn't look for conflict markers: ".str(trim($grep->errorOutput()))->limit(500));
+        }
+
+        return array_values(array_filter(array_map(fn ($line) => str($line)->after('HEAD:')->toString(), explode("\n", trim($grep->output())))));
+    }
+
+    /**
+     * What each side of a conflicted merge changed in `$paths` since they split: `ours` is the branch, `theirs` the base.
+     *
+     * @param  list<string>  $paths
+     * @return array{ours:string,theirs:string}
+     */
+    public function conflictSides(array $paths): array
+    {
+        $split = trim($this->git(['merge-base', 'HEAD', 'MERGE_HEAD'])->throw()->output());
+        $side = fn (string $ref) => $this->git(['diff', '--no-color', '--no-ext-diff', $split, $ref, '--', ...$paths])->throw()->output();
+
+        return ['ours' => $side('HEAD'), 'theirs' => $side('MERGE_HEAD')];
+    }
+
     /** The branch's diff since it left the base branch. `$context` is the lines around each change, or git's default when null. */
     public function diffSinceBase(?int $context = null): string
     {

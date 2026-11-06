@@ -71,7 +71,7 @@ The PR was merged, or all its checks pass and no review-bot threads are open. Re
 
 ### Needs you
 
-Foreman stopped and wants a human. There are eight ways to get here:
+Foreman stopped and wants a human. There are ten ways to get here:
 
 - **The agent has a question.** Its result file said `question`. The card shows a **question** badge, and an **Answer** button that opens the run page. See [Answering a question](#answering-a-question).
 - **The agent asked for help.** Its result file said `needs_human`, so Foreman commented on the issue and added the human label. This happens when a command it needs is refused, or when checks still fail after three attempts. Reply on the issue, then click **Continue after my reply**. The agent resumes the same Claude session in the same worktree, with everything it already knew. It reads your reply first. Or click **Start over** for a fresh run.
@@ -81,6 +81,8 @@ Foreman stopped and wants a human. There are eight ways to get here:
 - **The issue was already done.** The result file said `already_done`. The comment says where the work is and whether its tests pass.
 - **Fix-up rounds ran out.** The PR still has failing checks or open bot threads after the last round. Foreman left a summary comment on the PR. The PR is yours from here.
 - **Someone else pushed to the PR's branch.** Foreman stops watching so it doesn't fight you over the branch.
+- **The PR has merge conflicts.** Click **Fix conflicts** to have the agent merge the base branch and resolve them, or fix it yourself. See [Merge conflicts](pr-watching.md#merge-conflicts).
+- **A conflict fix failed.** The agent couldn't resolve the conflicts, or Foreman's checks before the push failed. Nothing was pushed. The explanation is in the run's thread. The PR is yours from here.
 
 ### Answering a question
 
@@ -121,6 +123,7 @@ Someone cancelled the run, stopped watching its PR, or closed the PR without mer
 | **Post** | Run page, the issue's newest run once it stops | Saves your message in the run's thread. Nothing resumes. |
 | **Continue** | Run page, after a question | Resumes the agent's session with the messages you posted. Asks you to confirm when you posted none. |
 | **Continue after my reply** | Run page and dashboard, Needs you | Swaps the human label back to the working label and resumes the agent's session. Use it when the agent asked a question before opening a PR. |
+| **Fix conflicts** | Run page and dashboard, Needs you on a merge conflict | Checks the PR with GitHub again, then swaps the human label for the working label and starts a conflict fix at once. See [Fix conflicts](pr-watching.md#fix-conflicts). |
 | **Start over** / **Retry** | Run page / dashboard, after a run ends without a PR | Puts the ready label back on the issue so it's queued again. If a slot is free, it starts at once. The new run starts from a fresh worktree. |
 | **Dismiss** | Dashboard | Marks the issue as handled outside Foreman and moves it to **Handled**. Nothing is sent to GitHub. **Restore** undoes it. |
 

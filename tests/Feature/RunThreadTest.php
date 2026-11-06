@@ -48,6 +48,18 @@ class RunThreadTest extends TestCase
             ->assertDontSeeHtml('<b>archived</b>');
     }
 
+    public function test_backticks_in_a_message_show_as_code_and_stay_escaped(): void
+    {
+        $run = $this->makeRun();
+        $run->messages()->create(['role' => 'agent', 'body' => 'Widen `int $id` to `<int|string>`? Or keep `int`.']);
+        $run->messages()->create(['role' => 'agent', 'body' => 'A lone ` stays as it is.']);
+
+        Livewire::test(RunDetail::class, ['run' => $run])
+            ->assertSeeHtml('Widen <code>int $id</code> to <code>&lt;int|string&gt;</code>? Or keep <code>int</code>.')
+            ->assertSeeHtml('A lone ` stays as it is.')
+            ->assertSeeInOrder(['Question 1', 'Question 2']);
+    }
+
     public function test_a_run_with_no_messages_and_still_active_has_no_thread(): void
     {
         $run = $this->makeRun(['status' => RunStatus::Working, 'stop_reason' => null, 'finished_at' => null]);

@@ -235,6 +235,7 @@ query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       state
+      mergeable
       isDraft
       headRefOid
       commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
@@ -254,11 +255,11 @@ query($owner: String!, $name: String!, $number: Int!) {
 GRAPHQL;
 
     /**
-     * What the PR watcher needs: state, head, checks, unresolved bot threads, and when a bot last posted.
+     * What the PR watcher needs: state, whether it merges cleanly, head, checks, unresolved bot threads, and when a bot last posted.
      * For auto-merge it also reports a draft PR, unresolved threads started by people, and whether a
      * person's latest verdict (approval, changes requested or dismissal) is "Changes requested".
      *
-     * @return array{state:string,is_draft:bool,head_sha:string,checks:list<array{name:string,state:string,url:?string}>,threads:list<array{id:string,path:?string,line:?int,author:string,body:string,url:string}>,human_threads:int,changes_requested:bool,bot_activity_at:?Carbon}
+     * @return array{state:string,mergeable:string,is_draft:bool,head_sha:string,checks:list<array{name:string,state:string,url:?string}>,threads:list<array{id:string,path:?string,line:?int,author:string,body:string,url:string}>,human_threads:int,changes_requested:bool,bot_activity_at:?Carbon}
      */
     public function pullRequest(Repository $repo, string $url): array
     {
@@ -314,6 +315,7 @@ GRAPHQL;
 
         return [
             'state' => $pr['state'],
+            'mergeable' => $pr['mergeable'] ?? 'UNKNOWN',   // MERGEABLE, CONFLICTING or UNKNOWN
             'is_draft' => (bool) ($pr['isDraft'] ?? false),
             'head_sha' => $pr['headRefOid'],
             'checks' => $checks,
