@@ -261,7 +261,7 @@ class WorktreeTest extends TestCase
 
         $merge = $worktree->mergeInBase();
 
-        $this->assertSame(['base' => $main, 'conflicts' => ['a.txt'], 'error' => null], $merge);
+        $this->assertSame(['base' => $main, 'conflicts' => ['a.txt']], $merge);
         $this->assertStringContainsString('<<<<<<<', File::get("{$this->path}/a.txt"));
     }
 
@@ -275,7 +275,6 @@ class WorktreeTest extends TestCase
         $merge = $worktree->mergeInBase();
 
         $this->assertSame([], $merge['conflicts']);
-        $this->assertNull($merge['error']);
         $this->assertFileExists("{$this->path}/b.txt");
         $this->assertSame('', trim($this->git($this->path, 'status', '--porcelain', '--untracked-files=no')));
     }
@@ -288,10 +287,10 @@ class WorktreeTest extends TestCase
         $this->git($this->source, 'fetch', '-q', 'origin');
         File::put("{$this->path}/b.txt", "untracked\n");
 
-        $merge = $worktree->mergeInBase();
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('would be overwritten');
 
-        $this->assertSame([], $merge['conflicts']);
-        $this->assertStringContainsString('would be overwritten', $merge['error']);
+        $worktree->mergeInBase();
     }
 
     public function test_a_setup_scripts_changes_to_tracked_files_dont_block_the_merge(): void
@@ -302,9 +301,8 @@ class WorktreeTest extends TestCase
         $this->git($this->source, 'fetch', '-q', 'origin');
         File::put("{$this->path}/a.txt", "rewritten by npm install\n");
 
-        $merge = $worktree->mergeInBase();
+        $worktree->mergeInBase();
 
-        $this->assertNull($merge['error']);
         $this->assertStringEqualsFile("{$this->path}/a.txt", "main\n");
     }
 

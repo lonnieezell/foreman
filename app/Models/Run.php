@@ -189,6 +189,12 @@ class Run extends Model
 
         $github->reclaim($this->repository, $this->issue_number);
 
+        return $this->queueNext([], "Continuing run {$this->id} after a human reply.");
+    }
+
+    /** Queue a run that resumes this one's session in its worktree, on `$attributes` too. Its previous run is this one. */
+    private function queueNext(array $attributes, string $log): self
+    {
         $next = $this->repository->runs()->create([
             'issue_number' => $this->issue_number,
             'issue_title' => $this->issue_title,
@@ -200,8 +206,9 @@ class Run extends Model
             'worktree_path' => $this->worktree_path,
             'resume_session_id' => $this->session_id,
             'previous_run_id' => $this->id,   // its finish time marks which comments are new
+            ...$attributes,
         ]);
-        $next->log("Continuing run {$this->id} after a human reply.");
+        $next->log($log);
 
         ProcessRun::dispatch($next)->onQueue('runs');
 
@@ -255,28 +262,13 @@ class Run extends Model
 
         $github->reclaim($this->repository, $this->issue_number);
 
-        $fix = $this->repository->runs()->create([
-            'issue_number' => $this->issue_number,
-            'issue_title' => $this->issue_title,
-            'issue_url' => $this->issue_url,
-            'branch' => $this->branch,
-            'status' => RunStatus::Queued,
+        return $this->queueNext([
             'kind' => self::CONFLICT_FIX,
-            'model' => $this->repository->model,
-            'effort' => $this->repository->effort,
-            'worktree_path' => $this->worktree_path,
-            'resume_session_id' => $this->session_id,
-            'previous_run_id' => $this->id,
             'pr_url' => $this->pr_url,
             'pr_round' => $this->pr_round,   // a conflict fix isn't a fix-up round, so it doesn't use one up
             'head_sha' => $this->head_sha,
             'risk_tier' => $this->risk_tier,
-        ]);
-        $fix->log("Fixing the merge conflicts on {$this->pr_url} (run {$this->id}).");
-
-        ProcessRun::dispatch($fix)->onQueue('runs');
-
-        return $fix;
+        ], "Fixing the merge conflicts on {$this->pr_url} (run {$this->id}).");
     }
 
     public function moveTo(RunStatus $status, array $extra = []): void

@@ -130,9 +130,9 @@ class Worktree
      * Merge the fetched base branch into the branch for a conflict fix. Unlike catching up, a conflict is left in place, markers and all.
      * Changes to tracked files are thrown away first: only the setup script ran since the worktree was built, and an install
      * that rewrote a lock file would otherwise stop the merge.
-     * `base` is the commit merged. `conflicts` lists the conflicted paths; `error` says why a merge failed for any other reason.
+     * `base` is the commit merged, and `conflicts` lists the conflicted paths. Throws when the merge fails for any other reason.
      *
-     * @return array{base:string,conflicts:list<string>,error:?string}
+     * @return array{base:string,conflicts:list<string>}
      */
     public function mergeInBase(): array
     {
@@ -141,14 +141,13 @@ class Worktree
         $merge = $this->git(['merge', '--no-edit', $base], timeout: 120);
         $this->beat();
 
-        if ($merge->successful()) {
-            return ['base' => $base, 'conflicts' => [], 'error' => null];
+        $conflicts = $merge->successful() ? [] : array_values(array_filter(explode("\0", $this->git(['diff', '--name-only', '--diff-filter=U', '-z'])->output())));
+
+        if ($merge->failed() && $conflicts === []) {
+            throw new RuntimeException("Couldn't merge {$this->baseRef()}: ".str(trim($merge->errorOutput()."\n".$merge->output()))->limit(500));
         }
 
-        $conflicts = array_values(array_filter(explode("\0", $this->git(['diff', '--name-only', '--diff-filter=U', '-z'])->output())));
-
-        return ['base' => $base, 'conflicts' => $conflicts,
-            'error' => $conflicts ? null : (string) str(trim($merge->errorOutput()."\n".$merge->output()))->limit(500)];
+        return ['base' => $base, 'conflicts' => $conflicts];
     }
 
     /** The checked-out commit's SHA. */

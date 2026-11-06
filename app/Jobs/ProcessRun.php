@@ -85,13 +85,6 @@ class ProcessRun implements ShouldQueue
             $run->refresh();
             $cancelled = $run->cancel_requested;
 
-            // A conflict fix's PR is the operator's: no comment on GitHub, and the run stays Needs you
-            if ($run->isConflictFix() && ! $cancelled) {
-                $this->conflictFixFailed($run, $github, 'Foreman: '.$e->getMessage(), 'Failed: '.$e->getMessage());
-
-                return;
-            }
-
             $run->moveTo($cancelled ? RunStatus::Cancelled : RunStatus::Failed, [
                 'error' => $cancelled ? null : $e->getMessage(),
                 'finished_at' => now(),
@@ -369,6 +362,21 @@ class ProcessRun implements ShouldQueue
      */
     private function fixConflicts(Run $run, GitHub $github): void
     {
+        try {
+            $this->mergeAndResolve($run, $github);
+        } catch (Throwable $e) {
+            // Cancelling goes the usual way
+            if ($run->fresh()->cancel_requested) {
+                throw $e;
+            }
+
+            // The PR is the operator's: no comment on GitHub, and the run stays Needs you
+            $this->conflictFixFailed($run, $github, 'Foreman: '.$e->getMessage(), 'Failed: '.$e->getMessage());
+        }
+    }
+
+    private function mergeAndResolve(Run $run, GitHub $github): void
+    {
         $repo = $run->repository;
         $path = $repo->worktreePath($run->issue_number);
 
@@ -397,10 +405,6 @@ class ProcessRun implements ShouldQueue
 
         $run->log("Merging {$git->baseRef()} into {$run->branch}");
         $merge = $git->mergeInBase();
-
-        if ($merge['error'] !== null) {
-            throw new RuntimeException("Couldn't merge {$git->baseRef()}: {$merge['error']}");
-        }
 
         if ($merge['conflicts'] === []) {
             $run->log("{$git->baseRef()} merged cleanly, so the agent isn't needed.");
@@ -468,7 +472,7 @@ class ProcessRun implements ShouldQueue
     /**
      * What stops a conflict fix's push: the merge not in the branch, markers left in the conflicted files, or a locked file changed.
      *
-     * @param  array{base:string,conflicts:list<string>,error:?string}  $merge
+     * @param  array{base:string,conflicts:list<string>}  $merge
      * @return list<string>
      */
     private function conflictFixPushFailures(Run $run, array $merge): array

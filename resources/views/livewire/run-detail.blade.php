@@ -115,7 +115,7 @@
                     @foreach ($thread as $message)
                         @php($human = $message->role === \App\Models\RunMessage::HUMAN)
                         {{-- A failed conflict fix's explanation is an agent message, but not a question --}}
-                        @php($asks = ! $human && $chain->firstWhere('id', $message->run_id)?->stop_reason !== 'conflict_fix_failed')
+                        @php($asks = ! $human && ! $chain->firstWhere('id', $message->run_id)?->isConflictFix())
                         <li @class(['thread-message', 'is-human' => $human]) wire:key="message-{{ $message->id }}">
                             <span class="thread-who">{{ $human ? 'You' : 'Agent' }}@if ($asks)<span class="thread-num">Question {{ ++$question }}</span>@endif</span>
                             <p class="thread-body">{{ $message->bodyHtml() }}</p>

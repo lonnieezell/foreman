@@ -324,7 +324,7 @@ class ConflictFixTest extends TestCase
 
     public function test_a_clean_merge_is_pushed_with_no_agent(): void
     {
-        $this->git->merge = ['base' => 'bbbbbbb0000', 'conflicts' => [], 'error' => null];
+        $this->git->merge = ['base' => 'bbbbbbb0000', 'conflicts' => []];
 
         $run = $this->process($this->fixRun());
 
@@ -335,7 +335,7 @@ class ConflictFixTest extends TestCase
 
     public function test_a_merge_that_fails_for_another_reason_fails_the_fix(): void
     {
-        $this->git->merge = ['base' => 'bbbbbbb0000', 'conflicts' => [], 'error' => 'fatal: refusing to merge unrelated histories'];
+        $this->git->mergeFailure = "Couldn't merge origin/main: fatal: refusing to merge unrelated histories";
 
         $run = $this->process($this->fixRun(), $this->silentGitHub());
 

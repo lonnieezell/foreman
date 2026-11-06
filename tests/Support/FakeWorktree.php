@@ -40,8 +40,11 @@ class FakeWorktree extends Worktree
     /** What head gives. */
     public string $head = 'aaaaaaa1111';
 
-    /** @var array{base:string,conflicts:list<string>,error:?string} What mergeInBase gives. */
-    public array $merge = ['base' => 'bbbbbbb0000', 'conflicts' => ['app/Foo.php'], 'error' => null];
+    /** @var array{base:string,conflicts:list<string>} What mergeInBase gives. */
+    public array $merge = ['base' => 'bbbbbbb0000', 'conflicts' => ['app/Foo.php']];
+
+    /** The message of the exception mergeInBase throws, when set. */
+    public ?string $mergeFailure = null;
 
     /** What contains gives. */
     public bool $containsBase = true;
@@ -158,6 +161,10 @@ class FakeWorktree extends Worktree
     public function mergeInBase(): array
     {
         $this->calls[] = 'mergeInBase';
+
+        if ($this->mergeFailure !== null) {
+            throw new RuntimeException($this->mergeFailure);
+        }
 
         return $this->merge;
     }
