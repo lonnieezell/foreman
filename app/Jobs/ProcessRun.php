@@ -373,12 +373,17 @@ class ProcessRun implements ShouldQueue
         $path = $repo->worktreePath($run->issue_number);
 
         // Always rebuilt: an old folder may hold anything, and the resume path's catch-up aborts on a conflict
-        $this->worktree($run, $path)->prepare(continuing: true);
+        $pushed = $this->worktree($run, $path)->prepare(continuing: true);
         $run->update(['worktree_path' => $path]);
+
+        if (! $pushed) {
+            throw new RuntimeException("{$run->branch} isn’t on origin, so there is no PR branch to fix.");
+        }
+
         $git = $this->worktree($run);
 
         if (($head = $git->head()) !== $run->head_sha) {
-            $this->branchMoved($run, $head);
+            $this->branchMoved($run, $github, $head);
 
             return;
         }
@@ -418,7 +423,7 @@ class ProcessRun implements ShouldQueue
             $remote = $github->pullRequest($repo, $run->pr_url)['head_sha'];
 
             if ($remote !== $run->head_sha) {
-                $this->branchMoved($run, $remote);
+                $this->branchMoved($run, $github, $remote);
 
                 return;
             }
@@ -426,7 +431,8 @@ class ProcessRun implements ShouldQueue
             throw $e;
         }
 
-        $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
+        // A push without force that went through leaves GitHub at this commit, even before its API catches up
+        $head = $git->head();
         $this->watch($run, $head);
         $run->log('Pushed '.substr($head, 0, 7).'. Watching the PR again.');
     }
@@ -476,9 +482,10 @@ class ProcessRun implements ShouldQueue
         ];
     }
 
-    /** Someone else's commit is on the branch, so Foreman leaves the PR alone, as the watcher does. */
-    private function branchMoved(Run $run, string $head): void
+    /** Someone else's commit is on the branch, so Foreman leaves the PR alone, as the watcher does. The click took the human label off, so it goes back. */
+    private function branchMoved(Run $run, GitHub $github, string $head): void
     {
+        $github->addHumanLabel($run->repository, $run->issue_number);
         $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now(), 'stop_reason' => 'someone_pushed']);
         $run->log('Someone else pushed '.substr($head, 0, 7).' to the branch. Leaving the PR to you.');
     }
@@ -798,7 +805,8 @@ class ProcessRun implements ShouldQueue
     private function decisions(Run $run): string
     {
         $thread = RunMessage::query()
-            ->whereHas('run', fn ($q) => $q->where('repository_id', $run->repository_id)->where('issue_number', $run->issue_number))
+            // A failed conflict fix's thread explains a failure; it asks nothing
+            ->whereHas('run', fn ($q) => $q->where('repository_id', $run->repository_id)->where('issue_number', $run->issue_number)->whereNull('kind'))
             ->where('run_id', '!=', $run->id)
             ->orderBy('id')
             ->get()

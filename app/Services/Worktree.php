@@ -128,6 +128,8 @@ class Worktree
 
     /**
      * Merge the fetched base branch into the branch for a conflict fix. Unlike catching up, a conflict is left in place, markers and all.
+     * Changes to tracked files are thrown away first: only the setup script ran since the worktree was built, and an install
+     * that rewrote a lock file would otherwise stop the merge.
      * `base` is the commit merged. `conflicts` lists the conflicted paths; `error` says why a merge failed for any other reason.
      *
      * @return array{base:string,conflicts:list<string>,error:?string}
@@ -135,6 +137,7 @@ class Worktree
     public function mergeInBase(): array
     {
         $base = trim($this->git(['rev-parse', '--verify', $this->baseRef()])->output());
+        $this->git(['reset', '--hard', '--quiet', 'HEAD']);
         $merge = $this->git(['merge', '--no-edit', $base], timeout: 120);
         $this->beat();
 

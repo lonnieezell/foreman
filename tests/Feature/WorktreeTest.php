@@ -283,15 +283,29 @@ class WorktreeTest extends TestCase
     public function test_a_merge_that_fails_without_a_conflict_says_why(): void
     {
         $worktree = $this->prepared();
-        $this->commit($this->other, 'a.txt', "main\n", 'main work');
+        $this->commit($this->other, 'b.txt', "main\n", 'main work');
         $this->git($this->other, 'push', '-q', 'origin', 'main');
         $this->git($this->source, 'fetch', '-q', 'origin');
-        File::put("{$this->path}/a.txt", "uncommitted\n");
+        File::put("{$this->path}/b.txt", "untracked\n");
 
         $merge = $worktree->mergeInBase();
 
         $this->assertSame([], $merge['conflicts']);
         $this->assertStringContainsString('would be overwritten', $merge['error']);
+    }
+
+    public function test_a_setup_scripts_changes_to_tracked_files_dont_block_the_merge(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->other, 'a.txt', "main\n", 'main work');
+        $this->git($this->other, 'push', '-q', 'origin', 'main');
+        $this->git($this->source, 'fetch', '-q', 'origin');
+        File::put("{$this->path}/a.txt", "rewritten by npm install\n");
+
+        $merge = $worktree->mergeInBase();
+
+        $this->assertNull($merge['error']);
+        $this->assertStringEqualsFile("{$this->path}/a.txt", "main\n");
     }
 
     public function test_head_is_the_checked_out_commit_and_contains_follows_ancestry(): void

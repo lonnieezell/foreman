@@ -47,6 +47,7 @@ class ConflictFixTest extends TestCase
         parent::setUp();
 
         $this->git = FakeWorktree::install($this->app);
+        $this->git->pushed = true;   // the PR's branch is on origin
         $this->claude = FakeClaude::install($this->app);
         $this->githubRepo = 'owner/conflict-fix-'.uniqid();
         $this->worktree = sys_get_temp_dir().'/foreman-conflict-fix-'.uniqid();
@@ -242,9 +243,16 @@ class ConflictFixTest extends TestCase
         };
     }
 
+    /** The agent commits its resolution, so the branch head moves to ccccccc3333. */
     private function resolves(): void
     {
-        $this->agentWrites(['outcome' => 'pr', 'title' => 'x', 'body' => 'x']);
+        $this->claude->onAgent = function (array $call) {
+            $this->git->head = 'ccccccc3333';
+            File::ensureDirectoryExists("{$call['worktree']}/.foreman");
+            File::put("{$call['worktree']}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'x', 'body' => 'x']));
+
+            return FakeClaude::result();
+        };
     }
 
     /** A GitHub mock that fails the test on any comment, and expects the human label once. */
@@ -272,7 +280,8 @@ class ConflictFixTest extends TestCase
     {
         $this->resolves();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
-        $github->allows('pullRequest')->andReturn(['state' => 'OPEN', 'mergeable' => 'UNKNOWN', 'head_sha' => 'ccccccc3333']);
+        // GitHub can lag behind a push; the head watched next is the one Foreman pushed
+        $github->allows('pullRequest')->andReturn(['state' => 'OPEN', 'mergeable' => 'UNKNOWN', 'head_sha' => 'aaaaaaa1111']);
         $github->expects('release')->once();
 
         $run = $this->process($this->fixRun(), $github);
@@ -357,6 +366,7 @@ class ConflictFixTest extends TestCase
         ];
 
         foreach ($cases as $explanation => $arrange) {
+            $this->git->head = 'aaaaaaa1111';
             $this->git->containsBase = true;
             $this->git->markers = [];
             $this->git->changedFiles = [];
@@ -473,5 +483,36 @@ class ConflictFixTest extends TestCase
         Livewire::test(RunDetail::class, ['run' => $run])
             ->assertSee('Foreman: Hit the 45-minute limit.')
             ->assertDontSee('Question 1');
+    }
+
+    public function test_someone_pushing_puts_the_human_label_back(): void
+    {
+        $this->git->head = 'eeeeeee5555';
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+        $github->expects('addHumanLabel')->once()->withArgs(fn ($repo, $issue) => $issue === 7);
+
+        $this->assertSame('someone_pushed', $this->process($this->fixRun(), $github)->stop_reason);
+    }
+
+    public function test_a_branch_missing_on_origin_fails_the_fix_without_blaming_a_push(): void
+    {
+        $this->git->pushed = false;
+
+        $run = $this->process($this->fixRun(), $this->silentGitHub());
+
+        $this->assertFailedFix($run, 'Foreman: agent/issue-7 isn’t on origin');
+    }
+
+    public function test_a_failed_fixs_explanation_never_reaches_a_fresh_runs_decisions(): void
+    {
+        $failed = $this->conflicted(['stop_reason' => 'conflict_fix_failed', 'kind' => Run::CONFLICT_FIX]);
+        $failed->messages()->create(['role' => RunMessage::AGENT, 'body' => 'Foreman: Hit the 45-minute limit.']);
+        $fresh = $failed->repository->runs()->create(['issue_number' => 7, 'issue_title' => 'Fix', 'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::Queued]);
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+        $github->allows('sanitisedIssue')->andReturn('<untrusted_issue>Fix</untrusted_issue>');
+
+        (new ProcessRun($fresh))->handle($github);
+
+        $this->assertStringNotContainsString('45-minute limit', $this->claude->agentCalls[0]['prompt']);
     }
 }

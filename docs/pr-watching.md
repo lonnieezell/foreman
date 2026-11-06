@@ -108,7 +108,7 @@ The run that stopped stays **Needs you**, as a record. Under **Attempts**, the n
 1. **Rebuilds the worktree** from the pushed branch, even when an old one is still on disk.
 2. **Checks the branch.** If the branch's head isn't the commit the run was watching, someone pushed after your click. The run ends as **Needs you** ("Someone else pushed") before any tokens are spent.
 3. **Runs the setup script** on the PR's own commit, before the merge. Lock files often conflict, and an install step would fail on a lock file full of conflict markers.
-4. **Merges** `origin/<base>`. On a conflict, the markers stay in the files for the agent.
+4. **Merges** `origin/<base>`. First it throws away any changes the setup script made to tracked files, such as a rewritten lock file, so they can't stop the merge. On a conflict, the markers stay in the files for the agent.
 5. **Resumes the agent** with the list of conflicted files. It resolves them, runs its checks and commits the merge. It runs the install step again if it changes a lock file or a manifest. Extra commits after the merge are fine. If Claude can't find the agent's session (for example, the Claude profile changed), Foreman starts the agent fresh once. The fresh prompt holds the issue, the conflicted files and what each side changed in them.
 6. **Checks before the push**, with no tokens:
    - the base commit it merged is in the branch, so the merge was committed
@@ -127,7 +127,7 @@ As in a fix-up round, there is no gate, review pass or scope judge. CI on the PR
 | The agent gave up, with a `needs_human`, `question` or `already_done` result | **Needs you** |
 | A check before the push failed | **Needs you** |
 | The push was refused and the branch didn't move, for example because the agent rewrote history | **Needs you** |
-| An error or a cap: the time limit, the spend cap, the setup script, a fetch, the merge, or the fresh retry | **Needs you** |
+| An error or a cap: the time limit, the spend cap, the setup script, a fetch, the merge, the PR's branch missing on `origin`, or the fresh retry | **Needs you** |
 | The push was refused because someone pushed to the branch | **Needs you** ("Someone else pushed") |
 | You cancelled it | **Cancelled**. The PR stays open and nobody watches it. |
 
