@@ -31,6 +31,27 @@ class FakeWorktree extends Worktree
 
     public int $changedLines = 0;
 
+    /** @var list<string> What changedFiles gives. */
+    public array $changedFiles = [];
+
+    /** The message of the exception a push throws, when set. */
+    public ?string $pushFailure = null;
+
+    /** What head gives. */
+    public string $head = 'aaaaaaa1111';
+
+    /** @var array{base:string,conflicts:list<string>,error:?string} What mergeInBase gives. */
+    public array $merge = ['base' => 'bbbbbbb0000', 'conflicts' => ['app/Foo.php'], 'error' => null];
+
+    /** What contains gives. */
+    public bool $containsBase = true;
+
+    /** @var list<string> What markersAt gives. */
+    public array $markers = [];
+
+    /** @var array{ours:string,theirs:string} What conflictSides gives. */
+    public array $sides = ['ours' => '+ours', 'theirs' => '+theirs'];
+
     /** @var array<string,list<string>> What linesAtBase gives for each path, whatever the range. A path left out isn't on the base branch. */
     public array $atBase = [];
 
@@ -110,7 +131,7 @@ class FakeWorktree extends Worktree
     {
         $this->calls[] = 'changedFiles';
 
-        return [];
+        return $this->changedFiles;
     }
 
     public function changedLines(): int
@@ -122,7 +143,38 @@ class FakeWorktree extends Worktree
 
     public function push(bool $sign = false): void
     {
+        if ($this->pushFailure !== null) {
+            throw new RuntimeException($this->pushFailure);
+        }
+
         $this->calls[] = $sign ? 'push:sign' : 'push';
+    }
+
+    public function head(): string
+    {
+        return $this->head;
+    }
+
+    public function mergeInBase(): array
+    {
+        $this->calls[] = 'mergeInBase';
+
+        return $this->merge;
+    }
+
+    public function contains(string $sha): bool
+    {
+        return $this->containsBase;
+    }
+
+    public function markersAt(array $paths): array
+    {
+        return $this->markers;
+    }
+
+    public function conflictSides(array $paths): array
+    {
+        return $this->sides;
     }
 
     public function pointOriginHeadAtBase(): void

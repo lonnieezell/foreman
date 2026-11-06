@@ -76,6 +76,7 @@ class AutoMergeTest extends TestCase
     {
         return [
             'state' => 'OPEN',
+            'mergeable' => 'MERGEABLE',
             'is_draft' => false,
             'head_sha' => 'aaaaaaa1111',
             'checks' => [['name' => 'tests', 'state' => 'passed', 'url' => null]],

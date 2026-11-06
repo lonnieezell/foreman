@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Services\Claude\ClaudeCli;
+use App\Services\Claude\SessionNotFound;
 use App\Support\ForemanEnv;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -239,6 +240,30 @@ class ClaudeCliTest extends TestCase
         $this->expectExceptionMessage('Claude exited without a result');
 
         (new ClaudeCli)->agent($this->makeRun(), $this->worktree, 'Do it');
+    }
+
+    public function test_a_resume_with_no_conversation_for_the_session_throws_session_not_found(): void
+    {
+        // What claude 2.1 prints: the reason on stderr, and an error result on stdout
+        $result = '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"sess-gone","errors":["No conversation found with session ID: sess-gone"]}';
+        Process::fake(fn () => Process::result($result, 'No conversation found with session ID: sess-gone', 1));
+
+        $this->expectException(SessionNotFound::class);
+
+        (new ClaudeCli)->agent($this->makeRun(), $this->worktree, 'Do it', 'sess-gone');
+    }
+
+    public function test_any_other_failed_exit_is_a_plain_failure(): void
+    {
+        Process::fake(fn () => Process::result('', 'Something else broke', 1));
+
+        try {
+            (new ClaudeCli)->agent($this->makeRun(), $this->worktree, 'Do it', 'sess-1');
+            $this->fail('Expected the agent to throw.');
+        } catch (RuntimeException $e) {
+            $this->assertNotInstanceOf(SessionNotFound::class, $e);
+            $this->assertStringContainsString('Claude exited without a result', $e->getMessage());
+        }
     }
 
     public function test_a_one_shot_is_haiku_with_no_tools_no_session_and_no_project(): void

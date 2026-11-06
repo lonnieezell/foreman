@@ -13,6 +13,7 @@ use App\Services\AgentOutcome;
 use App\Services\AgentReport;
 use App\Services\Claude\AgentResult;
 use App\Services\Claude\Claude;
+use App\Services\Claude\SessionNotFound;
 use App\Services\Gate;
 use App\Services\GitHub;
 use App\Services\JudgeReply;
@@ -42,6 +43,9 @@ class ProcessRun implements ShouldQueue
     /** @var list<string> Subjects of the commits the base merge brought into a continuing run's branch. */
     private array $mergedFromBase = [];
 
+    /** @var list<string> The files a conflict fix's merge left conflicted. */
+    private array $conflicts = [];
+
     public function __construct(public Run $run) {}
 
     public function handle(GitHub $github): void
@@ -57,6 +61,12 @@ class ProcessRun implements ShouldQueue
         $run->moveTo(RunStatus::Preparing, ['started_at' => now(), 'heartbeat_at' => now()]);
 
         try {
+            if ($run->isConflictFix()) {
+                $this->fixConflicts($run, $github);
+
+                return;
+            }
+
             if ($run->resume_session_id && $run->worktree_path && File::isDirectory($run->worktree_path)) {
                 $worktree = $run->worktree_path;   // continuing: keep the agent's work in progress
                 $this->catchUpWithBase($run, fetch: true);
@@ -74,6 +84,13 @@ class ProcessRun implements ShouldQueue
         } catch (Throwable $e) {
             $run->refresh();
             $cancelled = $run->cancel_requested;
+
+            // A conflict fix's PR is the operator's: no comment on GitHub, and the run stays Needs you
+            if ($run->isConflictFix() && ! $cancelled) {
+                $this->conflictFixFailed($run, $github, 'Foreman: '.$e->getMessage(), 'Failed: '.$e->getMessage());
+
+                return;
+            }
 
             $run->moveTo($cancelled ? RunStatus::Cancelled : RunStatus::Failed, [
                 'error' => $cancelled ? null : $e->getMessage(),
@@ -171,6 +188,7 @@ class ProcessRun implements ShouldQueue
 
         $prompt = match (true) {
             $followUp !== null => $followUp,
+            $run->isConflictFix() => $this->conflictPrompt($run, $github),
             (bool) $run->pr_round => $this->roundPrompt($run, $github),
             (bool) $run->resume_session_id => $this->resumePrompt($run, $github),
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)).$this->decisions($run),
@@ -303,14 +321,7 @@ class ProcessRun implements ShouldQueue
         $result = (new AgentReport($run->worktree_path))->outcome();
 
         if ($result === null) {
-            $reason = $agent->isError()
-                ? 'Claude stopped with an error ('.($agent->subtype() ?? 'unknown').').'
-                : 'The agent finished without a readable result file ('.AgentReport::RESULT_FILE.').';
-
-            // Its last message usually says why, so keep it where a human will see it
-            $last = $agent->message();
-
-            throw new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
+            throw self::noResult($agent);
         }
 
         if ($result->kind === Outcome::Question) {
@@ -337,6 +348,176 @@ class ProcessRun implements ShouldQueue
         }
 
         return $result;
+    }
+
+    /** Why there is no outcome to act on, for a pass that left no readable result file. */
+    private static function noResult(AgentResult $agent): RuntimeException
+    {
+        $reason = $agent->isError()
+            ? 'Claude stopped with an error ('.($agent->subtype() ?? 'unknown').').'
+            : 'The agent finished without a readable result file ('.AgentReport::RESULT_FILE.').';
+
+        // Its last message usually says why, so keep it where a human will see it
+        $last = $agent->message();
+
+        return new RuntimeException($last === '' ? $reason : "{$reason} Its last message:\n\n".str($last)->limit(2000));
+    }
+
+    /**
+     * Merge the base branch into the PR's branch, have the agent resolve the conflicts, and push without force.
+     * No gate, review pass or scope judge, as in a fix-up round: CI on the PR is the check.
+     */
+    private function fixConflicts(Run $run, GitHub $github): void
+    {
+        $repo = $run->repository;
+        $path = $repo->worktreePath($run->issue_number);
+
+        // Always rebuilt: an old folder may hold anything, and the resume path's catch-up aborts on a conflict
+        $this->worktree($run, $path)->prepare(continuing: true);
+        $run->update(['worktree_path' => $path]);
+        $git = $this->worktree($run);
+
+        if (($head = $git->head()) !== $run->head_sha) {
+            $this->branchMoved($run, $head);
+
+            return;
+        }
+
+        // On the clean PR head: an install step would fail on a lock file full of conflict markers
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $path, timeout: 900, env: ForemanEnv::removed());
+
+        (new AgentReport($path))->clear();
+        $git->excludeFromGit('.foreman/');
+        $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
+
+        $run->log("Merging {$git->baseRef()} into {$run->branch}");
+        $merge = $git->mergeInBase();
+
+        if ($merge['error'] !== null) {
+            throw new RuntimeException("Couldn't merge {$git->baseRef()}: {$merge['error']}");
+        }
+
+        if ($merge['conflicts'] === []) {
+            $run->log("{$git->baseRef()} merged cleanly, so the agent isn't needed.");
+        } elseif (! $this->resolveConflicts($run, $github, $merge['conflicts'])) {
+            return;
+        }
+
+        if ($failures = $this->conflictFixPushFailures($run, $merge)) {
+            $this->conflictFixFailed($run, $github,
+                "Foreman: nothing was pushed, because the branch failed Foreman's checks before the push.\n\n".implode("\n", array_map(fn ($f) => "- {$f}", $failures)),
+                "Foreman's checks before the push failed: ".implode(' ', $failures));
+
+            return;
+        }
+
+        try {
+            $this->push($run);
+        } catch (RuntimeException $e) {
+            // Without force a push is refused when the branch moved; any other refusal is a failed fix
+            $remote = $github->pullRequest($repo, $run->pr_url)['head_sha'];
+
+            if ($remote !== $run->head_sha) {
+                $this->branchMoved($run, $remote);
+
+                return;
+            }
+
+            throw $e;
+        }
+
+        $head = $github->pullRequest($repo, $run->pr_url)['head_sha'];
+        $this->watch($run, $head);
+        $run->log('Pushed '.substr($head, 0, 7).'. Watching the PR again.');
+    }
+
+    /** Run the agent on the conflicts. Gives false after ending the run, when the agent gave up. */
+    private function resolveConflicts(Run $run, GitHub $github, array $conflicts): bool
+    {
+        $this->conflicts = $conflicts;
+        $run->log('Conflicts in: '.implode(', ', $conflicts));
+
+        try {
+            $agent = $this->runAgent($run, $run->worktree_path, $github);
+        } catch (SessionNotFound) {
+            // Without a session the prompt carries the issue and both sides instead
+            $run->log("Claude couldn't find the agent's session. Starting the agent fresh, once.");
+            $run->update(['resume_session_id' => null]);
+            $agent = $this->runAgent($run, $run->worktree_path, $github);
+        }
+
+        $result = (new AgentReport($run->worktree_path))->outcome() ?? throw self::noResult($agent);
+
+        if ($result->kind === Outcome::Pr) {
+            return true;
+        }
+
+        $this->conflictFixFailed($run, $github,
+            $result->kind === Outcome::Question ? implode("\n\n", $result->questions) : $result->comment,
+            "The agent couldn't resolve the conflicts.");
+
+        return false;
+    }
+
+    /**
+     * What stops a conflict fix's push: the merge not in the branch, markers left in the conflicted files, or a locked file changed.
+     *
+     * @param  array{base:string,conflicts:list<string>,error:?string}  $merge
+     * @return list<string>
+     */
+    private function conflictFixPushFailures(Run $run, array $merge): array
+    {
+        $git = $this->worktree($run);
+
+        return [
+            ...($git->contains($merge['base']) ? [] : ["{$git->baseRef()} (".substr($merge['base'], 0, 7).") isn't in the branch, so the merge wasn't committed."]),
+            ...array_map(fn ($file) => "Conflict markers are still in {$file}.", $merge['conflicts'] ? $git->markersAt($merge['conflicts']) : []),
+            ...$this->lockedChangeFailures($run),
+        ];
+    }
+
+    /** Someone else's commit is on the branch, so Foreman leaves the PR alone, as the watcher does. */
+    private function branchMoved(Run $run, string $head): void
+    {
+        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now(), 'stop_reason' => 'someone_pushed']);
+        $run->log('Someone else pushed '.substr($head, 0, 7).' to the branch. Leaving the PR to you.');
+    }
+
+    /** End a conflict fix as Needs you with `$explanation` in its thread. Nothing goes on GitHub but the human label. */
+    private function conflictFixFailed(Run $run, GitHub $github, string $explanation, string $log): void
+    {
+        $run->messages()->create(['role' => RunMessage::AGENT, 'body' => $explanation]);
+        $github->addHumanLabel($run->repository, $run->issue_number);
+        $run->moveTo(RunStatus::NeedsHuman, ['finished_at' => now(), 'stop_reason' => 'conflict_fix_failed']);
+        $run->log($log);
+    }
+
+    private function conflictPrompt(Run $run, GitHub $github): string
+    {
+        $git = $this->worktree($run);
+        $base = $git->baseRef();
+        $context = '';
+
+        if (! $run->resume_session_id) {
+            $sides = $git->conflictSides($this->conflicts);
+            $diff = fn (string $side) => IssueSanitiser::wrapText((string) str($side)->limit(20000), clean: false);
+
+            $context = "Foreman couldn't resume your earlier session, so you start fresh. This is the issue the PR is for:\n\n"
+                .$github->sanitisedIssue($run->repository, $run->issue_number)
+                ."\n\nWhat your branch changed in those files since it split from {$base}:\n\n".$diff($sides['ours'])
+                ."\n\nWhat {$base} changed in them since then:\n\n".$diff($sides['theirs']);
+        }
+
+        return Prompt::render('conflict-fix', [
+            'pr' => $run->pr_url,
+            'issue' => (string) $run->issue_number,
+            'base' => $base,
+            'branch' => $run->branch,
+            'files' => collect($this->conflicts)->map(fn ($f) => "- `{$f}`")->implode("\n"),
+            'context' => $context,
+            'untrusted_note' => IssueSanitiser::TEXT_NOTE,
+            'result_file' => AgentReport::RESULT_FILE,
+        ]);
     }
 
     /**

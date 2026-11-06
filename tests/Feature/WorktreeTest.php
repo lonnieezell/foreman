@@ -242,6 +242,104 @@ class WorktreeTest extends TestCase
         $this->assertFileDoesNotExist("{$this->path}/b.txt");
     }
 
+    /** The branch and main both changed a.txt, and main's change has been fetched. */
+    private function conflicting(): Worktree
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->path, 'a.txt', "agent\n", 'agent work');
+        $this->commit($this->other, 'a.txt', "main\n", 'main work');
+        $this->git($this->other, 'push', '-q', 'origin', 'main');
+        $this->git($this->source, 'fetch', '-q', 'origin');
+
+        return $worktree;
+    }
+
+    public function test_merging_the_base_for_a_conflict_fix_leaves_the_markers_in_place(): void
+    {
+        $worktree = $this->conflicting();
+        $main = trim($this->git($this->source, 'rev-parse', 'origin/main'));
+
+        $merge = $worktree->mergeInBase();
+
+        $this->assertSame(['base' => $main, 'conflicts' => ['a.txt'], 'error' => null], $merge);
+        $this->assertStringContainsString('<<<<<<<', File::get("{$this->path}/a.txt"));
+    }
+
+    public function test_a_clean_merge_for_a_conflict_fix_is_committed(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->other, 'b.txt', "b\n", 'main work');
+        $this->git($this->other, 'push', '-q', 'origin', 'main');
+        $this->git($this->source, 'fetch', '-q', 'origin');
+
+        $merge = $worktree->mergeInBase();
+
+        $this->assertSame([], $merge['conflicts']);
+        $this->assertNull($merge['error']);
+        $this->assertFileExists("{$this->path}/b.txt");
+        $this->assertSame('', trim($this->git($this->path, 'status', '--porcelain', '--untracked-files=no')));
+    }
+
+    public function test_a_merge_that_fails_without_a_conflict_says_why(): void
+    {
+        $worktree = $this->prepared();
+        $this->commit($this->other, 'a.txt', "main\n", 'main work');
+        $this->git($this->other, 'push', '-q', 'origin', 'main');
+        $this->git($this->source, 'fetch', '-q', 'origin');
+        File::put("{$this->path}/a.txt", "uncommitted\n");
+
+        $merge = $worktree->mergeInBase();
+
+        $this->assertSame([], $merge['conflicts']);
+        $this->assertStringContainsString('would be overwritten', $merge['error']);
+    }
+
+    public function test_head_is_the_checked_out_commit_and_contains_follows_ancestry(): void
+    {
+        $worktree = $this->conflicting();
+        $main = trim($this->git($this->source, 'rev-parse', 'origin/main'));
+
+        $this->assertSame(trim($this->git($this->path, 'rev-parse', 'HEAD')), $worktree->head());
+        $this->assertFalse($worktree->contains($main));
+
+        $worktree->mergeInBase();
+        File::put("{$this->path}/a.txt", "both\n");
+        $this->git($this->path, 'add', '-A');
+        $this->git($this->path, 'commit', '-q', '--no-edit');
+
+        $this->assertTrue($worktree->contains($main));
+    }
+
+    public function test_markers_are_found_only_in_the_committed_head(): void
+    {
+        $worktree = $this->conflicting();
+        $worktree->mergeInBase();
+        $this->git($this->path, 'add', '-A');
+        $this->git($this->path, 'commit', '-q', '--no-edit');   // committed with the markers in
+
+        $this->assertSame(['a.txt'], $worktree->markersAt(['a.txt', 'gone.txt']));
+
+        // Fixed in the working copy only: HEAD still has them
+        File::put("{$this->path}/a.txt", "both\n");
+        $this->assertSame(['a.txt'], $worktree->markersAt(['a.txt']));
+
+        $this->git($this->path, 'commit', '-q', '-am', 'resolved');
+        $this->assertSame([], $worktree->markersAt(['a.txt']));
+    }
+
+    public function test_the_two_sides_of_a_conflict_are_each_sides_diff_since_they_split(): void
+    {
+        $worktree = $this->conflicting();
+        $worktree->mergeInBase();
+
+        $sides = $worktree->conflictSides(['a.txt']);
+
+        $this->assertStringContainsString('+agent', $sides['ours']);
+        $this->assertStringNotContainsString('+main', $sides['ours']);
+        $this->assertStringContainsString('+main', $sides['theirs']);
+        $this->assertStringNotContainsString('+agent', $sides['theirs']);
+    }
+
     public function test_the_diffs_since_the_base_cover_only_the_branch(): void
     {
         $worktree = $this->prepared();

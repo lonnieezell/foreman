@@ -40,6 +40,19 @@ class PrWatcher
             return;
         }
 
+        // A conflicted PR's CI never starts, so there is nothing to wait for, and it must never reach auto-merge
+        if ($pr['mergeable'] === 'CONFLICTING') {
+            $this->github->addHumanLabel($repo, $run->issue_number);
+            $this->finish($run, RunStatus::NeedsHuman, "The PR conflicts with {$repo->base_branch}. Leaving it to you.", 'merge_conflict');
+
+            return;
+        }
+
+        // GitHub hasn't worked it out yet; past the timeout it is ignored, so a stuck UNKNOWN can't freeze the run
+        if ($pr['mergeable'] === 'UNKNOWN' && ! $this->timedOut($run)) {
+            return;
+        }
+
         if (! $this->settled($run, $pr)) {
             return;
         }
@@ -160,7 +173,7 @@ class PrWatcher
     /** Nothing pending and the bots quiet for a while, or the timeout has passed. */
     private function settled(Run $run, array $pr): bool
     {
-        if ($run->watch_started_at->addMinutes(config('foreman.pr_watch.timeout_minutes'))->isPast()) {
+        if ($this->timedOut($run)) {
             return true;
         }
 
@@ -178,6 +191,11 @@ class PrWatcher
             : $run->watch_started_at;
 
         return $quietSince->copy()->addMinutes(config('foreman.pr_watch.quiet_minutes'))->isPast();
+    }
+
+    private function timedOut(Run $run): bool
+    {
+        return $run->watch_started_at->copy()->addMinutes(config('foreman.pr_watch.timeout_minutes'))->isPast();
     }
 
     /** Rounds spend tokens, so they wait on the same things new issues do. */

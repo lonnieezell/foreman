@@ -9,6 +9,7 @@ Watching only calls `gh`. It costs no tokens, and it keeps going while Foreman i
 - **Checks**: the CI checks and commit statuses on the PR's latest commit. Each one is pending, passed or failed.
 - **Bot threads**: unresolved review threads started by a GitHub bot account, such as a code-review app. Threads started by people are ignored. Those are yours to answer.
 - **Bot activity**: when a bot last commented on or reviewed the PR.
+- **Merge conflicts**: whether GitHub can merge the PR into the base branch. GitHub says it can, it can't (the PR has conflicts), or it is still working that out.
 
 ## When Foreman decides
 
@@ -25,6 +26,8 @@ Some changes don't wait for the PR to settle:
 | Merged | **PR ready** |
 | Closed without merging | **Cancelled** |
 | Someone else pushed to the branch | **Needs you**. Foreman leaves the PR to you. |
+| The PR has merge conflicts | **Needs you**, with the human label on the issue and no PR comment. See [Merge conflicts](#merge-conflicts). |
+| GitHub is still working out whether it conflicts | Foreman waits and checks again on the next poll. After **Start a round anyway after** has passed, it stops waiting and goes on as if there were no conflict. |
 
 Once it has settled:
 
@@ -78,6 +81,61 @@ If checks still fail or bot threads are still open after the last round, Foreman
 3. ends the run as **Needs you**
 
 The PR is yours from there.
+
+## Merge conflicts
+
+GitHub doesn't run `pull_request` workflows on a PR with conflicts. So a conflicted PR can show no checks at all, which would read as "all passed". Foreman checks for conflicts before it waits for the PR to settle. A conflicted PR never ends as **PR ready** and never reaches auto-merge.
+
+When the PR conflicts, the run ends as **Needs you**. The run page says so, and the run page and the dashboard card show a **Fix conflicts** button. The button shows only on the issue's newest run.
+
+### Fix conflicts
+
+**Fix conflicts** starts a *conflict fix*. Foreman merges the base branch into the PR's branch and resumes the agent to resolve the conflicts. The dashboard asks you to confirm first, because it spends tokens.
+
+When you click, Foreman asks GitHub about the PR once more. It starts nothing, and says why, when:
+
+- the PR is no longer open
+- someone pushed to the branch since the run stopped
+- the PR no longer has conflicts
+- GitHub is still checking ("try again in a minute")
+
+A conflict fix starts at once. Like **Continue after my reply**, it doesn't wait for pause, the daily spend limits, a free slot or the usage hold, because a person chose to spend the tokens. The click swaps the human label for the working label. A double click starts one run.
+
+The run that stopped stays **Needs you**, as a record. Under **Attempts**, the new run shows as **Conflict fix**. It doesn't count as a fix-up round, so it works even with **Fix-up rounds per PR** at 0. Foreman always merges and never rebases, and it never force-pushes.
+
+### What a conflict fix does
+
+1. **Rebuilds the worktree** from the pushed branch, even when an old one is still on disk.
+2. **Checks the branch.** If the branch's head isn't the commit the run was watching, someone pushed after your click. The run ends as **Needs you** ("Someone else pushed") before any tokens are spent.
+3. **Runs the setup script** on the PR's own commit, before the merge. Lock files often conflict, and an install step would fail on a lock file full of conflict markers.
+4. **Merges** `origin/<base>`. On a conflict, the markers stay in the files for the agent.
+5. **Resumes the agent** with the list of conflicted files. It resolves them, runs its checks and commits the merge. It runs the install step again if it changes a lock file or a manifest. Extra commits after the merge are fine. If Claude can't find the agent's session (for example, the Claude profile changed), Foreman starts the agent fresh once. The fresh prompt holds the issue, the conflicted files and what each side changed in them.
+6. **Checks before the push**, with no tokens:
+   - the base commit it merged is in the branch, so the merge was committed
+   - no conflict markers are left in the files that conflicted, in the committed code
+   - no [locked file](repository-settings.md#locked-paths) changed
+7. **Pushes without force**, and watches the PR again from the new commit. Failing checks or bot threads then get normal fix-up rounds.
+
+If the base branch changed since the click and the merge goes through cleanly, Foreman skips the agent. It runs the checks before the push, pushes and watches the PR again.
+
+As in a fix-up round, there is no gate, review pass or scope judge. CI on the PR is the check.
+
+### When a conflict fix fails
+
+| What happened | The run ends as |
+| --- | --- |
+| The agent gave up, with a `needs_human`, `question` or `already_done` result | **Needs you** |
+| A check before the push failed | **Needs you** |
+| The push was refused and the branch didn't move, for example because the agent rewrote history | **Needs you** |
+| An error or a cap: the time limit, the spend cap, the setup script, a fetch, the merge, or the fresh retry | **Needs you** |
+| The push was refused because someone pushed to the branch | **Needs you** ("Someone else pushed") |
+| You cancelled it | **Cancelled**. The PR stays open and nobody watches it. |
+
+A failed conflict fix pushes nothing. Foreman adds the human label to the issue, but posts no comment on the issue or the PR. The explanation goes in the run's **Thread**. An error Foreman caught starts with "Foreman:". Anything else is the agent's own text. The worktree is kept so you can look inside it.
+
+A failed fix gets no **Fix conflicts** button, because each conflict gets one try. It gets no **Start over** either. The PR is yours from there.
+
+If a fix works and the PR conflicts again later, the newest run ends as **Needs you** again, with a new **Fix conflicts** button. Every try needs a click, so Foreman can't loop on its own.
 
 ## Auto-merge
 

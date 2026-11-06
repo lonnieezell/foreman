@@ -67,10 +67,11 @@ The agent's own hooks already ran the same checks. Foreman runs them again becau
 
 ## Rounds and resumes
 
-Two kinds of run pick up where an earlier run stopped. Both resume the agent's Claude session in the same worktree, so it keeps everything it learned.
+These kinds of run pick up where an earlier run stopped. Both resume the agent's Claude session in the same worktree, so it keeps everything it learned.
 
 - **Continue after my reply.** For a run that stopped at **Needs you** before opening a PR. The agent reads the new issue comments, but only those from people with write access. A `pr` result then goes through all the checks above.
 - **Continue after a question.** For a run that stopped with a `question`. You answer in the thread on the run page, then click **Continue**. The agent gets every message you posted on that run first, as trusted operator text. New issue comments from people with write access follow, marked as untrusted. If the two conflict, the agent is told your answer wins. Each round of questions is a new run with its own spend cap. There is no limit on rounds, because each one waits for you.
+- **Fix conflicts.** For a watched PR that conflicts with the base branch. Foreman rebuilds the worktree, runs the setup script, merges the base branch and leaves the conflict markers in place. Then it resumes the agent to resolve them. It doesn't use the catch-up merge below, because that aborts on a conflict. If Claude can't find the agent's session, the agent starts fresh once, with the issue and both sides' changes. Foreman pushes without force. See [Merge conflicts](pr-watching.md#merge-conflicts).
 - **Fix-up rounds.** For a watched PR with failing checks or open bot threads. The agent gets the CI logs and the bot threads, commits its fixes, and gives a verdict for each thread. Foreman pushes and replies. A round's push skips the gate, the review pass and the scope judge, so CI on the PR is the check. See [PR watching](pr-watching.md#fix-up-rounds).
 
 **Start over** begins a fresh session, so it can't remember earlier answers. Instead, its prompt gets every earlier question and answer for the same repository and issue, oldest first, under "Decisions your operator already made".
@@ -91,7 +92,7 @@ When the worktree is gone and Foreman rebuilds it from the pushed branch, the me
 | Fetching `origin` fails, worktree rebuilt | The run fails with "Fetching origin failed: …", because Foreman can't rebuild the worktree without it. |
 | The worktree has uncommitted changes | Foreman doesn't merge, because `git merge --abort` can't always put those changes back. The run goes on from the branch as it was. |
 
-A conflict doesn't stop the run or flag a human. Most fixes on the base branch aren't needed by the run, and the [default checks](stack-rules.md#what-the-default-checks-cover) already ignore problems the agent didn't touch. If the branch still needs the fix, [Foreman's gate](guardrails.md#foremans-gate) fails and a human sees why. The branch's commits are never lost: an aborted merge leaves the branch where it was.
+A conflict here doesn't stop the run or flag a human. Most fixes on the base branch aren't needed by the run, and the [default checks](stack-rules.md#what-the-default-checks-cover) already ignore problems the agent didn't touch. If the branch still needs the fix, [Foreman's gate](guardrails.md#foremans-gate) fails and a human sees why. The branch's commits are never lost: an aborted merge leaves the branch where it was.
 
 ## Polling, workers and heartbeats
 

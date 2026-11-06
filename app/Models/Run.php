@@ -19,6 +19,9 @@ use Illuminate\Support\Facades\Process;
 
 class Run extends Model
 {
+    /** The `kind` of a run started by Fix conflicts. */
+    public const CONFLICT_FIX = 'conflict_fix';
+
     protected $guarded = ['id'];
 
     protected function casts(): array
@@ -84,7 +87,11 @@ class Run extends Model
             ->get();
 
         foreach ($runs as $run) {
-            $name = $run->pr_round ? "Round {$run->pr_round}" : 'Run '.++$number;
+            $name = match (true) {
+                $run->isConflictFix() => 'Conflict fix',
+                (bool) $run->pr_round => "Round {$run->pr_round}",
+                default => 'Run '.++$number,
+            };
             $attempts[] = ['run' => $run, 'label' => "{$name} · {$run->status->label()}"];
         }
 
@@ -199,6 +206,77 @@ class Run extends Model
         ProcessRun::dispatch($next)->onQueue('runs');
 
         return $next;
+    }
+
+    public function isConflictFix(): bool
+    {
+        return $this->kind === self::CONFLICT_FIX;
+    }
+
+    /** The watcher stopped this run on a merge conflict, and nothing has run for the issue since. */
+    public function canFixConflicts(): bool
+    {
+        return $this->status === RunStatus::NeedsHuman && $this->stop_reason === 'merge_conflict' && $this->pr_url
+            && $this->isNewestForIssue();
+    }
+
+    /**
+     * Start a run that merges the base branch and has the agent resolve the conflicts. It starts at once: a person
+     * chose to spend the tokens, so pause, budget, slot and usage holds don't apply (ADR 0003).
+     * Gives the new run, or why none started.
+     */
+    public function fixConflicts(GitHub $github): self|string
+    {
+        // The lock makes the check and the new run one step, so two clicks can't both pass the check
+        return Cache::lock("foreman:fix-conflicts-{$this->id}", 30)->get(fn () => $this->startFixingConflicts($github))
+            ?: 'Fix conflicts is already starting for this run.';
+    }
+
+    private function startFixingConflicts(GitHub $github): self|string
+    {
+        if (! $this->canFixConflicts()) {
+            return 'This run has no conflicts left to fix. They may be being fixed already.';
+        }
+
+        // The page may be old, so ask GitHub again before spending tokens
+        $pr = $github->pullRequest($this->repository, $this->pr_url);
+
+        $refusal = match (true) {
+            $pr['state'] !== 'OPEN' => 'The PR is no longer open. Nothing to fix.',
+            $pr['head_sha'] !== $this->head_sha => 'Someone pushed to the branch since. Leaving it to you.',
+            $pr['mergeable'] === 'UNKNOWN' => 'GitHub is still checking, try again in a minute.',
+            $pr['mergeable'] !== 'CONFLICTING' => 'The PR no longer has conflicts. Nothing to fix.',
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            return $refusal;
+        }
+
+        $github->reclaim($this->repository, $this->issue_number);
+
+        $fix = $this->repository->runs()->create([
+            'issue_number' => $this->issue_number,
+            'issue_title' => $this->issue_title,
+            'issue_url' => $this->issue_url,
+            'branch' => $this->branch,
+            'status' => RunStatus::Queued,
+            'kind' => self::CONFLICT_FIX,
+            'model' => $this->repository->model,
+            'effort' => $this->repository->effort,
+            'worktree_path' => $this->worktree_path,
+            'resume_session_id' => $this->session_id,
+            'previous_run_id' => $this->id,
+            'pr_url' => $this->pr_url,
+            'pr_round' => $this->pr_round,   // a conflict fix isn't a fix-up round, so it doesn't use one up
+            'head_sha' => $this->head_sha,
+            'risk_tier' => $this->risk_tier,
+        ]);
+        $fix->log("Fixing the merge conflicts on {$this->pr_url} (run {$this->id}).");
+
+        ProcessRun::dispatch($fix)->onQueue('runs');
+
+        return $fix;
     }
 
     public function moveTo(RunStatus $status, array $extra = []): void

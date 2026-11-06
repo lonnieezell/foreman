@@ -83,6 +83,7 @@ class PrWatchTest extends TestCase
     {
         return [
             'state' => 'OPEN',
+            'mergeable' => 'MERGEABLE',
             'head_sha' => 'aaaaaaa1111',
             'checks' => [['name' => 'tests', 'state' => 'passed', 'url' => null]],
             'threads' => [],
@@ -127,6 +128,7 @@ class PrWatchTest extends TestCase
 
         Process::fake(['*' => Process::result(json_encode(['data' => ['repository' => ['pullRequest' => [
             'state' => 'OPEN',
+            'mergeable' => 'CONFLICTING',
             'headRefOid' => 'abc123',
             'commits' => ['nodes' => [['commit' => ['statusCheckRollup' => ['contexts' => ['nodes' => [
                 ['__typename' => 'CheckRun', 'name' => 'tests', 'status' => 'COMPLETED', 'conclusion' => 'FAILURE', 'detailsUrl' => 'd'],
@@ -141,6 +143,7 @@ class PrWatchTest extends TestCase
         $pr = app(GitHub::class)->pullRequest($this->repository(), self::PR);
 
         $this->assertSame('abc123', $pr['head_sha']);
+        $this->assertSame('CONFLICTING', $pr['mergeable']);
         $this->assertSame(['failed', 'pending', 'passed'], array_column($pr['checks'], 'state'));
         $this->assertSame(['T1'], array_column($pr['threads'], 'id'));
         $this->assertTrue(Carbon::parse('2026-10-31T10:07:00Z')->equalTo($pr['bot_activity_at']));
@@ -252,6 +255,32 @@ class PrWatchTest extends TestCase
         $this->assertSame(RunStatus::NeedsHuman, $pushed->status);
         $this->assertSame('someone_pushed', $pushed->stop_reason);
         $this->assertNotNull($pushed->finished_at);
+    }
+
+    public function test_a_conflicted_pr_needs_you_without_waiting_or_commenting(): void
+    {
+        // GitHub runs no CI on a conflicted PR, so it shows no checks; it must not read as passed
+        $github = $this->github($this->pr(['mergeable' => 'CONFLICTING', 'checks' => []]));
+        $github->expects('addHumanLabel')->withArgs(fn ($repo, $issue) => $issue === 7);
+        $github->expects('commentOnPullRequest')->never();
+        $github->expects('mergePullRequest')->never();
+
+        // Watching began a moment ago, so it hasn't settled yet
+        $run = $this->check($this->watchedRun(['watch_started_at' => now()->subSeconds(10)], ['auto_merge_max_tier' => 2]));
+
+        $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame('merge_conflict', $run->stop_reason);
+        $this->assertNotNull($run->finished_at);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_a_pr_github_is_still_checking_waits_until_the_timeout_then_goes_on(): void
+    {
+        $this->github($this->pr(['mergeable' => 'UNKNOWN']));
+        $this->assertSame(RunStatus::WatchingPr, $this->check($this->watchedRun())->status);
+
+        $this->github($this->pr(['mergeable' => 'UNKNOWN']));
+        $this->assertSame(RunStatus::PrReady, $this->check($this->watchedRun(['watch_started_at' => now()->subMinutes(31)]))->status);
     }
 
     public function test_a_paused_foreman_holds_the_round_but_keeps_watching(): void

@@ -125,6 +125,14 @@ class Dashboard extends Component
         $this->flash = "#{$run->issue_number} is continuing after your reply in {$run->repository->name}.";
     }
 
+    public function fixConflicts(int $id): void
+    {
+        $run = Run::findOrFail($id);
+        $fix = $run->fixConflicts(app(GitHub::class));
+
+        $this->flash = is_string($fix) ? $fix : "#{$run->issue_number} is fixing its merge conflicts in {$run->repository->name}.";
+    }
+
     public function recheck(): void
     {
         Preflight::forget();

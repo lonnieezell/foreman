@@ -50,6 +50,20 @@ class RunDetail extends Component
         return $this->redirectRoute('runs.show', $next, navigate: true);
     }
 
+    /** Merge the base branch and have the agent resolve the conflicts. */
+    public function fixConflicts(GitHub $github)
+    {
+        $fix = $this->run->fixConflicts($github);
+
+        if (is_string($fix)) {
+            $this->flash = $fix;
+
+            return;
+        }
+
+        return $this->redirectRoute('runs.show', $fix, navigate: true);
+    }
+
     /** Save the operator's message on this run. It waits for Continue or Start over; nothing resumes here. */
     public function postMessage(): void
     {
@@ -88,6 +102,7 @@ class RunDetail extends Component
 
         return view('livewire.run-detail', [
             'canContinue' => $this->run->canContinueAfterReply(),
+            'canFixConflicts' => $this->run->canFixConflicts(),
             'takesMessages' => $this->run->takesMessages(),
             'chain' => $chain,
             'thread' => RunMessage::whereIn('run_id', $chain->pluck('id'))->orderBy('id')->get(),

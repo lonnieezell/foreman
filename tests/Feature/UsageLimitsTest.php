@@ -255,7 +255,7 @@ class UsageLimitsTest extends TestCase
         Process::fake();
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
         $github->allows('pullRequest')->andReturn([
-            'state' => 'OPEN', 'head_sha' => 'aaaaaaa1111',
+            'state' => 'OPEN', 'mergeable' => 'MERGEABLE', 'head_sha' => 'aaaaaaa1111',
             'checks' => [['name' => 'tests', 'state' => 'failed', 'url' => null]],
             'threads' => [], 'bot_activity_at' => null,
         ]);
