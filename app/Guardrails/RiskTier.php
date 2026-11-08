@@ -5,7 +5,7 @@ namespace App\Guardrails;
 /**
  * How risky a run's change is, worked out from its diff. The tier decides how deep the review pass goes.
  *
- * - Tier 3: touches a tier-3 path of a detected stack, or adds a line matching its risky-code patterns.
+ * - Tier 3: touches a tier-3 path of a detected stack, or adds a line matching its risky-code patterns outside test files.
  * - Tier 1: only docs or tests, and under 200 changed lines.
  * - Tier 2: everything else.
  */
@@ -52,7 +52,14 @@ class RiskTier
             }
         }
 
+        $testFiles = $stacks->rules('testFiles');
+
+        // Test setup calls the same helpers the patterns look for, so test files are skipped
         foreach ($added as [$path, $line]) {
+            if (Guard::matchesAny($testFiles, $path, anywhere: true)) {
+                continue;
+            }
+
             foreach ($stacks->rules('riskyCode') as $pattern) {
                 if (preg_match($pattern, $line)) {
                     return ['tier' => 3, 'reason' => "adds risky code in {$path} (matches {$pattern})"];
@@ -60,7 +67,7 @@ class RiskTier
             }
         }
 
-        $docsOrTests = [...self::DOCS, ...$stacks->rules('testFiles')];
+        $docsOrTests = [...self::DOCS, ...$testFiles];
         $onlyDocsOrTests = collect($files)->every(fn ($path) => Guard::matchesAny($docsOrTests, $path, anywhere: true));
 
         return $onlyDocsOrTests && $changed < self::TIER1_MAX_LINES

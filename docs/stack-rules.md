@@ -21,7 +21,7 @@ A repository can have several stacks. Its rules are the union of each stack's ru
 | **High-risk paths** | See the PHP frameworks below | `middleware.ts`, `**/auth/**`, `app/api/**`, `pages/api/**` | `src-tauri/tauri.conf.json`, `src-tauri/capabilities/**`, `**/auth*` | `settings.py`, `**/middleware*.py`, `**/permissions.py`, `**/migrations/**`, `**/auth/**` |
 | **Risky code** | See the PHP frameworks below | `dangerouslySetInnerHTML`, `eval(`, `child_process`, `innerHTML` | `unsafe `, `std::process::Command`, `transmute` | `eval(`, `exec(`, `pickle`, `shell=True`, `.raw(`, `.extra(`, `yaml.load(` |
 
-A change to a high-risk path, or new risky code, makes the change [risk tier 3](guardrails.md#risk-tiers).
+A change to a high-risk path, or new risky code outside test files, makes the change [risk tier 3](guardrails.md#risk-tiers).
 
 ## What the default checks cover
 
