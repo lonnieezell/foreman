@@ -256,7 +256,7 @@ class ProcessRun implements ShouldQueue
 
                 $this->handToHuman($run, $github,
                     "Foreman's scope judge vetoed this change twice, once before and once after a correction round. Nothing was pushed, and the branch is still in the worktree.\n\n".self::quote($verdict->describe())."\n\n{$answer}",
-                    "Scope judge vetoed the change again: {$verdict->reason} Flagged the issue for a human.", 'scope_vetoed');
+                    "Scope judge vetoed the change again: {$verdict->describe()} Flagged the issue for a human.", 'scope_vetoed');
 
                 return;
             }
