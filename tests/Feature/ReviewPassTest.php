@@ -33,6 +33,12 @@ class ReviewPassTest extends TestCase
 
     private const TEST_DIFF = "diff --git a/tests/ATest.php b/tests/ATest.php\n--- a/tests/ATest.php\n+++ b/tests/ATest.php\n@@ -1 +1 @@\n+\$this->assertTrue(true);\n";
 
+    /** What the review passes answer with when each runs in a session of its own. */
+    private const FRESH = [
+        'review' => ['type' => 'result', 'num_turns' => 2, 'total_cost_usd' => 0.5, 'session_id' => 'sess-review'],
+        'security' => ['type' => 'result', 'num_turns' => 3, 'total_cost_usd' => 0.25, 'session_id' => 'sess-security'],
+    ];
+
     private string $worktree;
 
     /** @var list<string> What ran, in order: issue, review, security, gate. */
@@ -107,8 +113,8 @@ class ReviewPassTest extends TestCase
 
             $event = $answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1'];
 
-            // The real adapter saves each streamed event's session id on the run as it goes
-            if (isset($event['session_id'])) {
+            // The real adapter saves each streamed event's session id on the run as it goes, unless told not to
+            if ($call['saveSession'] && isset($event['session_id'])) {
                 $call['run']->update(['session_id' => $event['session_id']]);
             }
 
@@ -214,11 +220,6 @@ class ReviewPassTest extends TestCase
         $this->assertStringContainsString('touches routes/web.php', $this->prompt('/security-review'));
         $this->assertSame(['issue', 'gate', 'review', 'security', 'gate'], $this->sequence);
     }
-
-    private const FRESH = [
-        'review' => ['type' => 'result', 'num_turns' => 2, 'total_cost_usd' => 0.5, 'session_id' => 'sess-review'],
-        'security' => ['type' => 'result', 'num_turns' => 3, 'total_cost_usd' => 0.25, 'session_id' => 'sess-security'],
-    ];
 
     public function test_the_review_pass_and_security_review_each_start_a_fresh_session(): void
     {

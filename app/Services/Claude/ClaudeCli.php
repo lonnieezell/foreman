@@ -29,7 +29,10 @@ class ClaudeCli implements Claude
     /** Whether a rate_limit_event already reported the limit as hit. */
     private bool $limitReported = false;
 
-    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false): AgentResult
+    /** Whether streamed session ids are saved on the run. */
+    private bool $saveSession = true;
+
+    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true): AgentResult
     {
         $repo = $run->repository;
 
@@ -59,6 +62,7 @@ class ClaudeCli implements Claude
         $this->buffer = '';
         $this->outcome = null;
         $this->limitReported = false;
+        $this->saveSession = $saveSession;
 
         $process = Process::path($worktree)
             ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox)])
@@ -101,7 +105,7 @@ class ClaudeCli implements Claude
             throw new RuntimeException('Claude exited without a result: '.str($exit->errorOutput())->limit(500));
         }
 
-        return new AgentResult($this->outcome, $run->session_id);
+        return new AgentResult($this->outcome, $saveSession ? $run->session_id : ($this->outcome['session_id'] ?? null));
     }
 
     public function oneShot(Repository $repo, string $prompt, ?array $schema = null): OneShotResult
@@ -255,7 +259,7 @@ class ClaudeCli implements Claude
                 continue;
             }
 
-            if (isset($event['session_id']) && $run->session_id !== $event['session_id']) {
+            if ($this->saveSession && isset($event['session_id']) && $run->session_id !== $event['session_id']) {
                 $run->update(['session_id' => $event['session_id']]);
             }
 

@@ -285,7 +285,7 @@ A fresh session has two benefits. It costs less, because each review turn doesn'
 
 A fresh session knows nothing about the run, so Foreman puts what it needs in the prompt:
 
-- The [sanitised issue](#sanitised-issue), and the answers you gave to earlier questions on the issue.
+- The [sanitised issue](#sanitised-issue), and the answers you gave in Foreman to earlier questions on the issue.
 - The checks to run. This is the verify script Foreman's gate runs. When there is none, the prompt tells the reviewer to run the checks that `AGENTS.md` or `CLAUDE.md` lists.
 - The same rules as the first run: no push, no `gh`, the Bash allowlist, and no weakening of tests to get green.
 
@@ -303,12 +303,18 @@ The agent runs the checks again and commits its fixes. Then Foreman runs its who
 
 The review pass can end the run early:
 
-- If the reviewer writes a `needs_human` result during the pass, the run goes to **Needs you** and nothing is pushed.
-- If the review pass writes a `question` result, the run goes to **Needs you** and waits for your answer. Commits the pass already made are kept. Each question names the file and lines, the finding and the choices. It also says whether the fix is committed, left uncommitted, or not made. When you answer, the run resumes the session that wrote the change. That session gets the questions and then your answers.
-- The reviewer can't change the PR's title or body. If it changes a `pr` result in `.foreman/result.json`, Foreman puts the old one back and says so in the run log.
+- If the review pass writes a `needs_human` result, the run goes to **Needs you** and nothing is pushed.
+- If the review pass writes a `question` result, the run goes to **Needs you** and waits for your answer. Commits the pass already made are kept. See [Questions from the review pass](#questions-from-the-review-pass).
+- The review pass can't change the PR's title or body. If it changes a `pr` result in `.foreman/result.json`, Foreman puts the old one back and says so in the run log.
 - If the pass stops with an error, such as running out of turns, the run fails and nothing is pushed.
 - If `/security-review` ends without reviewing anything, the run fails. That command fails silently when it can't work out the diff.
 - The pass shares the run's spend cap. It gets what the first part of the run left. If nothing is left, the run fails before the pass.
+
+### Questions from the review pass
+
+The review pass runs in its own session, so its questions must make sense on their own. Each one names the file and lines, the finding and the choices. It also says whether the fix is committed, left uncommitted, or not made.
+
+When you answer, the run resumes the session that wrote the change, in the same worktree. That session gets the questions first, then your answers. Uncommitted edits from the review pass are still in the worktree.
 
 ### Why review depth follows risk
 

@@ -159,8 +159,8 @@ class ProcessRun implements ShouldQueue
     }
 
     /**
-     * @param  string|null  $followUp  A later pass's prompt. It resumes this run's own session, and its usage adds to the run's.
-     * @param  bool  $fresh  The follow-up starts a session of its own instead, and leaves the run's session id alone.
+     * @param  string|null  $followUp  A later pass's prompt. Its usage adds to the run's.
+     * @param  bool  $fresh  The follow-up starts a session of its own instead of resuming the run's, and leaves the run's session id alone.
      */
     private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null, bool $fresh = false): AgentResult
     {
@@ -188,23 +188,15 @@ class ProcessRun implements ShouldQueue
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)).$this->decisions($run),
         };
 
-        // Same conversation, so the agent doesn't re-explore the codebase
+        // A follow-up resumes the same conversation, so the agent doesn't re-explore the codebase
         $resume = match (true) {
             $fresh => null,
             $followUp !== null => $run->session_id,
             default => $run->resume_session_id,
         };
-        $session = $run->session_id;
 
-        try {
-            $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles);
-        } finally {
-            // Claude saves each session id it streams; a correction round or a continued run must resume the implementation's
-            if ($fresh) {
-                $run->update(['session_id' => $session]);
-            }
-        }
-
+        // A fresh session is never saved: a correction round or a continued run must resume the implementation's
+        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh);
         $usage = $agent->usage();
 
         if ($followUp !== null) {
@@ -213,7 +205,7 @@ class ProcessRun implements ShouldQueue
             }
         }
 
-        $run->update([...$usage, 'session_id' => $fresh ? $session : ($agent->sessionId ?? $run->session_id)]);
+        $run->update([...$usage, 'session_id' => $fresh ? $run->session_id : ($agent->sessionId ?? $run->session_id)]);
 
         return $agent;
     }
@@ -826,7 +818,8 @@ class ProcessRun implements ShouldQueue
         $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
         $replies = array_filter([
-            $answers === '' || $questions === '' ? null : "These questions were asked in Foreman during the last run. You asked them, or Foreman's review pass did. "
+            // Only alongside a reply: with none, the run was continued by hand
+            $questions === '' || ($answers === '' && $comments === '') ? null : "These questions were asked in Foreman during the last run. You asked them, or Foreman's review pass did. "
                 ."The review pass runs in a separate session and may have committed fixes. `git log` shows them.\n\n{$questions}",
             $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",
             $comments === '' ? null : "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}",

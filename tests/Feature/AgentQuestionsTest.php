@@ -135,6 +135,18 @@ class AgentQuestionsTest extends TestCase
         $this->assertStringContainsString('Your last '.AgentReport::RESULT_FILE.' was cleared. Write it again', $prompt);
     }
 
+    public function test_a_resume_with_only_issue_comments_still_lists_the_questions_asked(): void
+    {
+        $asked = $this->askedRun([]);
+        $this->agentWrites(['outcome' => 'needs_human', 'reason' => 'r', 'comment' => 'c']);
+
+        $this->process($this->makeRun(['previous_run_id' => $asked->id]), comments: "bob wrote:\n<untrusted_text>Leave them out.</untrusted_text>");
+        $prompt = $this->claude->agentCalls[0]['prompt'];
+
+        $this->assertStringContainsString("<untrusted_text>\nInclude archived rows?\n</untrusted_text>", $prompt);
+        $this->assertLessThan(strpos($prompt, 'Leave them out.'), strpos($prompt, 'Include archived rows?'));
+    }
+
     public function test_a_resume_without_answers_or_comments_says_it_was_continued_by_hand(): void
     {
         $asked = $this->askedRun([]);
