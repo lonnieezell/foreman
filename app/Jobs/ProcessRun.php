@@ -245,8 +245,8 @@ class ProcessRun implements ShouldQueue
             }
 
             if ($corrected) {
-                // Missing work is easy to spot in review, so it opens a draft if the gate passes
-                if ($verdict->onlyMissesWork()) {
+                // Added and missing work are easy to spot in review, so they open a draft if the gate passes
+                if (! $verdict->weakensTests) {
                     break;
                 }
 
@@ -282,10 +282,16 @@ class ProcessRun implements ShouldQueue
             $footer .= "\n- Scope judge: no usable answer twice, so the change was not checked against the issue. Opened as a draft.";
             $labels[] = 'scope:unchecked';
         } elseif (! $verdict->passes()) {
-            $run->log("Scope judge vetoed the change again, only for missing work: {$verdict->reason} Opening the PR as a draft.");
-            $footer .= "\n- Scope judge: vetoed twice, only for missing work, so opened as a draft. {$verdict->reason}";
+            $run->log("Scope judge vetoed the change again: {$verdict->describe()} Opening the PR as a draft.");
+            $footer .= "\n- Scope judge: vetoed twice, so opened as a draft. {$verdict->describe()}";
             $footer .= $result->judgeReply === null ? '' : "\n\n".self::judgeAnswer($result->judgeReply);
-            $labels[] = 'scope:incomplete';
+            if ($verdict->addsUnrequested) {
+                $labels[] = 'scope:extra';
+            }
+
+            if ($verdict->missesRequested) {
+                $labels[] = 'scope:incomplete';
+            }
         } else {
             $passed = $corrected ? 'passed after one correction round' : 'passed';
             $run->log("Scope judge {$passed}: {$verdict->reason}");

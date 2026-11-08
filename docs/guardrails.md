@@ -334,9 +334,9 @@ A deep review on every change costs time and money for little gain. A typo fix i
 
 After the review pass, and before [Foreman's gate](#foremans-gate) runs the second time, one more check asks a simple question: does the change stay within the issue? Foreman makes a separate call to Claude's Haiku model to answer it. The judge answers in JSON with four fields:
 
-- `adds_unrequested`: whether the change does work the issue didn't ask for, such as unrelated features or refactors the issue didn't mention.
+- `adds_unrequested`: whether the change does work a reviewer would call a separate change. That means new features, refactors of code the change didn't need to touch, or cleanups in unrelated files. Supporting changes don't count. Docs, changelog entries and comments about the change are fine. So are new tests, and small edits the change needs in code it touches, such as a new parameter, a renamed variable or an import.
 - `misses_requested`: whether the change leaves out a real part of what the issue asks for.
-- `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine.
+- `weakens_tests`: whether the change deletes, skips or loosens existing tests or tool settings so they pass more easily. New tests are fine. Updating an expected value to match behavior the issue asked for is not weakening a test. Changing it to match output the issue didn't ask for is.
 - `reason`: one or two sentences on why.
 
 ### How it works
@@ -346,9 +346,9 @@ Foreman runs `claude -p` with `--tools ''`, so the judge has no tools at all. It
 What happens next depends on the verdict:
 
 - **Pass.** The change does what the issue asks, nothing more, and leaves tests alone. Foreman runs its gate a second time. If the gate passes, Foreman pushes, opens the PR, and adds the verdict and reason to the PR footer.
-- **Veto.** The change adds unrequested work, misses requested work, weakens tests, or any mix of these. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. The agent can also [answer the veto](#answering-a-veto). Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, what happens depends on why:
-  - **Only missing work.** Foreman runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It labels the PR `scope:incomplete`. The footer gives the judge's reason and the agent's answer, if it wrote one. Missing work is easy to spot in review, and a draft can't be auto-merged. If the gate fails, the run goes to **Needs you** as usual.
-  - **Anything else.** Nothing is pushed. The run goes to **Needs you**. Foreman comments on the issue with the judge's reason and the agent's answer. Without an answer, the comment quotes the agent's PR body instead. See [Runs and statuses](runs.md#needs-you).
+- **Veto.** The change adds unrequested work, misses requested work, weakens tests, or any mix of these. Foreman resumes the agent's session once with the judge's reason, and asks it to correct the change. The prompt says to remove the extra work the judge named, but to keep small related edits, such as docs and changelog entries, and explain them in the PR body. The agent can also [answer the veto](#answering-a-veto). Then the judge looks at the corrected change. If the second verdict passes, the footer says `passed after one correction round`. If it vetoes again, what happens depends on why:
+  - **Weakened tests.** Nothing is pushed, even if the judge found other problems too. The run goes to **Needs you**. Foreman comments on the issue with the judge's reason and the agent's answer. Without an answer, the comment quotes the agent's PR body instead. A weakened assertion is the easiest problem for a reviewer to miss, so it stays a hard stop. See [Runs and statuses](runs.md#needs-you).
+  - **Added or missing work.** Foreman runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It adds one label per problem: `scope:extra` for added work, `scope:incomplete` for missing work, or both. The footer names the problems and gives the judge's reason and the agent's answer, if it wrote one. Both problems are easy to spot in review, and a draft can't be auto-merged. If the gate fails, the run goes to **Needs you** as usual.
 - **No usable answer.** The call failed, or its answer was missing a field. Foreman asks once more. If the second try fails too, Foreman still runs its gate a second time. If the gate passes, Foreman pushes and opens the PR as a draft. It labels the PR `scope:unchecked`, and the footer says the change wasn't checked against the issue. The run log has what went wrong each time. Foreman never treats a missing verdict as a pass: a draft can't be auto-merged.
 
 The run log shows a veto as soon as it happens. A passing verdict is logged only after the second gate passes.
@@ -357,7 +357,7 @@ The run log shows a veto as soon as it happens. A passing verdict is logged only
 
 The judge can't see the repo, so it can be wrong. For example, an issue may ask for two fixes when the base branch already has one of them. The diff shows only the other fix, so the judge says work is missing.
 
-In the correction round, the agent can answer the veto. It adds a `judge_reply` to its `pr` result, with a short claim and up to five line ranges of at most 80 lines each:
+In the correction round, the agent can answer the veto. This works for a test veto too, for example to show that a test was already out of date on the base branch. The agent adds a `judge_reply` to its `pr` result, with a short claim and up to five line ranges of at most 80 lines each:
 
 ```json
 "judge_reply": {

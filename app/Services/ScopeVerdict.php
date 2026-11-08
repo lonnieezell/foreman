@@ -18,12 +18,6 @@ final class ScopeVerdict
         return ! $this->addsUnrequested && ! $this->missesRequested && ! $this->weakensTests;
     }
 
-    /** Whether the only problem is work the issue asked for and the change left out. */
-    public function onlyMissesWork(): bool
-    {
-        return $this->missesRequested && ! $this->addsUnrequested && ! $this->weakensTests;
-    }
-
     /** The problems and the reason, for the log, the PR body and the correction prompt. */
     public function describe(): string
     {
