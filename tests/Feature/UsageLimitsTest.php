@@ -171,7 +171,7 @@ class UsageLimitsTest extends TestCase
 
         Process::assertRan(fn (PendingProcess $process) => $process->command[0] === 'claude'
             && in_array('haiku', $process->command, true)
-            && $process->environment === ['CLAUDE_CONFIG_DIR' => '/home/me/.claude-work']);
+            && $process->environment === ['CLAUDE_CONFIG_DIR' => '/home/me/.claude-work', 'CLAUDE_CODE_EFFORT_LEVEL' => false]);
         $this->assertSame(0.1, app(Usage::class)->snapshot('work')['windows']['five_hour']['utilization']);
     }
 

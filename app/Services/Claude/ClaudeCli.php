@@ -20,6 +20,9 @@ class ClaudeCli implements Claude
         .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
         .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
 
+    /** The env variable beats `--effort`, so it is removed and the run's own effort applies (ADR 0004). */
+    private const NO_EFFORT_ENV = ['CLAUDE_CODE_EFFORT_LEVEL' => false];
+
     /** The agent's stream-json not yet split into lines. */
     private string $buffer = '';
 
@@ -65,7 +68,7 @@ class ClaudeCli implements Claude
         $this->saveSession = $saveSession;
 
         $process = Process::path($worktree)
-            ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox)])
+            ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -127,11 +130,12 @@ class ClaudeCli implements Claude
         }
 
         // The prompt goes on stdin: a diff can outgrow the limit on a single argument
-        $process = Process::path($dir)->env($repo->claudeEnv())->timeout($schema === null ? 60 : 120)->input($prompt)->run($command);
+        $process = Process::path($dir)->env([...$repo->claudeEnv(), ...self::NO_EFFORT_ENV])->timeout($schema === null ? 60 : 120)->input($prompt)->run($command);
 
         $stream = trim($process->output());
         $structured = null;
         $rateLimits = [];
+        $usage = [];
         $output = $stream;   // the whole stream, unless a result event turns up
 
         foreach (explode("\n", $stream) as $line) {
@@ -143,6 +147,7 @@ class ClaudeCli implements Claude
 
             if (($event['type'] ?? null) === 'result') {
                 $output = trim($line);
+                $usage = (new AgentResult($event))->usage();
             }
 
             if (is_array($event['structured_output'] ?? null)) {
@@ -155,6 +160,7 @@ class ClaudeCli implements Claude
             $output,
             $process->failed() ? "exit {$process->exitCode()}: ".str(trim($process->errorOutput()) ?: $stream)->limit(500) : null,
             $rateLimits,
+            $usage,
         );
     }
 

@@ -140,6 +140,9 @@
     <dl class="facts">
         <div><dt>Model</dt><dd>{{ $run->model }}</dd></div>
         <div><dt>Effort</dt><dd>{{ $run->effort ?? 'Default' }}</dd></div>
+        @if ($run->difficulty_source)
+            <div><dt>Difficulty</dt><dd>{{ $run->difficulty ?? 'none' }} ({{ $run->difficulty_source }})</dd></div>
+        @endif
         @if ($run->risk_tier)
             <div><dt>Risk tier</dt><dd>{{ $run->risk_tier }}</dd></div>
         @endif

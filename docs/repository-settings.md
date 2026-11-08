@@ -30,19 +30,34 @@ The base branch. Default: `main`. Each run's branch starts from `origin/<base>`,
 
 The model, effort and profile come first. Below them, a **Budget** card holds the spend limits, and a **Pace and stop conditions** card holds the rest.
 
+### Model and effort mode
+
+**Auto** or **Fixed**. New repositories start in Auto.
+
+- **Auto**: Foreman reads each issue and picks a difficulty for it. The difficulty maps to a model and effort through the [difficulty ladder](global-settings.md). See [How Foreman works](how-foreman-works.md) for how the pick is made.
+- **Fixed**: every run uses the **Model** and **Effort** below.
+
+You can change the settings of the current mode from the repository's row on the dashboard. Click the label under the repository's name, such as `auto trivial–hard` or `sonnet high`. Pick new values and press Save. The change applies to new runs only. Switching modes is done here, in the form.
+
+### Floor and ceiling
+
+Auto mode only. The easiest and hardest difficulty this repository runs: `trivial`, `small`, `medium`, `large` or `hard`. Default: `trivial` to `hard`, the full range.
+
+Every pick is clamped to this range. An issue rated `hard` in a repository with a `large` ceiling runs the `large` step. The ceiling can't be below the floor.
+
 ### Model
 
-Haiku, Sonnet, Opus or Fable, picked from a row of buttons. Default: Sonnet. Passed to `claude --model`.
-
-You can also change the model, and the effort below, from the repository's row on the dashboard. Click the model name under the repository's name, pick new values and press Save. The change applies to new runs only.
+Fixed mode only. Haiku, Sonnet, Opus or Fable, picked from a row of buttons. Default: Sonnet. Passed to `claude --model`.
 
 ### Effort
 
-How hard Claude thinks. Default, Low, Medium, High, XHigh or Max. Passed to `claude --effort`.
+Fixed mode only. How hard Claude thinks. Default, Low, Medium, High, XHigh or Max. Passed to `claude --effort`.
 
 **Default** leaves `--effort` out, so Claude uses its own default. Every model accepts every level. Higher levels let Claude think longer, which usually costs more tokens.
 
 Like the model, effort applies to new runs. A run that is already queued keeps the model and effort it was created with.
+
+Foreman removes the `CLAUDE_CODE_EFFORT_LEVEL` environment variable from every `claude` call. Claude Code lets that variable beat `--effort`, so it would override the run's own effort.
 
 ### Claude profile
 

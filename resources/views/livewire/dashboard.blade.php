@@ -121,24 +121,25 @@
                     <div class="line-meta" title="{{ $repo->github_repo }} · {{ $repo->modelLabel() }} · {{ $repo->profileName() }}" data-next="{{ ($repo->last_polled_at?->addMinutes($repo->poll_interval_minutes) ?? now())->timestamp }}">
                         <span title="Merges into {{ $repo->base_branch }}">{{ $repo->github_repo }}</span>
                         {{-- The data attributes feed the popover's draft; the popover itself is wire:ignore'd so the poll can't close it --}}
-                        <span x-data="claudeSettings({{ $repo->id }})" data-model="{{ $repo->model }}" data-effort="{{ $repo->effort }}">
+                        @php
+                            // In Auto mode the popover edits the range instead: [label => [saved value, options]]
+                            $popover = $repo->isAuto()
+                                ? ['Floor' => [$repo->difficulty_floor, $difficulties = array_combine(App\Enums\Difficulty::values(), array_map('ucfirst', App\Enums\Difficulty::values()))], 'Ceiling' => [$repo->difficulty_ceiling, $difficulties]]
+                                : ['Model' => [$repo->model, App\Models\Repository::MODELS], 'Effort' => [$repo->effort, ['' => 'Default', ...App\Models\Repository::EFFORTS]]];
+                            [$first, $second] = array_values($popover);
+                        @endphp
+                        <span x-data="claudeSettings({{ $repo->id }}, '{{ $repo->isAuto() ? 'saveDifficultyRange' : 'saveClaudeSettings' }}')" data-first="{{ $first[0] }}" data-second="{{ $second[0] }}">
                             <button type="button" class="line-model" x-ref="trigger" popovertarget="claude-{{ $repo->id }}" aria-label="Model and effort for {{ $repo->name }}">{{ $repo->modelLabel() }}</button>
                             <div id="claude-{{ $repo->id }}" class="claude-popover" popover wire:ignore x-ref="popover" x-anchor.bottom-start="$refs.trigger" x-on:toggle="$event.newState === 'open' && reset()">
-                                <label>Model
-                                    <select x-model="model">
-                                        @foreach (App\Models\Repository::MODELS as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
-                                <label>Effort
-                                    <select x-model="effort">
-                                        <option value="">Default</option>
-                                        @foreach (App\Models\Repository::EFFORTS as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
+                                @foreach (array_keys($popover) as $i => $field)
+                                    <label>{{ $field }}
+                                        <select x-model="{{ $i ? 'second' : 'first' }}">
+                                            @foreach ($popover[$field][1] as $value => $label)
+                                                <option value="{{ $value }}">{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                    </label>
+                                @endforeach
                                 <p class="hint">Applies to new runs.</p>
                                 <p class="error" x-show="error" x-text="error"></p>
                                 <button type="button" class="btn" x-on:click="save()" x-bind:disabled="saving" x-text="saving ? 'Saving…' : 'Save'">Save</button>
@@ -266,6 +267,8 @@
                         <span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span>
                         @if ($run->askedQuestion())<span class="question-badge tone-attention">question</span>@endif
                         @if ($run->risk_tier)<span class="risk-tier" title="Risk tier, from the diff">Tier {{ $run->risk_tier }}</span>@endif
+                        {{-- An Auto run's step is only known once it is picked --}}
+                        @if (! $run->repository->isAuto() || $run->difficulty_source)<span class="risk-tier" title="Model and effort, and the difficulty Foreman picked">{{ $run->stepLabel() }}</span>@endif
                         <span class="issue-age">{{ ($run->finished_at ?? $run->updated_at)->diffForHumans(['short' => true]) }}</span>
                     </div>
                     <p class="issue-title">{{ $run->issue_title }}</p>

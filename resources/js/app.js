@@ -27,14 +27,15 @@ document.addEventListener('alpine:init', () => {
 
     // The model and effort popover on a dashboard row. The draft lives here, not in Livewire, so the
     // dashboard's poll can't reset it. Opening re-reads the row's saved values from the data attributes.
-    window.Alpine.data('claudeSettings', (id) => ({
-        model: '',
-        effort: '',
+    // `first` and `second` are model and effort in Fixed mode, or floor and ceiling in Auto mode. `method` saves them.
+    window.Alpine.data('claudeSettings', (id, method) => ({
+        first: '',
+        second: '',
         saving: false,
         error: '',
         reset() {
-            this.model = this.$root.dataset.model;
-            this.effort = this.$root.dataset.effort;
+            this.first = this.$root.dataset.first;
+            this.second = this.$root.dataset.second;
             this.error = '';
         },
         async save() {
@@ -42,7 +43,7 @@ document.addEventListener('alpine:init', () => {
             this.error = '';
 
             try {
-                this.error = (await this.$wire.saveClaudeSettings(id, this.model, this.effort)) ?? '';
+                this.error = (await this.$wire[method](id, this.first, this.second)) ?? '';
             } catch {
                 this.error = 'Couldn’t save. Try again.';
             }

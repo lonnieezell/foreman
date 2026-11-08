@@ -351,4 +351,22 @@ class ClaudeCliTest extends TestCase
         $this->assertSame('exit 1: API Error: overloaded', $answer->error);
         $this->assertNull($answer->structured);
     }
+
+    public function test_the_effort_env_variable_is_removed_because_it_beats_the_effort_flag(): void
+    {
+        $this->startAgent($this->makeRun(run: ['effort' => 'high']));
+        (new ClaudeCli)->oneShot($this->repository(['github_repo' => 'owner/other']), 'ok');
+
+        $this->assertFalse($this->started[0]->environment['CLAUDE_CODE_EFFORT_LEVEL']);
+        $this->assertFalse($this->started[1]->environment['CLAUDE_CODE_EFFORT_LEVEL']);
+    }
+
+    public function test_a_one_shot_gives_back_what_it_spent(): void
+    {
+        $this->fakeClaude(self::RESULT);
+
+        $answer = (new ClaudeCli)->oneShot($this->repository(), 'ok');
+
+        $this->assertSame(['cost_usd' => 0.5, 'num_turns' => 2, 'input_tokens' => 10, 'output_tokens' => 20, 'cache_read_tokens' => 30, 'cache_write_tokens' => 40], $answer->usage);
+    }
 }

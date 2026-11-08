@@ -53,6 +53,9 @@ class ScopeJudgeRunTest extends TestCase
     /** What the correction round adds to its result as `judge_reply`, when set. */
     private ?array $judgeReply = null;
 
+    /** Labels on the issue. */
+    private array $labels = [];
+
     private FakeWorktree $git;
 
     private FakeClaude $claude;
@@ -83,12 +86,13 @@ class ScopeJudgeRunTest extends TestCase
      * @param  list<array|string|null>  $verdicts  What each judge call answers, in order: a verdict, a raw result event (string), or null for a failed call. Past the end, the judge passes.
      * @return array{0:Run,1:list<string>} The run and the comments flagged for a human.
      */
-    private function settle(array $verdicts = []): array
+    private function settle(array $verdicts = [], array $repository = []): array
     {
         $run = Repository::create([
             'name' => 'app', 'local_path' => base_path(), 'github_repo' => 'owner/app', 'enabled' => false,
             'allowed_tools' => Repository::DEFAULT_ALLOWED_TOOLS, 'setup_script' => 'true',
             'verify_script' => 'composer test', 'watch_prs' => false,
+            ...$repository,
         ])->runs()->create([
             'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
             'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::Queued,
@@ -150,7 +154,7 @@ class ScopeJudgeRunTest extends TestCase
 
         $github = Mockery::mock(GitHub::class)->makePartial();
         $github->allows('release');
-        $github->allows('labels')->andReturn([]);
+        $github->allows('labels')->andReturnUsing(fn () => $this->labels);
         $github->allows('sanitisedIssue')->andReturn('<untrusted_issue>Fix the bug</untrusted_issue>');
         $github->allows('trustedComments')->andReturn('');
         $github->allows('flagForHuman')->andReturnUsing(function ($repo, $issue, $comment) use (&$comments) {
@@ -186,6 +190,27 @@ class ScopeJudgeRunTest extends TestCase
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'gate'], $this->sequence);
         $this->assertStringContainsString('Scope judge: passed. Only fixes the bug the issue names.', $this->prBodies[0]);
+    }
+
+    public function test_an_auto_pick_adds_a_difficulty_line_to_the_footer_and_a_label_to_the_pr_but_not_the_issue(): void
+    {
+        $this->labels = ['foreman:medium'];
+
+        [$run] = $this->settle(repository: ['model_mode' => 'auto']);
+
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+        $this->assertStringContainsString('- Difficulty: medium (label) → sonnet high', $this->prBodies[0]);
+        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'difficulty:medium']));
+        $this->assertFalse(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 2) === ['gh', 'issue'] && in_array('difficulty:medium', $c, true)));
+        $this->assertFalse(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)), 'a difficulty label alone does not make a draft');
+    }
+
+    public function test_a_fixed_run_has_no_difficulty_line_or_label(): void
+    {
+        $this->settle();
+
+        $this->assertStringNotContainsString('Difficulty:', $this->prBodies[0]);
+        $this->assertFalse(collect($this->commands)->contains(fn ($c) => collect($c)->contains(fn ($arg) => str_starts_with((string) $arg, 'difficulty:'))));
     }
 
     public function test_a_veto_gets_one_correction_round_in_the_agents_session_then_the_gate_and_the_judge_again(): void
