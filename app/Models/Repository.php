@@ -37,7 +37,8 @@ SH;
     protected $guarded = ['id'];
 
     // Match the column defaults, so a repository made in code is unsandboxed and merges with "merge" before it's saved
-    protected $attributes = ['sandbox' => false, 'stop_docker' => false, 'merge_method' => 'merge'];
+    protected $attributes = ['sandbox' => false, 'stop_docker' => false, 'merge_method' => 'merge',
+        'model_mode' => 'fixed', 'difficulty_floor' => 'trivial', 'difficulty_ceiling' => 'hard'];
 
     protected function casts(): array
     {
@@ -102,10 +103,19 @@ SH;
         return storage_path("foreman/worktrees/{$slug}/issue-{$issue}");
     }
 
-    /** Model and effort as the dashboard shows them: "sonnet", or "sonnet high" when effort is set. */
+    /** Whether Foreman picks the model and effort per issue, from the ladder (ADR 0004). */
+    public function isAuto(): bool
+    {
+        return $this->model_mode === 'auto';
+    }
+
+    /**
+     * Model and effort as the dashboard shows them: "sonnet", or "sonnet high" when effort is set.
+     * In Auto mode, the difficulty range: "auto trivial–hard".
+     */
     public function modelLabel(): string
     {
-        return trim("{$this->model} {$this->effort}");
+        return $this->isAuto() ? "auto {$this->difficulty_floor}–{$this->difficulty_ceiling}" : trim("{$this->model} {$this->effort}");
     }
 
     /** @return list<string> The globs from the "Locked paths" setting, one per line. */

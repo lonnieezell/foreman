@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\Difficulty;
 use App\Guardrails\StackSet;
 use App\Models\Repository;
 use App\Services\GitHub;
@@ -38,6 +39,13 @@ class RepositoryForm extends Component
     public string $daily_budget = '';
 
     public string $max_budget_per_run = '';
+
+    /** New repositories start in Auto (ADR 0004). */
+    public string $model_mode = 'auto';
+
+    public string $difficulty_floor = 'trivial';
+
+    public string $difficulty_ceiling = 'hard';
 
     public string $model = 'sonnet';
 
@@ -85,7 +93,7 @@ class RepositoryForm extends Component
             $this->repository = $repository;
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
-                'human_label', 'concurrency', 'poll_interval_minutes', 'model', 'max_turns',
+                'human_label', 'concurrency', 'poll_interval_minutes', 'model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'max_turns',
                 'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
             ]));
             $this->auto_merge_max_tier = (string) $repository->auto_merge_max_tier;
@@ -176,6 +184,9 @@ class RepositoryForm extends Component
             'poll_interval_minutes' => ['required', 'integer', 'between:1,1440'],
             'daily_budget' => ['nullable', 'numeric', 'min:0'],
             'max_budget_per_run' => ['nullable', 'numeric', 'min:0'],
+            'model_mode' => ['required', Rule::in(['auto', 'fixed'])],
+            'difficulty_floor' => ['required', Rule::enum(Difficulty::class)],
+            'difficulty_ceiling' => ['required', Rule::enum(Difficulty::class), Difficulty::ceilingRule($this->difficulty_floor)],
             'model' => ['required', Rule::in(array_keys(Repository::MODELS))],
             'effort' => ['nullable', Rule::in(array_keys(Repository::EFFORTS))],
             'claude_profile' => [config('foreman.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('foreman.claude_profiles')))],

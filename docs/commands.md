@@ -27,6 +27,19 @@ One check, the same as the scheduler runs every minute. It reaps dead runs, watc
 | `--repo=<id>` | Only check this repository. |
 | `--force` | Ignore the repository's poll interval. |
 
+### foreman:classify
+
+```bash
+php artisan foreman:classify --repo=<id> --issue=<n>
+```
+
+Prints the difficulty, the step after clamping, the source (`classifier`, `label` or `fallback`) and the reason Foreman would give the issue. It starts no run and changes nothing. It spends one Haiku call, unless the issue has a `foreman:<difficulty>` label. It ignores earlier runs on the issue. In Fixed mode it still classifies, and says the repository's runs use its fixed model instead. See [How Foreman picks the model and effort](how-foreman-works.md#how-foreman-picks-the-model-and-effort).
+
+| Option | Meaning |
+| --- | --- |
+| `--repo=<id>` | The repository. |
+| `--issue=<n>` | The issue number. |
+
 ### foreman:install-ci
 
 ```bash

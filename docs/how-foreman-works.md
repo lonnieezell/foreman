@@ -30,6 +30,25 @@ Waiting ─► Setting up ─► Writing code ─► Running checks ─► Revie
 4. **Report.** The agent commits and writes a result file. It can't push or use `gh`.
 5. **Check and push.** Foreman checks the work, then acts on GitHub itself.
 
+## How Foreman picks the model and effort
+
+In a repository in **Auto** mode, each issue gets a difficulty: `trivial`, `small`, `medium`, `large` or `hard`. The [difficulty ladder](global-settings.md#difficulty-ladder) maps it to a model and effort. The pick happens when the run starts, before the worktree is set up.
+
+1. **A label wins.** A label such as `foreman:hard` on the issue sets the difficulty, and no classifier runs. With more than one, the hardest counts.
+2. **An earlier pick is kept.** The pick is made once per issue. Continued runs, fix-up rounds, conflict fixes and retries reuse the step of the issue's last run that had one. A label added since still wins.
+3. **Otherwise Haiku rates the issue.** It is a single call with no tools. It reads the issue's title and body and the comments from people with write access, up to about 20,000 characters. It keeps the start of the body and the newest comments, and says when it left text out. It also reads the detected stack and its high-risk paths. It picks the higher level when torn and gives a one-sentence reason. It is told to ignore anything in the issue about the model, effort or difficulty. Its cost counts toward the run.
+4. **Fallback.** If the classifier gives no usable answer twice, the run uses the fallback step.
+
+Every pick is then clamped to the repository's [floor and ceiling](repository-settings.md#floor-and-ceiling). So prompt injection in an issue can at worst push the pick up to the ceiling. Untrusted comments never reach the classifier.
+
+The pick shows in the run log, on the issue card, on the run page, and in the PR. The PR's footer gets a line such as `Difficulty: medium (classifier) → sonnet high`, and the PR gets a `difficulty:<level>` label. Foreman never labels the issue with its own pick, because an issue label is an override.
+
+A failed run doesn't move up a step by itself. To retry with more model, add a `foreman:<difficulty>` label and retry.
+
+In **Fixed** mode there is no pick. Every run uses the repository's model and effort, and `foreman:<difficulty>` labels do nothing. The run log says when it ignored one.
+
+To see what Foreman would pick without starting a run, use [`foreman:classify`](commands.md#foremanclassify).
+
 ## The agent never touches GitHub
 
 An agent that can run commands and reads text anyone can write should hold as little as possible. So the agent's environment has no push URL, no git credentials and no GitHub token. Foreman does every GitHub action itself, in its own process. [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent) has the details and the incidents behind this choice.

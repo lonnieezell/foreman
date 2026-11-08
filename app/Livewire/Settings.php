@@ -2,7 +2,11 @@
 
 namespace App\Livewire;
 
+use App\Enums\Difficulty;
+use App\Models\Repository;
 use App\Models\Setting;
+use App\Support\Ladder;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -45,6 +49,12 @@ class Settings extends Component
 
     public bool $native_notifications = false;
 
+    /** @var array<string,array{model:string,effort:string}> The step for each difficulty, by its value. */
+    public array $ladder = [];
+
+    /** @var array{model:string,effort:string} */
+    public array $fallback = [];
+
     public ?string $flash = null;
 
     public function mount(): void
@@ -59,6 +69,8 @@ class Settings extends Component
         $this->global_daily_budget = (string) (Setting::globalBudget() ?? '');
         $this->trust_bot_labels = Setting::trustBotLabels();
         $this->native_notifications = Setting::nativeNotifications();
+        $this->ladder = Ladder::steps();
+        $this->fallback = Ladder::fallback();
     }
 
     public function updatedDesktopNotifications(): void
@@ -77,7 +89,19 @@ class Settings extends Component
             'pr_quiet_minutes' => ['nullable', 'integer', 'min:1'],
             'pr_timeout_minutes' => ['nullable', 'integer', 'min:1'],
             'global_daily_budget' => ['nullable', 'numeric', 'min:0'],
+            ...collect(Difficulty::values())->flatMap(fn ($d) => [
+                "ladder.{$d}.model" => ['required', Rule::in(array_keys(Ladder::models()))],
+                "ladder.{$d}.effort" => ['required', Rule::in(array_keys(Repository::EFFORTS))],
+            ])->all(),
+            'fallback.model' => ['required', Rule::in(array_keys(Ladder::models()))],
+            'fallback.effort' => ['required', Rule::in(array_keys(Repository::EFFORTS))],
         ]);
+
+        if ($problem = Ladder::orderProblem($this->ladder)) {
+            $this->addError('ladder', $problem);
+
+            return;
+        }
 
         foreach (self::FIELDS as $field => [$key, $scale]) {
             $this->{$field} === ''
@@ -88,6 +112,9 @@ class Settings extends Component
         Setting::put('global_daily_budget', $this->global_daily_budget === '' ? null : $this->global_daily_budget);
         Setting::put('trust_bot_labels', $this->trust_bot_labels ? 1 : 0);
         Setting::put('native_notifications', $this->native_notifications ? 1 : 0);
+        // Null while they match the defaults, so later changes to the defaults reach this install
+        Setting::put('ladder', $this->ladder == Ladder::DEFAULT ? null : json_encode($this->ladder));
+        Setting::put('fallback_step', $this->fallback == Ladder::DEFAULT_FALLBACK ? null : json_encode($this->fallback));
         Setting::applyToConfig();
 
         $this->flash = 'Settings saved.';

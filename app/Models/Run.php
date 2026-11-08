@@ -201,8 +201,7 @@ class Run extends Model
             'issue_url' => $this->issue_url,
             'branch' => $this->branch,
             'status' => RunStatus::Queued,
-            'model' => $this->repository->model,
-            'effort' => $this->repository->effort,
+            ...$this->nextStep(),
             'worktree_path' => $this->worktree_path,
             'resume_session_id' => $this->session_id,
             'previous_run_id' => $this->id,   // its finish time marks which comments are new
@@ -213,6 +212,45 @@ class Run extends Model
         ProcessRun::dispatch($next)->onQueue('runs');
 
         return $next;
+    }
+
+    /**
+     * The step a follow-up run starts with. In Auto mode it is this run's, which the job clamps again or a new label
+     * overrides. In Fixed mode it is the repository's.
+     */
+    public function nextStep(): array
+    {
+        return $this->repository->isAuto()
+            ? $this->only(['model', 'effort', 'difficulty', 'difficulty_source'])
+            : ['model' => $this->repository->model, 'effort' => $this->repository->effort];
+    }
+
+    /** The newest earlier run on the issue that has a pick, so the pick is made once per issue (ADR 0004). */
+    public function earlierPick(): ?self
+    {
+        return static::query()
+            ->where('repository_id', $this->repository_id)
+            ->where('issue_number', $this->issue_number)
+            ->where('id', '<', $this->id)
+            ->whereNotNull('difficulty_source')
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Adds what a Claude call spent to the run's usage columns. A null value leaves its column as it is.
+     *
+     * @param  array<string,int|float|null>  $usage  Keyed by the usage columns, as `AgentResult::usage()` gives it.
+     */
+    public function addUsage(array $usage): void
+    {
+        $this->update(collect($usage)->map(fn ($value, $column) => $value === null ? $this->{$column} : $value + $this->{$column})->all());
+    }
+
+    /** Model and effort, and the difficulty when Foreman picked one: "sonnet high · medium". */
+    public function stepLabel(): string
+    {
+        return trim("{$this->model} {$this->effort}").($this->difficulty ? " · {$this->difficulty}" : '');
     }
 
     public function isConflictFix(): bool

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\Difficulty;
 use App\Enums\Outcome;
 use App\Enums\RunStatus;
 use App\Guardrails\Guard;
@@ -19,6 +20,7 @@ use App\Services\GitHub;
 use App\Services\JudgeReply;
 use App\Services\ScopeJudge;
 use App\Services\ScopeVerdict;
+use App\Services\StepPicker;
 use App\Services\Worktree;
 use App\Support\ForemanEnv;
 use App\Support\IssueSanitiser;
@@ -61,8 +63,10 @@ class ProcessRun implements ShouldQueue
         $run->moveTo(RunStatus::Preparing, ['started_at' => now(), 'heartbeat_at' => now()]);
 
         try {
+            $labels = $this->pickStep($run, $github);
+
             if ($run->isConflictFix()) {
-                $this->fixConflicts($run, $github);
+                $this->fixConflicts($run, $github, $labels);
 
                 return;
             }
@@ -78,7 +82,7 @@ class ProcessRun implements ShouldQueue
             (new AgentReport($worktree))->clear();
             $this->worktree($run)->excludeFromGit('.foreman/');
 
-            $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
+            $this->allowLockFiles = in_array('dependencies', $labels, true);
             $agent = $this->runAgent($run, $worktree, $github);
             $this->settle($run, $github, $agent);
         } catch (Throwable $e) {
@@ -99,6 +103,39 @@ class ProcessRun implements ShouldQueue
         } finally {
             $github->release($repo, $run->issue_number);
         }
+    }
+
+    /**
+     * In Auto mode, set the run's model and effort from a label, an earlier run's pick, the classifier or the fallback,
+     * clamped to the repository's range. In Fixed mode the run keeps the repository's, and labels do nothing (ADR 0004).
+     *
+     * @return list<string> The issue's labels.
+     */
+    private function pickStep(Run $run, GitHub $github): array
+    {
+        $repo = $run->repository;
+        $labels = $github->labels($repo, $run->issue_number);
+
+        if (! $repo->isAuto()) {
+            if ($label = Difficulty::fromLabels($labels)) {
+                $run->log("Ignoring the {$label->label()} label: this repository is in Fixed mode.");
+            }
+
+            return $labels;
+        }
+
+        $picker = new StepPicker($repo, $github, function (string $message) use ($run) {
+            $run->log($message);
+            $run->update(['heartbeat_at' => now()]);
+            $this->guardCancel($run);
+        });
+        $pick = $picker->pick($run->issue_number, $labels, $run->earlierPick());
+
+        $run->update($pick->attributes());
+        array_map($run->addUsage(...), $picker->usage);
+        $run->log($pick->describe());
+
+        return $labels;
     }
 
     private function prepareWorktree(Run $run): string
@@ -171,7 +208,10 @@ class ProcessRun implements ShouldQueue
             $run->moveTo(RunStatus::Working, ['claude_profile' => $repo->profileName()]);
             $effort = $run->effort ? "{$run->effort} effort, " : '';
             $run->log("Starting Claude ({$run->model}, {$effort}{$repo->profileName()} profile, max {$repo->max_turns} turns, {$repo->max_minutes} min)");
-        } elseif ($budget !== null) {
+        }
+
+        // The classifier's call can spend before the first pass
+        if ($budget !== null && ($followUp !== null || (float) $run->cost_usd > 0)) {
             // The spend cap is per run, so a pass gets what the run has left
             $budget = round((float) $budget - (float) $run->cost_usd, 2);
 
@@ -197,15 +237,12 @@ class ProcessRun implements ShouldQueue
 
         // A fresh session is never saved: a correction round or a continued run must resume the implementation's
         $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh);
-        $usage = $agent->usage();
+        // Adds to what the run already spent, such as the classifier's call or an earlier pass
+        $run->addUsage($agent->usage());
 
-        if ($followUp !== null) {
-            foreach ($usage as $column => $value) {
-                $usage[$column] = $value === null ? $run->{$column} : $value + $run->{$column};
-            }
+        if (! $fresh) {
+            $run->update(['session_id' => $agent->sessionId ?? $run->session_id]);
         }
-
-        $run->update($fresh ? $usage : [...$usage, 'session_id' => $agent->sessionId ?? $run->session_id]);
 
         return $agent;
     }
@@ -299,13 +336,20 @@ class ProcessRun implements ShouldQueue
             $footer .= "\n- Scope judge: {$passed}. {$verdict->reason}";
         }
 
+        if ($run->difficulty_source) {
+            $footer .= "\n- Difficulty: ".($run->difficulty ?? 'none')." ({$run->difficulty_source}) → {$run->model} {$run->effort}";
+        }
+
         $this->push($run);
 
         $body = str_starts_with($result->body, "Closes #{$run->issue_number}") ? $result->body : "Closes #{$run->issue_number}\n\n{$result->body}";
         $body .= "\n\n{$footer}";
         $prUrl = $github->openPullRequest($repo, $run->branch, $result->title, $body, draft: $labels !== []);
 
-        foreach (["risk:tier-{$run->risk_tier}", ...$labels] as $label) {
+        // Never on the issue: an issue label is an override (ADR 0004)
+        $difficulty = $run->difficulty ? ["difficulty:{$run->difficulty}"] : [];
+
+        foreach (["risk:tier-{$run->risk_tier}", ...$difficulty, ...$labels] as $label) {
             $github->labelPullRequest($repo, $prUrl, $label);
         }
 
@@ -373,10 +417,11 @@ class ProcessRun implements ShouldQueue
      * Merge the base branch into the PR's branch, have the agent resolve the conflicts, and push without force.
      * No gate, review pass or scope judge, as in a fix-up round: CI on the PR is the check.
      */
-    private function fixConflicts(Run $run, GitHub $github): void
+    /** @param  list<string>  $labels  The issue's labels. */
+    private function fixConflicts(Run $run, GitHub $github, array $labels): void
     {
         try {
-            $this->mergeAndResolve($run, $github);
+            $this->mergeAndResolve($run, $github, $labels);
         } catch (Throwable $e) {
             // Cancelling goes the usual way
             if ($run->fresh()->cancel_requested) {
@@ -388,7 +433,7 @@ class ProcessRun implements ShouldQueue
         }
     }
 
-    private function mergeAndResolve(Run $run, GitHub $github): void
+    private function mergeAndResolve(Run $run, GitHub $github, array $labels): void
     {
         $repo = $run->repository;
         $path = $repo->worktreePath($run->issue_number);
@@ -414,7 +459,7 @@ class ProcessRun implements ShouldQueue
 
         (new AgentReport($path))->clear();
         $git->excludeFromGit('.foreman/');
-        $this->allowLockFiles = in_array('dependencies', $github->labels($repo, $run->issue_number), true);
+        $this->allowLockFiles = in_array('dependencies', $labels, true);
 
         $run->log("Merging {$git->baseRef()} into {$run->branch}");
         $merge = $git->mergeInBase();

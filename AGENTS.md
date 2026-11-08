@@ -24,11 +24,6 @@ Foreman is a Laravel 13 + Livewire 4 app that turns labelled GitHub issues into 
 
 Queue workers keep old code until they restart.
 
-## Coding Style & Naming Conventions
-
-- Format PHP with Laravel Pint (default preset, no `pint.json`).
-- `.editorconfig`: 4-space indent, LF line endings; YAML uses 2 spaces.
-
 ## Testing Guidelines
 
 - Tests use PHPUnit 12 classes (not Pest), in `tests/Feature` and `tests/Unit`.
@@ -40,5 +35,6 @@ Queue workers keep old code until they restart.
 
 - Use conventional commits with the issue number as the scope, for example `feat(#13): detect JS/TS and Rust check commands`. Use `style(#13):` for Pint-only commits. Work with no issue uses a topic scope, such as `feat(dashboard):`.
 - Branches are `issue-<n>`, or `agent/issue-<n>` when Foreman opened them.
+- Diff and review against `origin/main`. Local `main` is not kept current.
 - PR bodies start with `Closes #<n>`.
 - Docs changes ship in the same PR as the code they describe.
