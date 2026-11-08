@@ -13,6 +13,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -88,6 +89,7 @@ class Dashboard extends Component
      *
      * @return array{options: list<array{value: string, text: string}>, error: ?string}
      */
+    #[Renderless] // the popover is wire:ignore'd, so nothing on the page changes
     public function focusOptions(int $id, GitHub $github): array
     {
         $repo = Repository::findOrFail($id);

@@ -51,9 +51,8 @@ class GitHub
                 continue;
             }
 
-            // Filtered here, not in the query: issues(labels: [...]) matches any of the labels, not all.
-            // GitHub ignores case in label names, so this does too.
-            if ($repo->focus_label !== null && ! in_array(mb_strtolower($repo->focus_label), array_map(mb_strtolower(...), array_column($issue['labels']['nodes'] ?? [], 'name')), true)) {
+            // Filtered here, not in the query: issues(labels: [...]) matches any of the labels, not all
+            if ($repo->focus_label !== null && ! Repository::hasLabel(array_column($issue['labels']['nodes'] ?? [], 'name'), $repo->focus_label)) {
                 continue;
             }
 

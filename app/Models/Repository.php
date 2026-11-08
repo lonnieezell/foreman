@@ -108,10 +108,16 @@ SH;
         return trim("{$this->model} {$this->effort}");
     }
 
-    /** One of the labels Foreman moves issues through, which can't be the focus label. GitHub ignores case in label names. */
+    /** Whether $label is among $names. GitHub ignores case in label names, so this does too. */
+    public static function hasLabel(array $names, string $label): bool
+    {
+        return in_array(mb_strtolower($label), array_map(mb_strtolower(...), $names), true);
+    }
+
+    /** One of the labels Foreman moves issues through, which can't be the focus label. */
     public function isWorkflowLabel(string $label): bool
     {
-        return in_array(mb_strtolower($label), array_map(mb_strtolower(...), [$this->ready_label, $this->working_label, $this->human_label]), true);
+        return self::hasLabel([$this->ready_label, $this->working_label, $this->human_label], $label);
     }
 
     /** @return list<string> The globs from the "Locked paths" setting, one per line. */
