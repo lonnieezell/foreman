@@ -1,5 +1,7 @@
 Foreman's scope judge vetoed this change before the push. The judge is a separate
-model that saw only the issue and the diff since {{base}}. It said:
+model that saw only the issue and the diff since {{base}}. Foreman's review pass
+ran before the judge in a separate session, and may have committed fixes; `git log`
+shows them. The judge said:
 
 {{verdict}}
 

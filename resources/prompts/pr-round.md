@@ -1,7 +1,9 @@
 You opened PR {{pr}} for issue #{{issue}} on branch {{branch}}. This is review
 round {{round}} of {{max_rounds}}. CI and review bots have reported back; deal with
 what is listed below, then stop. Stay inside the issue's scope. You have no access
-to GitHub: Foreman fetched everything below for you.
+to GitHub: Foreman fetched everything below for you. Before the PR opened,
+Foreman's review pass ran in a separate session, and may have committed fixes;
+`git log` shows them.
 
 {{untrusted_note}}
 

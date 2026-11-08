@@ -8,8 +8,11 @@ use App\Livewire\Dashboard;
 use App\Livewire\RunDetail;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Models\RunMessage;
 use App\Services\AgentReport;
 use App\Services\GitHub;
+use App\Support\IssueSanitiser;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
@@ -66,9 +69,10 @@ class ReviewPassTest extends TestCase
      * Runs the job to a `pr` result against faked commands.
      *
      * @param  array{review?:array,security?:array,reviewResult?:array}  $answers  What the passes answer with.
+     * @param  Closure|null  $before  Gets the run before the job starts.
      * @return array{0:Run,1:list<string>} The run and the comments flagged for a human.
      */
-    private function settle(string $diff, array $answers = [], array $repository = []): array
+    private function settle(string $diff, array $answers = [], array $repository = [], ?Closure $before = null): array
     {
         $answers += [
             'review' => ['type' => 'result', 'num_turns' => 2, 'total_cost_usd' => 0.5, 'session_id' => 'sess-1'],
@@ -92,6 +96,7 @@ class ReviewPassTest extends TestCase
             $pass = match (true) {
                 str_starts_with($call['prompt'], '/security-review') => 'security',
                 str_contains($call['prompt'], 'code-review skill') => 'review',
+                str_contains($call['prompt'], 'scope judge vetoed') => 'correction',
                 default => 'issue',
             };
             $this->sequence[] = $pass;
@@ -100,7 +105,14 @@ class ReviewPassTest extends TestCase
             File::ensureDirectoryExists("{$this->worktree}/.foreman");
             File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode($result));
 
-            return FakeClaude::result($answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1']);
+            $event = $answers[$pass] ?? ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1'];
+
+            // The real adapter saves each streamed event's session id on the run as it goes
+            if (isset($event['session_id'])) {
+                $call['run']->update(['session_id' => $event['session_id']]);
+            }
+
+            return FakeClaude::result($event);
         };
 
         Process::fake(function (PendingProcess $process) {
@@ -125,6 +137,10 @@ class ReviewPassTest extends TestCase
         $github->allows('flagForHuman')->andReturnUsing(function ($repo, $issue, $comment) use (&$comments) {
             $comments[] = $comment;
         });
+
+        if ($before) {
+            $before($run);
+        }
 
         (new ProcessRun($run))->handle($github);
 
@@ -199,20 +215,160 @@ class ReviewPassTest extends TestCase
         $this->assertSame(['issue', 'gate', 'review', 'security', 'gate'], $this->sequence);
     }
 
-    public function test_the_passes_resume_the_agents_session_and_stay_in_reviewing(): void
+    private const FRESH = [
+        'review' => ['type' => 'result', 'num_turns' => 2, 'total_cost_usd' => 0.5, 'session_id' => 'sess-review'],
+        'security' => ['type' => 'result', 'num_turns' => 3, 'total_cost_usd' => 0.25, 'session_id' => 'sess-security'],
+    ];
+
+    public function test_the_review_pass_and_security_review_each_start_a_fresh_session(): void
+    {
+        [$run] = $this->settle(self::ROUTE_DIFF, self::FRESH);
+
+        $this->assertNull($this->claude->agentCall('code-review skill')['resume']);
+        $this->assertNull($this->claude->agentCall('/security-review')['resume']);
+        $this->assertSame('sess-1', $run->session_id);
+        $this->assertStringContainsString('The review pass ran in a fresh session (sess-review).', File::get($run->logPath()));
+        $this->assertStringContainsString('/security-review ran in a fresh session (sess-security).', File::get($run->logPath()));
+    }
+
+    public function test_a_fresh_pass_that_fails_still_leaves_the_implementation_session(): void
+    {
+        [$run] = $this->settle(self::CODE_DIFF, ['review' => ['type' => 'result', 'is_error' => true, 'subtype' => 'error_max_turns', 'session_id' => 'sess-review']]);
+
+        $this->assertSame(RunStatus::Failed, $run->status);
+        $this->assertSame('sess-1', $run->session_id);
+    }
+
+    public function test_the_correction_round_still_resumes_the_implementation_session(): void
+    {
+        $verdicts = 0;
+        $this->claude->onOneShot = function () use (&$verdicts) {
+            return ++$verdicts === 1
+                ? ['adds_unrequested' => true, 'misses_requested' => false, 'weakens_tests' => false, 'reason' => 'Adds a cache.']
+                : ['adds_unrequested' => false, 'misses_requested' => false, 'weakens_tests' => false, 'reason' => 'Fine now.'];
+        };
+
+        [$run] = $this->settle(self::CODE_DIFF, self::FRESH);
+
+        $this->assertSame(['issue', 'gate', 'review', 'correction', 'gate'], $this->sequence);
+        $this->assertSame('sess-1', $this->claude->agentCall('scope judge vetoed')['resume']);
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+    }
+
+    public function test_both_fresh_prompts_carry_the_issue_the_checks_and_the_rules(): void
     {
         $this->settle(self::ROUTE_DIFF);
 
-        $this->assertSame('sess-1', $this->claude->agentCall('code-review skill')['resume']);
-        $this->assertSame('sess-1', $this->claude->agentCall('/security-review')['resume']);
+        foreach (['code-review skill', '/security-review'] as $pass) {
+            $prompt = $this->prompt($pass);
+
+            $this->assertStringContainsString('Issue text', $prompt, $pass);
+            $this->assertStringContainsString(IssueSanitiser::TEXT_NOTE, $prompt, $pass);
+            $this->assertStringContainsString("The issue is the spec. Don't remove or change behavior it asks for.", $prompt, $pass);
+            $this->assertStringContainsString("```bash\ncomposer test\n```", $prompt, $pass);
+            $this->assertStringNotContainsString('same way as before', $prompt, $pass);
+            $this->assertStringContainsString('You cannot push, open PRs or use `gh`.', $prompt, $pass);
+            $this->assertStringContainsString('Bash runs only commands on an allowlist.', $prompt, $pass);
+            $this->assertStringContainsString('`test_looks_wrong`', $prompt, $pass);
+            $this->assertStringContainsString('name the file and lines, the finding, and the choices', $prompt, $pass);
+            $this->assertStringContainsString('committed, left uncommitted, or not made', $prompt, $pass);
+        }
+
+        $this->assertStringContainsString('{"outcome": "question", "questions": ["<question>"]}', $this->prompt('code-review skill'));
+        $this->assertStringContainsString('{"outcome": "needs_human", "reason": "<short reason>", "comment": "<comment for the issue>"}', $this->prompt('/security-review'));
     }
 
-    public function test_the_passes_add_to_the_runs_cost_and_turns(): void
+    public function test_without_a_verify_script_the_fresh_prompts_point_at_the_projects_own_checks(): void
     {
-        [$run] = $this->settle(self::ROUTE_DIFF);
+        File::delete("{$this->worktree}/composer.json");
+
+        $this->settle(self::CODE_DIFF, repository: ['verify_script' => '']);
+
+        $this->assertStringContainsString('Run the checks that AGENTS.md or CLAUDE.md lists', $this->prompt('code-review skill'));
+    }
+
+    public function test_the_fresh_prompts_carry_the_operators_earlier_decisions(): void
+    {
+        $this->settle(self::ROUTE_DIFF, before: function (Run $run) {
+            $earlier = $run->repository->runs()->create([
+                'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
+                'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::NeedsHuman,
+            ]);
+            $earlier->messages()->createMany([
+                ['role' => RunMessage::AGENT, 'body' => 'Which cache?'],
+                ['role' => RunMessage::HUMAN, 'body' => 'Use Redis.'],
+            ]);
+        });
+
+        foreach (['code-review skill', '/security-review'] as $pass) {
+            $this->assertStringContainsString("Operator answered:\nUse Redis.", $this->prompt($pass), $pass);
+        }
+    }
+
+    public function test_a_custom_prompt_template_is_noted_in_the_log(): void
+    {
+        [$run] = $this->settle(self::CODE_DIFF, repository: ['prompt_template' => 'Do {{issue}}.']);
+
+        $this->assertStringContainsString("The review passes don't use this repository's custom prompt.", File::get($run->logPath()));
+    }
+
+    public function test_a_review_pass_that_changes_the_pr_result_has_it_restored(): void
+    {
+        [$run] = $this->settle(self::CODE_DIFF, ['reviewResult' => ['outcome' => 'pr', 'title' => 'Reviewer title', 'body' => 'Reviewer body.']]);
+
+        $create = collect($this->commands)->first(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create']);
+        $this->assertSame(RunStatus::PrOpened, $run->status);
+        $this->assertContains('T', $create);
+        $this->assertNotContains('Reviewer title', $create);
+        $this->assertStringContainsString('The review pass changed '.AgentReport::RESULT_FILE.'. Foreman put it back.', File::get($run->logPath()));
+    }
+
+    public function test_a_question_from_the_review_pass_is_kept(): void
+    {
+        [$run] = $this->settle(self::CODE_DIFF, ['reviewResult' => ['outcome' => 'question', 'questions' => ['app/A.php:1 returns 1. Keep it?']]]);
+
+        $this->assertSame(RunStatus::NeedsHuman, $run->status);
+        $this->assertSame(['app/A.php:1 returns 1. Keep it?'], $run->messages()->pluck('body')->all());
+    }
+
+    public function test_a_continued_run_hears_the_questions_before_the_answers(): void
+    {
+        $this->settle(self::CODE_DIFF, before: function (Run $run) {
+            $asked = $run->repository->runs()->create([
+                'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
+                'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::NeedsHuman, 'finished_at' => now(),
+            ]);
+            $asked->messages()->createMany([
+                ['role' => RunMessage::AGENT, 'body' => 'app/A.php:1 returns 1. Keep it? The fix is uncommitted.'],
+                ['role' => RunMessage::HUMAN, 'body' => 'Keep it.'],
+            ]);
+            $run->update(['previous_run_id' => $asked->id]);
+        });
+
+        $prompt = $this->claude->agentCalls[0]['prompt'];
+        $question = strpos($prompt, "<untrusted_text>\napp/A.php:1 returns 1. Keep it? The fix is uncommitted.\n</untrusted_text>");
+        $answer = strpos($prompt, "below.\n\nKeep it.");
+
+        $this->assertNotFalse($question);
+        $this->assertNotFalse($answer);
+        $this->assertLessThan($answer, $question);
+        $this->assertStringContainsString("You asked them, or Foreman's review pass did.", $prompt);
+        $this->assertStringContainsString('`git log` shows them', $prompt);
+    }
+
+    public function test_the_fresh_passes_add_to_the_runs_cost_turns_and_tokens(): void
+    {
+        $usage = ['input_tokens' => 10, 'output_tokens' => 20, 'cache_read_input_tokens' => 30, 'cache_creation_input_tokens' => 40];
+
+        [$run] = $this->settle(self::ROUTE_DIFF, [
+            'issue' => ['type' => 'result', 'num_turns' => 1, 'total_cost_usd' => 1, 'session_id' => 'sess-1', 'usage' => $usage],
+            'review' => [...self::FRESH['review'], 'usage' => $usage],
+            'security' => [...self::FRESH['security'], 'usage' => $usage],
+        ]);
 
         $this->assertEquals(1.75, (float) $run->cost_usd);
         $this->assertSame(6, $run->num_turns);
+        $this->assertSame([30, 60, 90, 120], [$run->input_tokens, $run->output_tokens, $run->cache_read_tokens, $run->cache_write_tokens]);
     }
 
     public function test_the_pass_gets_what_is_left_of_the_spend_cap(): void

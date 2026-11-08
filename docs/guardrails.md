@@ -279,7 +279,19 @@ The run log names what set the tier, such as `Risk tier 3: touches routes/web.ph
 
 ### What changes at each tier
 
-Foreman resumes the agent's own session for the review pass. The agent keeps everything it learned while writing the change. The run stays on the **Reviewing** station.
+The review pass runs in a fresh Claude session. It doesn't resume the session that wrote the change. `/security-review` gets a fresh session of its own too. The run stays on the **Reviewing** station.
+
+A fresh session has two benefits. It costs less, because each review turn doesn't re-read the whole implementation's context. And it is a less anchored review, because the reviewer doesn't share the author's reasoning.
+
+A fresh session knows nothing about the run, so Foreman puts what it needs in the prompt:
+
+- The [sanitised issue](#sanitised-issue), and the answers you gave to earlier questions on the issue.
+- The checks to run. This is the verify script Foreman's gate runs. When there is none, the prompt tells the reviewer to run the checks that `AGENTS.md` or `CLAUDE.md` lists.
+- The same rules as the first run: no push, no `gh`, the Bash allowlist, and no weakening of tests to get green.
+
+The review passes don't use a repository's [custom prompt](repository-settings.md#instructions). They rely on its `CLAUDE.md` or `AGENTS.md`, which Claude Code loads by itself. The run log notes this when the repository has a custom prompt. The run log also gives each fresh session's id.
+
+The scope correction round and **Continue after my reply** still resume the session that wrote the change. A fresh pass never replaces that session's id on the run.
 
 | | Tier 1 | Tier 2 | Tier 3 |
 | --- | --- | --- | --- |
@@ -291,7 +303,9 @@ The agent runs the checks again and commits its fixes. Then Foreman runs its who
 
 The review pass can end the run early:
 
-- If the agent writes a `needs_human` result during the pass, the run goes to **Needs you** and nothing is pushed.
+- If the reviewer writes a `needs_human` result during the pass, the run goes to **Needs you** and nothing is pushed.
+- If the review pass writes a `question` result, the run goes to **Needs you** and waits for your answer. Commits the pass already made are kept. Each question names the file and lines, the finding and the choices. It also says whether the fix is committed, left uncommitted, or not made. When you answer, the run resumes the session that wrote the change. That session gets the questions and then your answers.
+- The reviewer can't change the PR's title or body. If it changes a `pr` result in `.foreman/result.json`, Foreman puts the old one back and says so in the run log.
 - If the pass stops with an error, such as running out of turns, the run fails and nothing is pushed.
 - If `/security-review` ends without reviewing anything, the run fails. That command fails silently when it can't work out the diff.
 - The pass shares the run's spend cap. It gets what the first part of the run left. If nothing is left, the run fails before the pass.
