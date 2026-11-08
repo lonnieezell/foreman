@@ -38,6 +38,10 @@ class FocusLabelTest extends TestCase
             ->assertSeeHtml('class="line-focus is-set"')
             ->assertSeeHtml('title="Only taking ready issues that also have this label."')
             ->assertSee('focus: garret-sync');
+
+        $repo->update(['focus_label' => '0']);
+
+        Livewire::test(Dashboard::class)->assertSee('focus: 0');
     }
 
     public function test_saving_trims_the_label_and_saves_empty_as_no_focus(): void
@@ -61,7 +65,7 @@ class FocusLabelTest extends TestCase
         Process::fake();
         $repo = $this->repository('garret-sync');
 
-        foreach (['ready-for-agent', 'agent-working', 'needs-human'] as $label) {
+        foreach (['ready-for-agent', 'agent-working', 'needs-human', 'READY-FOR-AGENT'] as $label) {
             Livewire::test(Dashboard::class)
                 ->call('saveFocusLabel', $repo->id, $label)
                 ->assertReturned(fn ($error) => is_string($error) && str_contains($error, 'workflow label'));
@@ -80,7 +84,7 @@ class FocusLabelTest extends TestCase
 
     public function test_the_options_are_no_focus_then_the_repos_labels_a_to_z_minus_the_workflow_labels(): void
     {
-        $this->fakeLabels(['needs-human', 'garret-sync', 'ready-for-agent', 'bug', 'foreman:trivial', 'agent-working']);
+        $this->fakeLabels(['needs-human', 'garret-sync', 'Ready-For-Agent', 'bug', 'foreman:trivial', 'agent-working']);
         $repo = $this->repository();
 
         Livewire::test(Dashboard::class)

@@ -146,7 +146,7 @@
                         </span>
                         {{-- Same pattern as the model popover; opening it fetches the repository's labels --}}
                         <span x-data="focusLabel({{ $repo->id }})" data-focus="{{ $repo->focus_label }}">
-                            <button type="button" @class(['line-focus', 'is-set' => $repo->focus_label]) x-ref="trigger" popovertarget="focus-{{ $repo->id }}" aria-label="Focus label for {{ $repo->name }}" @if ($repo->focus_label) title="Only taking ready issues that also have this label." @endif>{{ $repo->focus_label ? "focus: {$repo->focus_label}" : 'no focus' }}</button>
+                            <button type="button" @class(['line-focus', 'is-set' => $repo->focus_label !== null]) x-ref="trigger" popovertarget="focus-{{ $repo->id }}" aria-label="Focus label for {{ $repo->name }}" @if ($repo->focus_label !== null) title="Only taking ready issues that also have this label." @endif>{{ $repo->focus_label !== null ? "focus: {$repo->focus_label}" : 'no focus' }}</button>
                             <div id="focus-{{ $repo->id }}" class="claude-popover" popover wire:ignore x-ref="popover" x-anchor.bottom-start="$refs.trigger" x-on:toggle="$event.newState === 'open' && load()">
                                 <label>Focus label
                                     <select x-model="focus" x-bind:disabled="loading">

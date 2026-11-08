@@ -105,7 +105,7 @@ class Dashboard extends Component
             ->push($repo->focus_label)
             ->filter(fn (?string $label) => $label !== null)
             ->unique()
-            ->diff($repo->workflowLabels())
+            ->reject(fn (string $label) => $repo->isWorkflowLabel($label))
             ->sort(SORT_NATURAL | SORT_FLAG_CASE)
             ->map(fn (string $label) => ['value' => $label, 'text' => $found === null || in_array($label, $found, true) ? $label : "{$label} (not found)"]);
 
@@ -118,7 +118,7 @@ class Dashboard extends Component
         $repo = Repository::findOrFail($id);
         $label = trim($label);
 
-        if (in_array($label, $repo->workflowLabels(), true)) {
+        if ($repo->isWorkflowLabel($label)) {
             return "{$label} is a workflow label, so it can’t be the focus.";
         }
 

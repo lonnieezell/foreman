@@ -91,6 +91,14 @@ class ReadyIssuesTest extends TestCase
         Process::assertRan(fn (PendingProcess $p) => str_contains(implode(' ', $p->command), 'labels(first: 100) { nodes { name } }'));
     }
 
+    public function test_the_focus_label_matches_any_casing_and_can_be_named_zero(): void
+    {
+        $this->fakeIssues([$this->labelledIssue(1, ['bug']), $this->labelledIssue(2, ['garret-sync']), $this->labelledIssue(3, ['0'])]);
+
+        $this->assertSame([2], array_column(app(GitHub::class)->readyIssues($this->focusedRepo('Garret-Sync'), 5), 'number'));
+        $this->assertSame([3], array_column(app(GitHub::class)->readyIssues($this->focusedRepo('0'), 5), 'number'));
+    }
+
     public function test_out_of_focus_issues_skip_the_intake_gate_silently_and_in_focus_ones_still_face_it(): void
     {
         $this->fakeIssues([
