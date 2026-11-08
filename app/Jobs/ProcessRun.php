@@ -205,7 +205,7 @@ class ProcessRun implements ShouldQueue
             }
         }
 
-        $run->update([...$usage, 'session_id' => $fresh ? $run->session_id : ($agent->sessionId ?? $run->session_id)]);
+        $run->update($fresh ? $usage : [...$usage, 'session_id' => $agent->sessionId ?? $run->session_id]);
 
         return $agent;
     }
@@ -634,7 +634,7 @@ class ProcessRun implements ShouldQueue
     private function runPass(Run $run, GitHub $github, string $label, string $prompt, bool $fresh = false): AgentResult
     {
         $file = "{$run->worktree_path}/".AgentReport::RESULT_FILE;
-        $result = @file_get_contents($file);
+        $result = $fresh ? @file_get_contents($file) : null;
 
         $agent = $this->runAgent($run, $run->worktree_path, $github, $prompt, $fresh);
 
@@ -818,16 +818,19 @@ class ProcessRun implements ShouldQueue
         $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
         $replies = array_filter([
-            // Only alongside a reply: with none, the run was continued by hand
-            $questions === '' || ($answers === '' && $comments === '') ? null : "These questions were asked in Foreman during the last run. You asked them, or Foreman's review pass did. "
-                ."The review pass runs in a separate session and may have committed fixes. `git log` shows them.\n\n{$questions}",
             $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",
             $comments === '' ? null : "A human has replied on issue #{$run->issue_number}. The new comments are below.\n\n{$comments}",
         ]);
 
         $prompt = $replies
-            ? implode("\n\n", $replies).($answers !== '' && $comments !== '' ? "\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins." : '')
+            ? implode("\n\n", $replies).(count($replies) === 2 ? "\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins." : '')
             : "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.";
+
+        // Only alongside a reply: with none, the run was continued by hand
+        if ($replies && $questions !== '') {
+            $prompt = "These questions were asked in Foreman during the last run. You asked them, or Foreman's review pass did. "
+                ."The review pass runs in a separate session and may have committed fixes. `git log` shows them.\n\n{$questions}\n\n{$prompt}";
+        }
 
         if ($this->mergedFromBase) {
             $commits = collect($this->mergedFromBase)->map(fn ($s) => "- {$s}")->implode("\n");

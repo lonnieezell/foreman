@@ -332,31 +332,6 @@ class ReviewPassTest extends TestCase
         $this->assertSame(['app/A.php:1 returns 1. Keep it?'], $run->messages()->pluck('body')->all());
     }
 
-    public function test_a_continued_run_hears_the_questions_before_the_answers(): void
-    {
-        $this->settle(self::CODE_DIFF, before: function (Run $run) {
-            $asked = $run->repository->runs()->create([
-                'issue_number' => 7, 'issue_title' => 'Fix', 'issue_url' => 'https://example.test/7',
-                'branch' => 'agent/issue-7', 'model' => 'sonnet', 'status' => RunStatus::NeedsHuman, 'finished_at' => now(),
-            ]);
-            $asked->messages()->createMany([
-                ['role' => RunMessage::AGENT, 'body' => 'app/A.php:1 returns 1. Keep it? The fix is uncommitted.'],
-                ['role' => RunMessage::HUMAN, 'body' => 'Keep it.'],
-            ]);
-            $run->update(['previous_run_id' => $asked->id]);
-        });
-
-        $prompt = $this->claude->agentCalls[0]['prompt'];
-        $question = strpos($prompt, "<untrusted_text>\napp/A.php:1 returns 1. Keep it? The fix is uncommitted.\n</untrusted_text>");
-        $answer = strpos($prompt, "below.\n\nKeep it.");
-
-        $this->assertNotFalse($question);
-        $this->assertNotFalse($answer);
-        $this->assertLessThan($answer, $question);
-        $this->assertStringContainsString("You asked them, or Foreman's review pass did.", $prompt);
-        $this->assertStringContainsString('`git log` shows them', $prompt);
-    }
-
     public function test_the_fresh_passes_add_to_the_runs_cost_turns_and_tokens(): void
     {
         $usage = ['input_tokens' => 10, 'output_tokens' => 20, 'cache_read_input_tokens' => 30, 'cache_creation_input_tokens' => 40];

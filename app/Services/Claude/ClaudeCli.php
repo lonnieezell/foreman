@@ -105,7 +105,7 @@ class ClaudeCli implements Claude
             throw new RuntimeException('Claude exited without a result: '.str($exit->errorOutput())->limit(500));
         }
 
-        return new AgentResult($this->outcome, $saveSession ? $run->session_id : ($this->outcome['session_id'] ?? null));
+        return new AgentResult($this->outcome, $this->outcome['session_id'] ?? null);
     }
 
     public function oneShot(Repository $repo, string $prompt, ?array $schema = null): OneShotResult
