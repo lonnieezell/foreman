@@ -14,6 +14,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\FakeClaude;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
@@ -255,62 +256,47 @@ class ScopeJudgeRunTest extends TestCase
         $this->assertStringContainsString('expected value', $judge);
     }
 
-    public function test_a_second_veto_only_for_missing_work_opens_a_draft_labelled_scope_incomplete_after_the_gate(): void
+    /** @return array<string, array{0:array,1:list<string>,2:string}> A second verdict, the scope labels it gives, and its footer line. */
+    public static function draftVetoes(): array
+    {
+        return [
+            'only missing work' => [[...self::MISSING, 'reason' => 'Still no consent change.'], ['scope:incomplete'], 'Misses requested work: Still no consent change.'],
+            'only extra work' => [[...self::VETO, 'reason' => 'Still adds the settings page.'], ['scope:extra'], 'Adds unrequested work: Still adds the settings page.'],
+            'extra and missing work' => [[...self::VETO, 'misses_requested' => true], ['scope:extra', 'scope:incomplete'], 'Adds unrequested work, misses requested work: Adds an unrelated settings page.'],
+        ];
+    }
+
+    #[DataProvider('draftVetoes')]
+    public function test_a_second_veto_without_weakened_tests_opens_a_draft_labelled_per_problem_after_the_gate(array $verdict, array $labels, string $footer): void
     {
         $this->judgeReply = self::REPLY;
-        [$run, $comments] = $this->settle([self::MISSING, [...self::MISSING, 'reason' => 'Still no consent change.']]);
+        [$run, $comments] = $this->settle([$verdict, $verdict]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'gate'], $this->sequence);
         $this->assertTrue($this->git->didPush());
         $this->assertTrue(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)));
-        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:incomplete']));
-        $this->assertFalse($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:extra']));
-        $this->assertStringContainsString('- Scope judge: vetoed twice, so opened as a draft. Misses requested work: Still no consent change.', $this->prBodies[0]);
+
+        foreach (['scope:extra', 'scope:incomplete'] as $label) {
+            $this->assertSame(in_array($label, $labels, true), $this->ran(['gh', 'pr', 'edit', '12', '--add-label', $label]), $label);
+        }
+
+        $this->assertStringContainsString("- Scope judge: vetoed twice, so opened as a draft. {$footer}", $this->prBodies[0]);
         $this->assertStringContainsString("The agent's answer to the judge:\n\n> The consent fix is already on main.", $this->prBodies[0]);
     }
 
-    public function test_a_second_veto_only_for_missing_work_with_a_failing_gate_moves_the_run_to_needs_you(): void
+    /** @return array<string, array{0:array}> The second verdicts from draftVetoes() alone. */
+    public static function draftVerdicts(): array
+    {
+        return array_map(fn (array $row) => [$row[0]], self::draftVetoes());
+    }
+
+    #[DataProvider('draftVerdicts')]
+    public function test_a_second_veto_without_weakened_tests_and_a_failing_gate_moves_the_run_to_needs_you(array $verdict): void
     {
         $this->gateFails = true;
-        [$run] = $this->settle([self::MISSING, self::MISSING]);
-
-        $this->assertSame(RunStatus::NeedsHuman, $run->status);
-        $this->assertSame('gate_failed', $run->stop_reason);
-        $this->assertFalse($this->git->didPush());
-    }
-
-    public function test_a_second_veto_only_for_extra_work_opens_a_draft_labelled_scope_extra_after_the_gate(): void
-    {
-        $this->judgeReply = self::REPLY;
-        [$run, $comments] = $this->settle([self::VETO, [...self::VETO, 'reason' => 'Still adds the settings page.']]);
-
-        $this->assertSame(RunStatus::PrOpened, $run->status);
-        $this->assertSame([], $comments);
-        $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'gate'], $this->sequence);
-        $this->assertTrue($this->git->didPush());
-        $this->assertTrue(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)));
-        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:extra']));
-        $this->assertFalse($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:incomplete']));
-        $this->assertStringContainsString('- Scope judge: vetoed twice, so opened as a draft. Adds unrequested work: Still adds the settings page.', $this->prBodies[0]);
-        $this->assertStringContainsString("The agent's answer to the judge:\n\n> The consent fix is already on main.", $this->prBodies[0]);
-    }
-
-    public function test_a_second_veto_for_extra_and_missing_work_opens_a_draft_with_both_labels(): void
-    {
-        [$run] = $this->settle([self::VETO, [...self::VETO, 'misses_requested' => true]]);
-
-        $this->assertSame(RunStatus::PrOpened, $run->status);
-        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:extra']));
-        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:incomplete']));
-        $this->assertStringContainsString('- Scope judge: vetoed twice, so opened as a draft. Adds unrequested work, misses requested work: Adds an unrelated settings page.', $this->prBodies[0]);
-    }
-
-    public function test_a_second_veto_for_extra_work_with_a_failing_gate_moves_the_run_to_needs_you(): void
-    {
-        $this->gateFails = true;
-        [$run] = $this->settle([self::VETO, self::VETO]);
+        [$run] = $this->settle([$verdict, $verdict]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('gate_failed', $run->stop_reason);

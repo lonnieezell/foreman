@@ -285,6 +285,7 @@ class ProcessRun implements ShouldQueue
             $run->log("Scope judge vetoed the change again: {$verdict->describe()} Opening the PR as a draft.");
             $footer .= "\n- Scope judge: vetoed twice, so opened as a draft. {$verdict->describe()}";
             $footer .= $result->judgeReply === null ? '' : "\n\n".self::judgeAnswer($result->judgeReply);
+
             if ($verdict->addsUnrequested) {
                 $labels[] = 'scope:extra';
             }
