@@ -77,6 +77,10 @@ class RiskTierTest extends TestCase
             'shield auth groups' => [self::CI4_SHIELD, self::diff('app/Config/AuthGroups.php'), 3],
             'shield permission change' => [self::CI4_SHIELD, self::diff('app/Controllers/Admin.php', ['$user->addPermission("users.delete");']), 3],
             'ci4 tests only' => [self::CI4_SHIELD, self::diff('tests/unit/HomeTest.php'), 1],
+            'shield permission in test setup' => [self::CI4_SHIELD, self::diff('tests/Content/TermAdminTest.php', ['$user->addPermission("terms.edit");'])
+                .self::diff('app/Controllers/Terms.php', ['return view("terms");']), 2],
+            'shield permission in tests only' => [self::CI4_SHIELD, self::diff('tests/Content/TermAdminTest.php', ['$user->addPermission("terms.edit");']), 1],
+            'laravel tier-3 path under tests' => [self::LARAVEL, self::diff('tests/routes/web.php'), 3],
             'ts api route' => [self::TYPESCRIPT, self::diff('app/api/users/route.ts'), 3],
             'ts inner html' => [self::TYPESCRIPT, self::diff('src/View.tsx', ['<div dangerouslySetInnerHTML={{ __html: body }} />']), 3],
             'ts component' => [self::TYPESCRIPT, self::diff('src/Button.tsx', ['export const Button = () => null;']), 2],

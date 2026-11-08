@@ -271,7 +271,7 @@ After [Foreman's gate](#foremans-gate) passes the first time, Foreman rates the 
 
 Foreman checks the rules in this order and stops at the first match:
 
-1. **Tier 3:** a changed file matches a high-risk path of a detected stack. Or an added line matches one of its risky-code patterns. The lists are in [Stack rules](stack-rules.md) and [PHP frameworks](stack-rules.md#php-frameworks). A renamed file counts under its old path too, so moving a file out of `routes/` is still tier 3.
+1. **Tier 3:** a changed file matches a high-risk path of a detected stack. Or an added line matches one of its risky-code patterns. Lines in test files don't count for risky code, because test setup often calls the same helpers. High-risk paths still count in test files. The lists are in [Stack rules](stack-rules.md) and [PHP frameworks](stack-rules.md#php-frameworks). A renamed file counts under its old path too, so moving a file out of `routes/` is still tier 3.
 2. **Tier 1:** every changed file is docs or tests, and the change is under 200 changed lines (added plus deleted). Docs are `*.md`, `*.mdx`, `*.rst` and anything under `docs/`. Tests are the stacks' test files.
 3. **Tier 2:** everything else.
 
