@@ -108,6 +108,12 @@ SH;
         return trim("{$this->model} {$this->effort}");
     }
 
+    /** @return list<string> The labels Foreman moves issues through, which can't be the focus label. */
+    public function workflowLabels(): array
+    {
+        return [$this->ready_label, $this->working_label, $this->human_label];
+    }
+
     /** @return list<string> The globs from the "Locked paths" setting, one per line. */
     public function lockedPathList(): array
     {
