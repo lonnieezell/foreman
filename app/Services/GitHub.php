@@ -147,20 +147,29 @@ class GitHub
         $this->gh($repo, ['issue', 'edit', (string) $issue, '--add-label', $repo->human_label], allowFailure: true);
     }
 
-    /** The issue's title and body, cleaned and marked as untrusted data, ready for the prompt. */
-    public function sanitisedIssue(Repository $repo, int $issue): string
+    /**
+     * The issue's title and body, cleaned and marked as untrusted data, ready for the prompt.
+     * A body longer than `$maxBody` characters keeps its start and says it was cut.
+     */
+    public function sanitisedIssue(Repository $repo, int $issue, ?int $maxBody = null): string
     {
         $output = $this->gh($repo, ['issue', 'view', (string) $issue, '--json', 'title,body']);
         $data = json_decode($output, true) ?? [];
+        $body = (string) ($data['body'] ?? '');
 
-        return IssueSanitiser::wrap((string) ($data['title'] ?? ''), (string) ($data['body'] ?? ''));
+        if ($maxBody !== null && mb_strlen($body) > $maxBody) {
+            $body = mb_substr($body, 0, $maxBody)."\n\n[Foreman cut the rest of the body here, to keep the prompt short.]";
+        }
+
+        return IssueSanitiser::wrap((string) ($data['title'] ?? ''), $body);
     }
 
     /**
      * Issue comments written after $since by people with write access, cleaned and marked as untrusted.
      * Everyone else's comments are left out. Empty when there are none.
+     * Past `$maxChars` characters the oldest comments are left out, and the text says how many.
      */
-    public function trustedComments(Repository $repo, int $issue, ?Carbon $since): string
+    public function trustedComments(Repository $repo, int $issue, ?Carbon $since, ?int $maxChars = null): string
     {
         [$owner, $name] = explode('/', $repo->github_repo, 2);
 
@@ -171,7 +180,7 @@ class GitHub
 
         $writeAccess = [];
 
-        return collect(json_decode($output, true)['data']['repository']['issue']['comments']['nodes'] ?? [])
+        $comments = collect(json_decode($output, true)['data']['repository']['issue']['comments']['nodes'] ?? [])
             ->filter(fn (array $c) => ! $since || Carbon::parse($c['createdAt'])->gt($since))
             ->filter(function (array $c) use ($repo, &$writeAccess) {
                 $login = $c['author']['login'] ?? null;
@@ -179,7 +188,17 @@ class GitHub
                 return $login && ($writeAccess[$login] ??= $this->hasWriteAccess($repo, $login));
             })
             ->map(fn (array $c) => "{$c['author']['login']} wrote:\n".IssueSanitiser::wrapText($c['body']))
-            ->implode("\n\n");
+            ->values();
+
+        $left = 0;
+
+        while ($maxChars !== null && $comments->isNotEmpty() && mb_strlen($comments->implode("\n\n")) > $maxChars) {
+            $comments->shift();
+            $left++;
+        }
+
+        return ($left ? "Foreman left out the {$left} oldest ".str('comment')->plural($left).", to keep the prompt short.\n\n" : '')
+            .$comments->implode("\n\n");
     }
 
     /** Longest log kept per failed run: the end of it, where the failure is. */

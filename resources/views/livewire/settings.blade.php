@@ -24,6 +24,32 @@
         </section>
 
         <section class="fieldset">
+            <h2>Difficulty ladder</h2>
+            <p class="hint">The model and effort each difficulty runs, for repositories in Auto mode. A step can't be cheaper than the one below it: the order is model first, then effort.</p>
+            {{-- One row per difficulty, then the fallback: wire path => label --}}
+            @foreach ([...collect(App\Enums\Difficulty::values())->mapWithKeys(fn ($d) => ["ladder.{$d}" => ucfirst($d)]), 'fallback' => 'Fallback'] as $path => $name)
+                @if ($path === 'fallback')
+                    @error('ladder') <span class="error">{{ $message }}</span> @enderror
+                @endif
+                <div class="field-row field-row-aligned">
+                    @foreach (['model' => App\Support\Ladder::models(), 'effort' => App\Models\Repository::EFFORTS] as $part => $options)
+                        @php($id = str_replace('.', '_', "{$path}.{$part}"))
+                        <div class="field">
+                            <label for="{{ $id }}">{{ $name }}: {{ $part }}</label>
+                            <select id="{{ $id }}" wire:model="{{ $path }}.{{ $part }}">
+                                @foreach ($options as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error("{$path}.{$part}") <span class="error">{{ $message }}</span> @enderror
+                        </div>
+                    @endforeach
+                </div>
+            @endforeach
+            <span class="hint">Used when the classifier gives no usable answer twice. It is still kept within each repository's floor and ceiling.</span>
+        </section>
+
+        <section class="fieldset">
             <h2>Intake gate</h2>
             <div class="field">
                 <label class="check">

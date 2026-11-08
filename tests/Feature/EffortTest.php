@@ -115,14 +115,14 @@ class EffortTest extends TestCase
 
         Livewire::test(Dashboard::class)
             ->assertSeeHtml('title="owner/app · sonnet · default"')
-            ->assertSeeHtml('data-model="sonnet"')
-            ->assertSeeHtml('data-effort=""');
+            ->assertSeeHtml('data-first="sonnet"')
+            ->assertSeeHtml('data-second=""');
 
         $repo->update(['effort' => 'high']);
 
         Livewire::test(Dashboard::class)
             ->assertSeeHtml('title="owner/app · sonnet high · default"')
-            ->assertSeeHtml('data-effort="high"')
+            ->assertSeeHtml('data-second="high"')
             ->assertSee('sonnet high');
     }
 

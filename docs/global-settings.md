@@ -28,6 +28,24 @@ Changes on the Settings page reach running workers before their next job. You do
 
 "Today" starts at midnight UTC. A run's cost counts toward the day the run was queued.
 
+### Difficulty ladder
+
+The model and effort each difficulty runs, for repositories in Auto mode. There are five difficulties. You can change what each one runs, but you can't add or remove any.
+
+| Difficulty | Starting step |
+| --- | --- |
+| `trivial` | Sonnet, low effort |
+| `small` | Sonnet, medium effort |
+| `medium` | Sonnet, high effort |
+| `large` | Opus, medium effort |
+| `hard` | Opus, high effort |
+
+- **The order is checked when you save.** A step can't be cheaper than the one below it. The model counts first (Sonnet, then Opus, then Fable), then the effort. Two difficulties may share a step.
+- **Haiku is not allowed.** It is too small for a coding run.
+- **Fallback.** The step used when the classifier gives no usable answer twice. Default: Sonnet, high effort. It is still kept within each repository's floor and ceiling.
+
+See [How Foreman picks the model and effort](how-foreman-works.md#how-foreman-picks-the-model-and-effort).
+
 ### Intake gate
 
 **Trust ready labels added by bots.** Off by default. When on, Foreman picks up an issue that a bot marked as ready, with no person approving it. It applies to every repository.

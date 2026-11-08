@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\Difficulty;
 use App\Enums\RunStatus;
 use App\Models\Repository;
 use App\Models\Run;
@@ -66,7 +67,7 @@ class Dashboard extends Component
         $repo->update(['concurrency' => max(1, min(8, $repo->concurrency + $delta))]);
     }
 
-    /** Returns null once saved, or the first validation message. Applies to new runs only. */
+    /** The popover in Fixed mode. Returns null once saved, or the first validation message. Applies to new runs only. */
     public function saveClaudeSettings(int $id, string $model, string $effort): ?string
     {
         $repo = Repository::findOrFail($id);
@@ -125,6 +126,24 @@ class Dashboard extends Component
         }
 
         $repo->update(['focus_label' => $label === '' ? null : $label]);
+
+        return null;
+    }
+
+    /** The popover in Auto mode. Returns null once saved, or the first validation message. Applies to new runs only. */
+    public function saveDifficultyRange(int $id, string $floor, string $ceiling): ?string
+    {
+        $repo = Repository::findOrFail($id);
+        $validator = Validator::make(['floor' => $floor, 'ceiling' => $ceiling], [
+            'floor' => ['required', Rule::enum(Difficulty::class)],
+            'ceiling' => ['required', Rule::enum(Difficulty::class), Difficulty::ceilingRule($floor)],
+        ]);
+
+        if ($validator->fails()) {
+            return $validator->errors()->first();
+        }
+
+        $repo->update(['difficulty_floor' => $floor, 'difficulty_ceiling' => $ceiling]);
 
         return null;
     }

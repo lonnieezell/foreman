@@ -2,7 +2,7 @@
     // Which section each field belongs to, for the side nav and the unsaved-changes footer
     $sections = [
         'repo' => ['Repository', ['local_path', 'github_repo', 'name', 'base_branch']],
-        'limits' => ['Model & limits', ['model', 'effort', 'claude_profile', 'daily_budget', 'max_budget_per_run', 'concurrency', 'poll_interval_minutes', 'max_turns', 'max_minutes']],
+        'limits' => ['Model & limits', ['model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'effort', 'claude_profile', 'daily_budget', 'max_budget_per_run', 'concurrency', 'poll_interval_minutes', 'max_turns', 'max_minutes']],
         'labels' => ['Labels', ['ready_label', 'working_label', 'human_label']],
         'scripts' => ['Scripts', ['setup_script', 'verify_script']],
         'perms' => ['Permissions', ['allowed_tools', 'locked_paths']],
@@ -102,6 +102,33 @@
 
                 <div class="field-row field-row-aligned settings-model-row">
                     <div class="field">
+                        <span class="field-label" id="model_mode_label">Model and effort</span>
+                        <div class="segmented" role="radiogroup" aria-labelledby="model_mode_label">
+                            <label><input type="radio" name="model_mode" value="auto" wire:model="model_mode"><span>Auto</span></label>
+                            <label><input type="radio" name="model_mode" value="fixed" wire:model="model_mode"><span>Fixed</span></label>
+                        </div>
+                        <span class="hint">Auto picks them per issue from the <a href="{{ route('settings') }}" wire:navigate>difficulty ladder</a>. Fixed uses one model and effort for every run.</span>
+                        @error('model_mode') <span class="error">{{ $message }}</span> @enderror
+                    </div>
+                </div>
+
+                <div class="field-row field-row-aligned settings-model-row" x-show="$wire.model_mode === 'auto'" @if ($model_mode !== 'auto') x-cloak @endif>
+                    @foreach (['difficulty_floor' => ['Floor', 'Easier issues still run at least this step.'], 'difficulty_ceiling' => ['Ceiling', 'Harder issues run at most this step.']] as $field => [$label, $hint])
+                        <div class="field">
+                            <label for="{{ $field }}">{{ $label }}</label>
+                            <select id="{{ $field }}" wire:model="{{ $field }}">
+                                @foreach (App\Enums\Difficulty::values() as $difficulty)
+                                    <option value="{{ $difficulty }}">{{ ucfirst($difficulty) }}</option>
+                                @endforeach
+                            </select>
+                            <span class="hint">{{ $hint }}</span>
+                            @error($field) <span class="error">{{ $message }}</span> @enderror
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="field-row field-row-aligned settings-model-row">
+                    <div class="field" x-show="$wire.model_mode === 'fixed'" @if ($model_mode !== 'fixed') x-cloak @endif>
                         <span class="field-label" id="model_label">Model</span>
                         <div class="segmented" role="radiogroup" aria-labelledby="model_label">
                             @foreach (App\Models\Repository::MODELS as $value => $label)
@@ -110,7 +137,7 @@
                         </div>
                         @error('model') <span class="error">{{ $message }}</span> @enderror
                     </div>
-                    <div class="field">
+                    <div class="field" x-show="$wire.model_mode === 'fixed'" @if ($model_mode !== 'fixed') x-cloak @endif>
                         <label for="effort">Effort</label>
                         <select id="effort" wire:model="effort">
                             <option value="">Default</option>
