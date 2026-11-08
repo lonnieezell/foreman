@@ -14,6 +14,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\FakeClaude;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
@@ -29,6 +30,8 @@ class ScopeJudgeRunTest extends TestCase
     private const VETO = [...self::PASS, 'adds_unrequested' => true, 'reason' => 'Adds an unrelated settings page.'];
 
     private const MISSING = [...self::PASS, 'misses_requested' => true, 'reason' => 'Leaves out the consent half.'];
+
+    private const WEAKENS = [...self::PASS, 'weakens_tests' => true, 'reason' => 'Loosens an assertion in ATest.'];
 
     private const REPLY = ['claim' => 'The consent fix is already on main.', 'evidence' => [['path' => 'src/Consent.php', 'start' => 3, 'end' => 4]]];
 
@@ -198,15 +201,15 @@ class ScopeJudgeRunTest extends TestCase
         $this->assertStringContainsString('Scope judge: passed after one correction round. Only fixes the bug the issue names.', $this->prBodies[0]);
     }
 
-    public function test_a_second_veto_moves_the_run_to_needs_you_with_the_reason(): void
+    public function test_a_second_veto_for_weakened_tests_moves_the_run_to_needs_you_with_the_reason(): void
     {
-        [$run, $comments] = $this->settle([self::VETO, [...self::VETO, 'reason' => 'Still adds the settings page.']]);
+        [$run, $comments] = $this->settle([self::WEAKENS, [...self::WEAKENS, 'reason' => 'Still loosens ATest.']]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('scope_vetoed', $run->stop_reason);
         $this->assertNotNull($run->finished_at);
         $this->assertCount(1, $comments);
-        $this->assertStringContainsString('Still adds the settings page.', $comments[0]);
+        $this->assertStringContainsString('Still loosens ATest.', $comments[0]);
         $this->assertFalse($this->git->didPush());
     }
 
@@ -239,37 +242,71 @@ class ScopeJudgeRunTest extends TestCase
         $correction = $this->claude->agentCall('scope judge')['prompt'];
         $this->assertStringContainsString('judge_reply', $correction);
         $this->assertStringContainsString('git show origin/main:<path>', $correction);
+        $this->assertStringContainsString('changelog entries', $correction);
+        $this->assertStringContainsString('out of date on origin/main', $correction);
     }
 
-    public function test_a_second_veto_only_for_missing_work_opens_a_draft_labelled_scope_incomplete_after_the_gate(): void
+    public function test_the_judge_prompt_lists_supporting_changes_and_the_expected_value_rule(): void
+    {
+        $this->settle();
+
+        $judge = $this->claude->oneShotCalls[0]['prompt'];
+        $this->assertStringContainsString('changelog entries', $judge);
+        $this->assertStringContainsString('a reviewer would call a separate change', $judge);
+        $this->assertStringContainsString('expected value', $judge);
+    }
+
+    /** @return array<string, array{0:array,1:list<string>,2:string}> A second verdict, the scope labels it gives, and its footer line. */
+    public static function draftVetoes(): array
+    {
+        return [
+            'only missing work' => [[...self::MISSING, 'reason' => 'Still no consent change.'], ['scope:incomplete'], 'Misses requested work: Still no consent change.'],
+            'only extra work' => [[...self::VETO, 'reason' => 'Still adds the settings page.'], ['scope:extra'], 'Adds unrequested work: Still adds the settings page.'],
+            'extra and missing work' => [[...self::VETO, 'misses_requested' => true], ['scope:extra', 'scope:incomplete'], 'Adds unrequested work, misses requested work: Adds an unrelated settings page.'],
+        ];
+    }
+
+    #[DataProvider('draftVetoes')]
+    public function test_a_second_veto_without_weakened_tests_opens_a_draft_labelled_per_problem_after_the_gate(array $verdict, array $labels, string $footer): void
     {
         $this->judgeReply = self::REPLY;
-        [$run, $comments] = $this->settle([self::MISSING, [...self::MISSING, 'reason' => 'Still no consent change.']]);
+        [$run, $comments] = $this->settle([$verdict, $verdict]);
 
         $this->assertSame(RunStatus::PrOpened, $run->status);
         $this->assertSame([], $comments);
         $this->assertSame(['issue', 'gate', 'review', 'judge', 'correction', 'judge', 'gate'], $this->sequence);
         $this->assertTrue($this->git->didPush());
         $this->assertTrue(collect($this->commands)->contains(fn ($c) => array_slice($c, 0, 3) === ['gh', 'pr', 'create'] && in_array('--draft', $c, true)));
-        $this->assertTrue($this->ran(['gh', 'pr', 'edit', '12', '--add-label', 'scope:incomplete']));
-        $this->assertStringContainsString('- Scope judge: vetoed twice, only for missing work, so opened as a draft. Still no consent change.', $this->prBodies[0]);
+
+        foreach (['scope:extra', 'scope:incomplete'] as $label) {
+            $this->assertSame(in_array($label, $labels, true), $this->ran(['gh', 'pr', 'edit', '12', '--add-label', $label]), $label);
+        }
+
+        $this->assertStringContainsString("- Scope judge: vetoed twice, so opened as a draft. {$footer}", $this->prBodies[0]);
         $this->assertStringContainsString("The agent's answer to the judge:\n\n> The consent fix is already on main.", $this->prBodies[0]);
     }
 
-    public function test_a_second_veto_only_for_missing_work_with_a_failing_gate_moves_the_run_to_needs_you(): void
+    /** @return array<string, array{0:array}> The second verdicts from draftVetoes() alone. */
+    public static function draftVerdicts(): array
+    {
+        return array_map(fn (array $row) => [$row[0]], self::draftVetoes());
+    }
+
+    #[DataProvider('draftVerdicts')]
+    public function test_a_second_veto_without_weakened_tests_and_a_failing_gate_moves_the_run_to_needs_you(array $verdict): void
     {
         $this->gateFails = true;
-        [$run] = $this->settle([self::MISSING, self::MISSING]);
+        [$run] = $this->settle([$verdict, $verdict]);
 
         $this->assertSame(RunStatus::NeedsHuman, $run->status);
         $this->assertSame('gate_failed', $run->stop_reason);
         $this->assertFalse($this->git->didPush());
     }
 
-    public function test_a_second_veto_for_added_work_hands_off_with_the_agents_answer(): void
+    public function test_a_second_veto_that_weakens_tests_hands_off_even_with_other_problems(): void
     {
         $this->judgeReply = self::REPLY;
-        [$run, $comments] = $this->settle([self::VETO, [...self::VETO, 'misses_requested' => true]]);
+        [$run, $comments] = $this->settle([self::VETO, [...self::VETO, 'misses_requested' => true, 'weakens_tests' => true]]);
 
         $this->assertSame('scope_vetoed', $run->stop_reason);
         $this->assertStringContainsString('Adds an unrelated settings page.', $comments[0]);
@@ -279,7 +316,7 @@ class ScopeJudgeRunTest extends TestCase
 
     public function test_a_hand_off_without_an_answer_quotes_the_agents_pr_body(): void
     {
-        [, $comments] = $this->settle([self::VETO, self::VETO]);
+        [, $comments] = $this->settle([self::WEAKENS, self::WEAKENS]);
 
         $this->assertStringContainsString("The agent's PR body:\n\n> Done.", $comments[0]);
     }

@@ -6,8 +6,9 @@ shows them. The judge said:
 {{verdict}}
 
 Correct the change so it does what the issue asks, and nothing more, and leaves
-existing tests and tool settings as strong as they were. Remove work the issue
-didn't ask for. Don't argue with the judge in code comments or the PR body.
+existing tests and tool settings as strong as they were. Remove the extra work the
+judge named. Keep small related edits, such as docs and changelog entries, and
+explain them in the PR body. Don't argue with the judge in code comments.
 
 - Run the checks again, the same way as before, and fix any failures.
 - Commit the fixes to the branch. Do not push.
@@ -16,7 +17,8 @@ Leave `.foreman/result.json` as it is, or update its title and body if the chang
 is now different.
 
 The judge can't see the repo, so it can be wrong. For example, it may say work is
-missing when {{base}} already does that work. If you believe the judge is wrong,
+missing when {{base}} already does that work. Or it may say you weakened a test
+that was already out of date on {{base}}. If you believe the judge is wrong,
 check the code first. Don't change code just to please the judge. Then add a
 `judge_reply` to the `pr` result:
 

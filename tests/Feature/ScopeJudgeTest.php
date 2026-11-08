@@ -109,16 +109,14 @@ class ScopeJudgeTest extends TestCase
         $verdict = $this->judge([[...self::FINE, 'adds_unrequested' => true, 'reason' => 'Adds a settings page.']]);
 
         $this->assertFalse($verdict->passes());
-        $this->assertFalse($verdict->onlyMissesWork());
         $this->assertSame('Adds unrequested work: Adds a settings page.', $verdict->describe());
     }
 
-    public function test_missing_work_fails_and_is_the_only_problem(): void
+    public function test_missing_work_fails(): void
     {
         $verdict = $this->judge([[...self::FINE, 'misses_requested' => true, 'reason' => 'Leaves out the consent half.']]);
 
         $this->assertFalse($verdict->passes());
-        $this->assertTrue($verdict->onlyMissesWork());
         $this->assertSame('Misses requested work: Leaves out the consent half.', $verdict->describe());
     }
 
@@ -130,11 +128,10 @@ class ScopeJudgeTest extends TestCase
         $this->assertSame('Weakens tests: Skips ATest.', $verdict->describe());
     }
 
-    public function test_missing_work_with_another_problem_is_not_only_missing_work(): void
+    public function test_all_three_problems_are_described(): void
     {
         $verdict = $this->judge([['adds_unrequested' => true, 'misses_requested' => true, 'weakens_tests' => true, 'reason' => 'All three.']]);
 
-        $this->assertFalse($verdict->onlyMissesWork());
         $this->assertSame('Adds unrequested work, misses requested work, weakens tests: All three.', $verdict->describe());
     }
 
