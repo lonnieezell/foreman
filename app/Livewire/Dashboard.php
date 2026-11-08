@@ -14,9 +14,11 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Throwable;
 
 #[Title('Foreman')]
 class Dashboard extends Component
@@ -79,6 +81,51 @@ class Dashboard extends Component
         }
 
         $repo->update(['model' => $model, 'effort' => $effort ?: null]);
+
+        return null;
+    }
+
+    /**
+     * The focus popover's choices, fetched fresh from GitHub each time it opens.
+     *
+     * @return array{options: list<array{value: string, text: string}>, error: ?string}
+     */
+    #[Renderless] // the popover is wire:ignore'd, so nothing on the page changes
+    public function focusOptions(int $id, GitHub $github): array
+    {
+        $repo = Repository::findOrFail($id);
+        $error = null;
+
+        try {
+            $found = $github->labelNames($repo);
+        } catch (Throwable $e) {
+            report($e);
+            $found = null;   // unknown, so the current focus isn't marked as missing
+            $error = 'Couldn’t load labels from GitHub. Try again.';
+        }
+
+        $labels = collect($found ?? [])
+            ->push($repo->focus_label)
+            ->filter(fn (?string $label) => $label !== null)
+            ->unique()
+            ->reject(fn (string $label) => $repo->isWorkflowLabel($label))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->map(fn (string $label) => ['value' => $label, 'text' => $found === null || in_array($label, $found, true) ? $label : "{$label} (not found)"]);
+
+        return ['options' => [['value' => '', 'text' => 'No focus'], ...$labels->values()], 'error' => $error];
+    }
+
+    /** Returns null once saved, or why the label was refused. Blank clears the focus. */
+    public function saveFocusLabel(int $id, string $label): ?string
+    {
+        $repo = Repository::findOrFail($id);
+        $label = trim($label);
+
+        if ($repo->isWorkflowLabel($label)) {
+            return "{$label} is a workflow label, so it can’t be the focus.";
+        }
+
+        $repo->update(['focus_label' => $label === '' ? null : $label]);
 
         return null;
     }

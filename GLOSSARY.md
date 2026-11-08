@@ -8,6 +8,10 @@ Foreman turns labeled GitHub issues into pull requests by running a coding agent
 How hard Foreman judges an issue to be: `trivial`, `small`, `medium`, `large` or `hard`. In Auto mode it decides the model and effort of the issue's runs, through the **ladder**. It comes from a `foreman:<difficulty>` label, a Haiku classifier, or neither (the fallback step), and is clamped to the repository's floor and ceiling. See ADR 0004.
 _Avoid_: complexity, size (size is the diff's line count)
 
+**Focus label**:
+An optional label on a repository that narrows which ready issues the poll takes. When it's set, only issues with both the ready label and the focus label are picked up. It's set from the dashboard only, and doesn't affect runs already in progress. It can't be one of the three workflow labels.
+_Avoid_: filter label, priority label
+
 **Ladder**:
 The global map from each **difficulty** to a model and effort, called a step. No step may be cheaper than the one below it. See ADR 0004.
 _Avoid_: tiers (risk tiers are a different thing)

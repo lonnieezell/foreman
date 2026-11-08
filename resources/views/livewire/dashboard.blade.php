@@ -145,6 +145,22 @@
                                 <button type="button" class="btn" x-on:click="save()" x-bind:disabled="saving" x-text="saving ? 'Saving…' : 'Save'">Save</button>
                             </div>
                         </span>
+                        {{-- Same pattern as the model popover; opening it fetches the repository's labels --}}
+                        <span x-data="focusLabel({{ $repo->id }})" data-focus="{{ $repo->focus_label }}">
+                            <button type="button" @class(['line-focus', 'is-set' => $repo->focus_label !== null]) x-ref="trigger" popovertarget="focus-{{ $repo->id }}" aria-label="Focus label for {{ $repo->name }}" @if ($repo->focus_label !== null) title="Only taking ready issues that also have this label." @endif>{{ $repo->focus_label !== null ? "focus: {$repo->focus_label}" : 'no focus' }}</button>
+                            <div id="focus-{{ $repo->id }}" class="claude-popover" popover wire:ignore x-ref="popover" x-anchor.bottom-start="$refs.trigger" x-on:toggle="$event.newState === 'open' && load()">
+                                <label>Focus label
+                                    <select x-model="focus" x-bind:disabled="loading">
+                                        <template x-for="option in options" :key="option.value">
+                                            <option x-bind:value="option.value" x-text="option.text"></option>
+                                        </template>
+                                    </select>
+                                </label>
+                                <p class="hint" x-text="loading ? 'Loading labels…' : 'Only takes ready issues that also have this label.'"></p>
+                                <p class="error" x-show="error" x-text="error"></p>
+                                <button type="button" class="btn" x-on:click="save()" x-bind:disabled="saving || loading" x-text="saving ? 'Saving…' : 'Save'">Save</button>
+                            </div>
+                        </span>
                         @if ($running)
                             <span class="line-countdown" title="Next check for ready issues, every {{ $repo->poll_interval_minutes }} min" wire:ignore x-data="countdown"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" /><path d="M8 4.5V8l2.25 1.5" /></svg><span x-text="text"></span></span>
                         @endif

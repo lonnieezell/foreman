@@ -32,7 +32,7 @@ class GitHub
         $output = $this->api($repo, ['graphql',
             '-f', 'query=query($owner: String!, $name: String!, $label: String!) { repository(owner: $owner, name: $name) {
                 issues(labels: [$label], states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
-                    nodes { number title url lastEditedAt issueDependenciesSummary { blockedBy }
+                    nodes { number title url lastEditedAt issueDependenciesSummary { blockedBy } labels(first: 100) { nodes { name } }
                         timelineItems(itemTypes: [LABELED_EVENT], last: 100) { nodes { ... on LabeledEvent {
                             createdAt label { name } actor { __typename login } } } } }
                 } } }',
@@ -48,6 +48,11 @@ class GitHub
             }
 
             if (($issue['issueDependenciesSummary']['blockedBy'] ?? 0) !== 0) {
+                continue;
+            }
+
+            // Filtered here, not in the query: issues(labels: [...]) matches any of the labels, not all
+            if ($repo->focus_label !== null && ! Repository::hasLabel(array_column($issue['labels']['nodes'] ?? [], 'name'), $repo->focus_label)) {
                 continue;
             }
 
@@ -406,6 +411,12 @@ GRAPHQL;
     private static function prNumber(string $url): int
     {
         return (int) str($url)->rtrim('/')->afterLast('/')->toString();
+    }
+
+    /** @return list<string> Every label on the repository, for picking the focus label. */
+    public function labelNames(Repository $repo): array
+    {
+        return array_column(json_decode($this->gh($repo, ['label', 'list', '--json', 'name', '--limit', '200']), true) ?? [], 'name');
     }
 
     /** Create the three labels if they don't exist yet (--force makes it idempotent). */

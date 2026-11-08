@@ -118,6 +118,18 @@ SH;
         return $this->isAuto() ? "auto {$this->difficulty_floor}–{$this->difficulty_ceiling}" : trim("{$this->model} {$this->effort}");
     }
 
+    /** Whether $label is among $names. GitHub ignores case in label names, so this does too. */
+    public static function hasLabel(array $names, string $label): bool
+    {
+        return in_array(mb_strtolower($label), array_map(mb_strtolower(...), $names), true);
+    }
+
+    /** One of the labels Foreman moves issues through, which can't be the focus label. */
+    public function isWorkflowLabel(string $label): bool
+    {
+        return self::hasLabel([$this->ready_label, $this->working_label, $this->human_label], $label);
+    }
+
     /** @return list<string> The globs from the "Locked paths" setting, one per line. */
     public function lockedPathList(): array
     {

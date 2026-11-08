@@ -56,6 +56,58 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    // The focus label popover on a dashboard row. Like claudeSettings, but opening it also fetches
+    // the repository's labels from GitHub. `calls` drops a reply that a newer open has overtaken.
+    window.Alpine.data('focusLabel', (id) => ({
+        focus: '',
+        options: [],
+        loading: false,
+        saving: false,
+        error: '',
+        calls: 0,
+        async load() {
+            const call = ++this.calls;
+            this.loading = true;
+            this.error = '';
+
+            let result;
+
+            try {
+                result = await this.$wire.focusOptions(id);
+            } catch {
+                const current = this.$root.dataset.focus;
+                const options = [{ value: '', text: 'No focus' }, ...(current ? [{ value: current, text: current }] : [])];
+                result = { options, error: 'Couldn’t load labels. Try again.' };
+            }
+
+            if (call !== this.calls) {
+                return;
+            }
+
+            this.options = result.options;
+            this.error = result.error ?? '';
+            this.loading = false;
+            // Set after the options render, or the select has nothing to match the saved value against
+            this.$nextTick(() => (this.focus = this.$root.dataset.focus));
+        },
+        async save() {
+            this.saving = true;
+            this.error = '';
+
+            try {
+                this.error = (await this.$wire.saveFocusLabel(id, this.focus)) ?? '';
+            } catch {
+                this.error = 'Couldn’t save. Try again.';
+            }
+
+            this.saving = false;
+
+            if (!this.error) {
+                this.$refs.popover.hidePopover();
+            }
+        },
+    }));
+
     // The repository settings form: the side nav's current section and the unsaved-changes footer.
     // `fields` maps each Livewire property to its section's title.
     window.Alpine.data('repoSettings', (fields) => ({

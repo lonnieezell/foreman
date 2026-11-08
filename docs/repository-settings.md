@@ -59,6 +59,23 @@ Like the model, effort applies to new runs. A run that is already queued keeps t
 
 Foreman removes the `CLAUDE_CODE_EFFORT_LEVEL` environment variable from every `claude` call. Claude Code lets that variable beat `--effort`, so it would override the run's own effort.
 
+### Focus label (dashboard only)
+
+The focus label makes Foreman work on one set of issues first. When it's set, Foreman only takes issues that have **both** the ready label and the focus label. Other ready issues wait. It's blank by default, which means no focus.
+
+It isn't on this form. It's a short-term switch, so you set it from the repository's row on the dashboard. The pill next to the model label shows `no focus`, or `focus: <label>` when one is set. Click it to open a list of the repository's labels from GitHub, pick one (or **No focus**) and press Save.
+
+- The list leaves out the ready, working and human labels. They can't be the focus.
+- If the saved focus label no longer exists on GitHub, it shows as "(not found)".
+- If GitHub can't be reached, the popover shows an error. You can still pick **No focus**.
+- Foreman doesn't create the label on GitHub. Use one you already have.
+
+The focus only changes which new issues a check picks up. Runs already in progress keep going. PR watching, **Fix conflicts**, **Continue after my reply** and **Retry** work as before. An issue that gets its ready label back waits until it's in focus, or the focus is cleared. Out-of-focus issues are not shown in the "Skipped by the intake gate" box. The intake gate still applies to issues in focus.
+
+Changing the focus doesn't start a check. The next scheduled check uses it, or press **Check now**.
+
+Foreman only reads the 100 oldest ready issues on each check. If a repository has more than 100, newer issues in focus can be missed.
+
 ### Claude profile
 
 Which Claude Code login to run under. The menu lists the profiles in `CLAUDE_PROFILES`. With no profiles set up, it shows **Default (~/.claude)**. See [Usage limits and profiles](usage-limits.md#claude-profiles).
