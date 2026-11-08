@@ -211,6 +211,17 @@ class ClaudeCliTest extends TestCase
         $this->assertSame(0.5, $agent->cost());
     }
 
+    public function test_a_pass_that_keeps_no_session_leaves_the_runs_session_id_alone(): void
+    {
+        $this->fakeClaude();
+        $run = $this->makeRun(run: ['session_id' => 'sess-1']);
+
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Review it', saveSession: false);
+
+        $this->assertSame('sess-9', $agent->sessionId);
+        $this->assertSame('sess-1', $run->fresh()->session_id);
+    }
+
     public function test_an_error_result_is_a_failed_pass(): void
     {
         $this->fakeClaude('{"type":"result","is_error":true,"subtype":"error_max_turns","result":"Out of turns."}');

@@ -58,7 +58,7 @@ The reason on a `needs_human` result shows in the run log. One reason is `test_l
 A `pr` result doesn't open a PR straight away. On the **Reviewing** station, Foreman runs these steps in order. If any step fails, nothing is pushed and the run goes to **Needs you**.
 
 1. **[Foreman's gate](guardrails.md#foremans-gate).** The test-integrity check, the verify script and a size check, run in Foreman's own process.
-2. **[Risk tier and review pass](guardrails.md#risk-tiers).** Foreman rates the diff from 1 to 3 and resumes the agent to review its own change, as deeply as the tier calls for.
+2. **[Risk tier and review pass](guardrails.md#risk-tiers).** Foreman rates the diff from 1 to 3. Then a fresh Claude session reviews the change, as deeply as the tier calls for.
 3. **[Scope judge](guardrails.md#scope-judge).** A separate Haiku call with no tools reads only the issue and the diff. If it vetoes the change, the agent gets one round to correct it, or to answer the veto with code from the base branch.
 4. **The gate again.** So a fix from the review or the correction can't slip past it.
 5. **Push.** Foreman pushes the branch and opens the PR, with a footer that lists the checks and the judge's verdict. If `gh pr create` fails or times out, Foreman looks for an open PR from the branch first. `gh` can stop after GitHub has already opened the PR. If a PR is there, the run carries on with it.

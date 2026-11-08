@@ -159,9 +159,10 @@ class ProcessRun implements ShouldQueue
     }
 
     /**
-     * @param  string|null  $followUp  A review pass's prompt. It resumes this run's own session, and its usage adds to the run's.
+     * @param  string|null  $followUp  A later pass's prompt. Its usage adds to the run's.
+     * @param  bool  $fresh  The follow-up starts a session of its own instead of resuming the run's, and leaves the run's session id alone.
      */
-    private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null): AgentResult
+    private function runAgent(Run $run, string $worktree, GitHub $github, ?string $followUp = null, bool $fresh = false): AgentResult
     {
         $repo = $run->repository;
         $budget = $repo->max_budget_per_run;
@@ -187,10 +188,15 @@ class ProcessRun implements ShouldQueue
             default => $repo->renderPrompt($run, $github->sanitisedIssue($repo, $run->issue_number)).$this->decisions($run),
         };
 
-        // Same conversation, so the agent doesn't re-explore the codebase
-        $resume = $followUp !== null ? $run->session_id : $run->resume_session_id;
+        // A follow-up resumes the same conversation, so the agent doesn't re-explore the codebase
+        $resume = match (true) {
+            $fresh => null,
+            $followUp !== null => $run->session_id,
+            default => $run->resume_session_id,
+        };
 
-        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles);
+        // A fresh session is never saved: a correction round or a continued run must resume the implementation's
+        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh);
         $usage = $agent->usage();
 
         if ($followUp !== null) {
@@ -199,7 +205,7 @@ class ProcessRun implements ShouldQueue
             }
         }
 
-        $run->update([...$usage, 'session_id' => $agent->sessionId ?? $run->session_id]);
+        $run->update($fresh ? $usage : [...$usage, 'session_id' => $agent->sessionId ?? $run->session_id]);
 
         return $agent;
     }
@@ -532,8 +538,9 @@ class ProcessRun implements ShouldQueue
     }
 
     /**
-     * Rate the change's risk from its diff, then resume the agent's session to review it as deep as the tier calls for:
-     * `/code-review` and `/simplify`, plus `/security-review` for tier 3.
+     * Rate the change's risk from its diff, then review it in fresh sessions as deep as the tier calls for:
+     * `/code-review` and `/simplify`, plus `/security-review` for tier 3. A fresh reviewer isn't anchored on the author's
+     * reasoning, and doesn't re-read the implementation's whole context on every turn.
      */
     private function reviewPass(Run $run, GitHub $github): AgentResult
     {
@@ -547,12 +554,28 @@ class ProcessRun implements ShouldQueue
         $run->update(['risk_tier' => $tier]);
         $run->log("Risk tier {$tier}: {$reason}. Review pass: /code-review at {$level} effort, then /simplify.");
 
-        $agent = $this->runPass($run, $github, 'The review pass', Prompt::render('review-pass', [
-            'tier' => (string) $tier,
-            'reason' => $reason,
-            'level' => $level,
+        if ($run->repository->prompt_template) {
+            $run->log("The review passes don't use this repository's custom prompt. They rely on its CLAUDE.md or AGENTS.md.");
+        }
+
+        // A fresh session knows nothing of the run, so it gets the issue and the gate's checks
+        $verify = Gate::verifyScript($run->repository->verify_script, $run->worktree_path, $base);
+        $context = [
             'base' => $base,
-        ]));
+            'reason' => $reason,
+            'issue_text' => $github->sanitisedIssue($run->repository, $run->issue_number),
+            'decisions' => $this->decisions($run),
+            'untrusted_note' => IssueSanitiser::TEXT_NOTE,
+            'checks' => $verify === ''
+                ? 'Foreman has no verify script for this repository. Run the checks that AGENTS.md or CLAUDE.md lists, for every part of the stack the change touches.'
+                : "These are the checks Foreman's gate runs:\n\n```bash\n{$verify}\n```",
+        ];
+
+        $agent = $this->runPass($run, $github, 'The review pass', Prompt::render('review-pass', [
+            ...$context,
+            'tier' => (string) $tier,
+            'level' => $level,
+        ]), fresh: true);
 
         if ($tier < 3) {
             return $agent;
@@ -562,10 +585,7 @@ class ProcessRun implements ShouldQueue
         $worktree->pointOriginHeadAtBase();
 
         $run->log('Security review: /security-review.');
-        $agent = $this->runPass($run, $github, '/security-review', Prompt::render('security-review', [
-            'reason' => $reason,
-            'base' => $base,
-        ]));
+        $agent = $this->runPass($run, $github, '/security-review', Prompt::render('security-review', $context), fresh: true);
 
         if ($agent->cost() === 0.0) {
             throw new RuntimeException('/security-review ended without reviewing anything.');
@@ -610,13 +630,26 @@ class ProcessRun implements ShouldQueue
         return collect(explode("\n", implode("\n\n", $parts)))->map(fn ($line) => rtrim("> {$line}"))->implode("\n");
     }
 
-    /** Resume the agent's session with `$prompt`. Throws when it ends with an error. */
-    private function runPass(Run $run, GitHub $github, string $label, string $prompt): AgentResult
+    /** Resume the agent's session with `$prompt`, or start a `$fresh` one. Throws when it ends with an error. */
+    private function runPass(Run $run, GitHub $github, string $label, string $prompt, bool $fresh = false): AgentResult
     {
-        $agent = $this->runAgent($run, $run->worktree_path, $github, $prompt);
+        $file = "{$run->worktree_path}/".AgentReport::RESULT_FILE;
+        $result = $fresh ? @file_get_contents($file) : null;
+
+        $agent = $this->runAgent($run, $run->worktree_path, $github, $prompt, $fresh);
+
+        if ($fresh) {
+            $run->log("{$label} ran in a fresh session (".($agent->sessionId ?? 'no session id').').');
+        }
 
         if ($agent->failed()) {
             throw new RuntimeException("{$label} stopped with an error (".($agent->subtype() ?? 'no result').').');
+        }
+
+        // A reviewer may ask or hand over, but the PR's title and body are the author's
+        if ($fresh && (new AgentReport($run->worktree_path))->outcome()?->kind === Outcome::Pr && @file_get_contents($file) !== $result) {
+            File::put($file, $result);
+            $run->log("{$label} changed ".AgentReport::RESULT_FILE.'. Foreman put it back.');
         }
 
         return $agent;
@@ -778,8 +811,11 @@ class ProcessRun implements ShouldQueue
     private function resumePrompt(Run $run, GitHub $github): string
     {
         $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at);
+        $messages = $run->previousRun?->messages ?? collect();
         // Written in Foreman, which runs on localhost only, so it is trusted operator text (ADR 0001)
-        $answers = $run->previousRun?->messages->where('role', RunMessage::HUMAN)->pluck('body')->implode("\n\n") ?? '';
+        $answers = $messages->where('role', RunMessage::HUMAN)->pluck('body')->implode("\n\n");
+        // A session that read the issue wrote these, so they are not
+        $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
         $replies = array_filter([
             $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",
@@ -789,6 +825,12 @@ class ProcessRun implements ShouldQueue
         $prompt = $replies
             ? implode("\n\n", $replies).(count($replies) === 2 ? "\n\nIf the issue comments conflict with your operator's answer, the operator's answer wins." : '')
             : "A human continued this run by hand. There are no new comments on issue #{$run->issue_number} from people with write access.";
+
+        // Only alongside a reply: with none, the run was continued by hand
+        if ($replies && $questions !== '') {
+            $prompt = "These questions were asked in Foreman during the last run. You asked them, or Foreman's review pass did. "
+                ."The review pass runs in a separate session and may have committed fixes. `git log` shows them.\n\n{$questions}\n\n{$prompt}";
+        }
 
         if ($this->mergedFromBase) {
             $commits = collect($this->mergedFromBase)->map(fn ($s) => "- {$s}")->implode("\n");

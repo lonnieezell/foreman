@@ -19,7 +19,7 @@ class FakeClaude implements Claude
     /**
      * Every agent pass the job asked for, in order.
      *
-     * @var list<array{run:Run,worktree:string,prompt:string,resume:?string,budget:string|float|null,allowLockFiles:bool}>
+     * @var list<array{run:Run,worktree:string,prompt:string,resume:?string,budget:string|float|null,allowLockFiles:bool,saveSession:bool}>
      */
     public array $agentCalls = [];
 
@@ -51,9 +51,9 @@ class FakeClaude implements Claude
         return new AgentResult($event, $event['session_id'] ?? null);
     }
 
-    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false): AgentResult
+    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true): AgentResult
     {
-        $call = $this->agentCalls[] = compact('run', 'worktree', 'prompt', 'resume', 'budget', 'allowLockFiles');
+        $call = $this->agentCalls[] = compact('run', 'worktree', 'prompt', 'resume', 'budget', 'allowLockFiles', 'saveSession');
 
         return $this->onAgent ? ($this->onAgent)($call) : self::result();
     }
