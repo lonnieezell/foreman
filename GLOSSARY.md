@@ -28,13 +28,33 @@ _Avoid_: filter label, priority label
 A short markdown file for one analyzer rule. It names the smell, the refactoring we want, and what not to do. Foreman ships defaults, and a repository can replace any of them in `.coach/`.
 _Avoid_: coaching prompt, hint
 
+**Held improvement**:
+An **improvement** whose issue is drafted but not posted. It waits on the dashboard because posting is off for its target, or because the leak check stopped it. A human posts it, dismisses it with a reason, or leaves it. See ADR 0008.
+_Avoid_: draft finding, pending issue
+
+**Improvement**:
+A pattern that `foreman:improve` saw across a week of **scorecards**, tracked by its **pattern key** for one target: Foreman or a repository. It is held or posted as an issue labelled `needs-triage` and `foreman:improve`, never `ready-for-agent`. See ADR 0008.
+_Avoid_: finding (that's an analyzer's), suggestion
+
 **Ladder**:
 The global map from each **difficulty** to a model and effort, called a step. No step may be cheaper than the one below it. See ADR 0004.
 _Avoid_: tiers (risk tiers are a different thing)
 
+**Observation**:
+One problem the judge reports in one run, with quoted evidence: a redundant test or missing context. An observation without evidence is dropped. See ADR 0008.
+_Avoid_: finding (that's an analyzer's), issue
+
+**Pattern key**:
+A short, normalized name for what an **observation** or measured fact is about, such as `missing-context:test-command`. Observations from different runs group on it, because the judge words things differently each time.
+_Avoid_: fingerprint, signature
+
 **Question**:
 An agent's stop to ask the operator something it can't decide alone, such as what an ambiguous spec means. It is the `question` outcome. It is answered in Foreman, then the run resumes. Compare a **blocker** (`needs_human`), which needs the operator to change the repo, the issue or the settings, and stays on the issue. See ADR 0001.
 _Avoid_: clarification, needs_human (for questions)
+
+**Scorecard**:
+One run's record for the self-improvement loop: its measured facts, from plain code, plus the judge's **observations**. Each ended run gets one, except cancelled runs. See ADR 0008.
+_Avoid_: grade, report (the agent's report is `.foreman/result.json`)
 
 **Snooze**:
 A human's entry in `.coach/snooze` that stops one **finding** from blocking, with a reason and an expiry date no more than 90 days away. Only humans can snooze. The agent can't edit the file.
