@@ -395,7 +395,7 @@ class Run extends Model
         }
 
         try {
-            $result = Process::path($this->worktree_path)->env(ForemanEnv::removed())->timeout(120)->run(['docker', 'compose', 'down', '-v']);
+            $result = Process::path($this->worktree_path)->env(ForemanEnv::forWorktree($this->worktree_path))->timeout(120)->run(['docker', 'compose', 'down', '-v']);
         } catch (ProcessTimedOutException) {
             $this->log('docker compose down timed out.');
 

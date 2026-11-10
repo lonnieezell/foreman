@@ -442,6 +442,14 @@ class ConflictFixTest extends TestCase
         $this->assertFailedFix($run, 'Foreman: Hit the 45-minute limit.');
     }
 
+    public function test_the_setup_script_gets_the_worktrees_own_temp_folder(): void
+    {
+        $this->process($this->fixRun(), $this->silentGitHub());
+
+        $tmp = Repository::make(['github_repo' => $this->githubRepo])->worktreePath(7).'/.foreman/tmp';
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'true'] && $p->environment['TMPDIR'] === $tmp);
+    }
+
     public function test_a_failed_setup_script_fails_the_fix(): void
     {
         Process::fake(fn () => Process::result('', 'npm ERR!', 1));

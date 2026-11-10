@@ -153,7 +153,7 @@ class ProcessRun implements ShouldQueue
             $this->catchUpWithBase($run, fetch: false);
         }
 
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::removed());
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::forWorktree($worktree));
 
         return $worktree;
     }
@@ -455,7 +455,7 @@ class ProcessRun implements ShouldQueue
         }
 
         // On the clean PR head: an install step would fail on a lock file full of conflict markers
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $path, timeout: 900, env: ForemanEnv::removed());
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $path, timeout: 900, env: ForemanEnv::forWorktree($path));
 
         (new AgentReport($path))->clear();
         $git->excludeFromGit('.foreman/');

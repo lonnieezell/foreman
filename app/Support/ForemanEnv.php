@@ -3,9 +3,33 @@
 namespace App\Support;
 
 use Dotenv\Dotenv;
+use Illuminate\Support\Facades\File;
 
 class ForemanEnv
 {
+    /** The worktree's own temp folder, relative to the worktree. */
+    private const TMP_DIR = '.foreman/tmp';
+
+    /**
+     * removed(), plus TMPDIR pointed at the worktree's own temp folder, which this creates.
+     * Tools such as PHPStan cache in the system temp folder, so a cache left by another checkout
+     * or a concurrent run could break this one.
+     *
+     * @return array<string,string|false>
+     */
+    public static function forWorktree(string $worktree): array
+    {
+        $tmp = "{$worktree}/".self::TMP_DIR;
+
+        // The folder ignores itself, so git never sees it, even before Foreman excludes .foreman/
+        if (! File::exists("{$tmp}/.gitignore")) {
+            File::ensureDirectoryExists($tmp);
+            File::put("{$tmp}/.gitignore", "*\n");
+        }
+
+        return [...self::removed(), 'TMPDIR' => $tmp];
+    }
+
     /**
      * Environment for processes in a worktree: every variable from Foreman's own .env is removed.
      * Laravel puts those into the real environment, so children would inherit Foreman's APP_KEY,

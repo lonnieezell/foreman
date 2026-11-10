@@ -69,7 +69,7 @@ class Gate
 
         try {
             // CI keeps test runners such as Jest and react-scripts out of watch mode
-            $process = Process::path($worktree)->env([...ForemanEnv::removed(), ...self::withoutPushBlock(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
+            $process = Process::path($worktree)->env([...ForemanEnv::forWorktree($worktree), ...self::withoutPushBlock(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
         } catch (Throwable $e) {
             return "{$label} failed: {$e->getMessage()}";
         } finally {

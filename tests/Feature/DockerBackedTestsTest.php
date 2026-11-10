@@ -85,6 +85,16 @@ class DockerBackedTestsTest extends TestCase
         $this->assertSame(['docker compose down', 'worktree remove'], $this->ran);
     }
 
+    public function test_compose_down_gets_the_worktrees_own_temp_folder(): void
+    {
+        File::put("{$this->worktree}/docker-compose.yml", 'services: {}');
+
+        $this->makeRun(['stop_docker' => true])->removeWorktree();
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['docker', 'compose', 'down', '-v']
+            && $p->environment['TMPDIR'] === "{$this->worktree}/.foreman/tmp");
+    }
+
     public function test_every_compose_file_name_counts(): void
     {
         foreach (['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'] as $file) {
