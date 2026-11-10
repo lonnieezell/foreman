@@ -41,6 +41,23 @@ When you've dealt with the cause, click **Start over** on the run page, or **Ret
 
 If Claude stopped because a usage limit was hit, see [Usage limits](usage-limits.md#if-a-run-hits-a-limit).
 
+## `@php artisan package:discover` fails with code 255 in the setup script
+
+The error looks like this:
+
+```
+Running setup script failed: Script @php artisan package:discover --ansi handling the post-autoload-dump event returned with error code 255
+```
+
+Composer's `@php` scripts ran on a PHP that is older than the repository needs. Composer's platform check then stopped them.
+
+Composer picks the PHP for `@php` scripts from the `PHP_BINARY` environment variable before it looks at `PATH`. `composer run foreman` sets that variable to Foreman's own PHP. Foreman removes it, along with `COMPOSER_BINARY` and `COMPOSER_DEV_MODE`, from every process it starts in a worktree. So the setup script uses the PHP on its own `PATH`.
+
+If you still see the error:
+
+1. Restart the workers. Queue workers keep old code until they restart.
+2. Check which PHP the setup script finds. Add `php -v` to the script, or run it in the kept worktree. If it's too old, put the right PHP first on `PATH` at the top of the script, for example `export PATH="/opt/homebrew/opt/php@8.5/bin:$PATH"`.
+
 ## "Blocked by guardrail" in the log
 
 A line like `Blocked by guardrail: …` means a Foreman hook refused one of the agent's tool calls. The rest of the line says why. The run carries on, and the agent sees the same reason and can try something else.

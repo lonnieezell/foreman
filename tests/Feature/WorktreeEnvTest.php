@@ -88,11 +88,16 @@ class WorktreeEnvTest extends TestCase
         return "{$this->envDir}/rules.json";
     }
 
-    /** True when the process was started without the variables from Foreman's .env. */
+    /** True when the process was started without the variables from Foreman's .env, or the ones Composer set for its workers. */
     private static function withoutForemansEnv(PendingProcess $p): bool
     {
-        return ($p->environment['APP_KEY'] ?? null) === false
-            && ($p->environment['FOREMAN_ENV_PROBE'] ?? null) === false;
+        foreach (['APP_KEY', 'FOREMAN_ENV_PROBE', 'PHP_BINARY', 'COMPOSER_BINARY', 'COMPOSER_DEV_MODE'] as $key) {
+            if (($p->environment[$key] ?? null) !== false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function test_the_setup_script_runs_without_foremans_env(): void
