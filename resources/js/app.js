@@ -201,6 +201,38 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
+    // The run log. It follows its last line, unless the reader scrolled up in it. On an active run it
+    // also keeps that end in the window while it is visible. The observer sees lines Livewire's morph
+    // adds, and fonts.ready catches the web font making the lines taller after the first scroll.
+    window.Alpine.data('runLog', (active) => ({
+        atEnd: true,
+        endInView: active,
+        init() {
+            this.$el.addEventListener('scroll', () => {
+                this.atEnd = this.$el.scrollHeight - this.$el.scrollTop - this.$el.clientHeight < 8;
+            });
+            this.onWindowScroll = () => (this.endInView = active && this.$el.getBoundingClientRect().bottom <= window.innerHeight + 8);
+            window.addEventListener('scroll', this.onWindowScroll);
+            this.observer = new MutationObserver(() => this.follow());
+            this.observer.observe(this.$el, { childList: true, subtree: true, characterData: true });
+            this.follow();
+            document.fonts.ready.then(() => this.follow());
+        },
+        destroy() {
+            this.observer.disconnect();
+            window.removeEventListener('scroll', this.onWindowScroll);
+        },
+        follow() {
+            if (this.atEnd) {
+                this.$el.scrollTop = this.$el.scrollHeight;
+            }
+
+            if (this.endInView) {
+                this.$el.scrollIntoView({ block: 'nearest' });
+            }
+        },
+    }));
+
     // Copies text a Livewire method returns. Handing ClipboardItem the promise keeps the click's
     // permission while the server builds the text, which Safari needs.
     window.Alpine.data('copyFrom', (method) => ({
