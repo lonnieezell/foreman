@@ -66,6 +66,18 @@ class FormatStagedTest extends TestCase
         return $process->getOutput();
     }
 
+    public function test_the_formatter_gets_the_worktrees_own_temp_folder(): void
+    {
+        $this->fakePint('printf "%s" "$TMPDIR" > "$(dirname "$0")/tmpdir"');
+        $this->stage('a.php', '<?php echo 1;');
+
+        [$code, $stderr] = $this->hook('git commit -m "feat: x"');
+
+        $this->assertSame(0, $code, $stderr);
+        $this->assertSame("{$this->work}/.foreman/tmp", file_get_contents("{$this->work}/vendor/bin/tmpdir"));
+        $this->assertDirectoryExists("{$this->work}/.foreman/tmp");
+    }
+
     public function test_a_staged_unformatted_file_is_formatted_and_restaged_before_the_commit(): void
     {
         $this->fakePint('for f in "$@"; do printf "<?php // formatted\n" > "$f"; done');

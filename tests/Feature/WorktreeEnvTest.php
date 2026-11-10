@@ -24,6 +24,8 @@ class WorktreeEnvTest extends TestCase
 
     private string $envDir;
 
+    private ?bool $tmpExistedForSetup = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -57,6 +59,10 @@ class WorktreeEnvTest extends TestCase
         ]);
 
         Process::fake(function (PendingProcess $process) use ($run) {
+            if ($process->command === ['bash', '-ec', 'cp .env.example .env']) {
+                $this->tmpExistedForSetup = File::isDirectory($this->worktreeTmp());
+            }
+
             if ($process->command[0] === 'claude' && ! in_array('--json-schema', $process->command, true)) {
                 File::ensureDirectoryExists(dirname("{$run->repository->worktreePath(7)}/".AgentReport::RESULT_FILE));
                 File::put("{$run->repository->worktreePath(7)}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'pr', 'title' => 'T', 'body' => 'Done.']));
@@ -88,6 +94,18 @@ class WorktreeEnvTest extends TestCase
         return "{$this->envDir}/rules.json";
     }
 
+    /** The run's worktree's own temp folder. */
+    private function worktreeTmp(): string
+    {
+        return storage_path('foreman/worktrees/owner-env-test/issue-7/.foreman/tmp');
+    }
+
+    /** True when the process was started with TMPDIR pointing into the worktree's own temp folder. */
+    private function withWorktreeTmp(PendingProcess $p): bool
+    {
+        return ($p->environment['TMPDIR'] ?? null) === $this->worktreeTmp();
+    }
+
     /** True when the process was started without the variables from Foreman's .env, or the ones Composer set for its workers. */
     private static function withoutForemansEnv(PendingProcess $p): bool
     {
@@ -107,6 +125,28 @@ class WorktreeEnvTest extends TestCase
         Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'cp .env.example .env'] && self::withoutForemansEnv($p));
     }
 
+    public function test_the_setup_script_gets_the_worktrees_own_temp_folder(): void
+    {
+        $this->runJob();
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'cp .env.example .env'] && $this->withWorktreeTmp($p));
+        $this->assertTrue($this->tmpExistedForSetup, 'The temp folder must exist before the setup script runs.');
+    }
+
+    public function test_git_never_sees_the_temp_folder_even_before_foreman_excludes_it(): void
+    {
+        $work = "{$this->envDir}/work";
+        File::ensureDirectoryExists($work);
+        (new SymfonyProcess(['git', 'init', '-q'], $work))->mustRun();
+
+        $tmp = ForemanEnv::forWorktree($work)['TMPDIR'];
+        File::ensureDirectoryExists("{$tmp}/phpstan/cache");
+        File::put("{$tmp}/phpstan/cache/entry.php", '<?php');
+
+        $status = new SymfonyProcess(['git', 'status', '--porcelain', '--untracked-files=all'], $work);
+        $this->assertSame('', $status->mustRun()->getOutput());
+    }
+
     public function test_the_agent_runs_without_foremans_env_and_still_cannot_push(): void
     {
         $this->runJob();
@@ -117,12 +157,26 @@ class WorktreeEnvTest extends TestCase
             && $p->environment['GH_TOKEN'] === false);
     }
 
+    public function test_the_agent_gets_the_worktrees_own_temp_folder(): void
+    {
+        $this->runJob();
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude' && in_array('stream-json', $p->command, true) && $this->withWorktreeTmp($p));
+    }
+
     public function test_the_gates_checks_run_without_foremans_env(): void
     {
         $this->runJob();
 
         Process::assertRan(fn (PendingProcess $p) => str_contains($p->command[1] ?? '', 'test-integrity.php') && self::withoutForemansEnv($p));
         Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'composer test'] && self::withoutForemansEnv($p));
+    }
+
+    public function test_the_gates_checks_get_the_worktrees_own_temp_folder(): void
+    {
+        $this->runJob();
+
+        Process::assertRan(fn (PendingProcess $p) => $p->command === ['bash', '-ec', 'composer test'] && $this->withWorktreeTmp($p));
     }
 
     public function test_the_stop_hooks_checks_run_without_foremans_env(): void

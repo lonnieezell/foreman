@@ -68,7 +68,7 @@ class ClaudeCli implements Claude
         $this->saveSession = $saveSession;
 
         $process = Process::path($worktree)
-            ->env([...ForemanEnv::removed(), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
+            ->env([...ForemanEnv::forWorktree($worktree), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 

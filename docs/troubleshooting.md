@@ -58,6 +58,22 @@ If you still see the error:
 1. Restart the workers. Queue workers keep old code until they restart.
 2. Check which PHP the setup script finds. Add `php -v` to the script, or run it in the kept worktree. If it's too old, put the right PHP first on `PATH` at the top of the script, for example `export PATH="/opt/homebrew/opt/php@8.5/bin:$PATH"`.
 
+## A tool fails on a cache it left in the temp folder
+
+Some tools keep a cache in the system temp folder. PHPStan, for example, uses `<temp>/phpstan/cache`. A cache left there by another checkout can break every later run. The error names a file that no longer exists, like this:
+
+```
+Internal error: "phar:///.../vendor/phpstan/phpstan/phpstan.phar/.../standard_10.stub" is not a file while analysing file ...
+```
+
+Foreman gives each worktree its own temp folder, `.foreman/tmp/`. It sets `TMPDIR` to that folder for every process it starts there: the setup script, the agent, the gate and verify script, the commit formatter, and `docker compose down`. `.foreman/` is kept out of git, so nothing in it reaches the PR. The folder goes away with the worktree.
+
+If you still see the error:
+
+1. Restart the workers. Queue workers keep old code until they restart.
+2. Check whether the tool reads `TMPDIR`. A tool that picks its cache folder another way, or has its own setting for it, still uses the shared folder. Point that setting into `.foreman/tmp/` in the setup or verify script.
+3. To clear a cache in the kept worktree, delete `.foreman/tmp/` there. Click **Start over** to get a fresh worktree instead.
+
 ## "Blocked by guardrail" in the log
 
 A line like `Blocked by guardrail: …` means a Foreman hook refused one of the agent's tool calls. The rest of the line says why. The run carries on, and the agent sees the same reason and can try something else.

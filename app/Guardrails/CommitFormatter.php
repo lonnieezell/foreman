@@ -32,7 +32,7 @@ class CommitFormatter
                 continue;
             }
 
-            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree, ForemanEnv::removed());
+            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree, ForemanEnv::forWorktree($this->worktree));
             $process->setTimeout(120);
             $process->run();
 
