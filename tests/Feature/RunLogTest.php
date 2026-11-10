@@ -88,4 +88,16 @@ class RunLogTest extends TestCase
             ->assertSee('class="log-entry log-command"', false)
             ->assertSee('npm test');
     }
+
+    public function test_the_log_follows_its_end_and_brings_it_into_view_only_while_the_run_is_active(): void
+    {
+        $run = $this->makeRun();
+        $run->log('Starting');
+
+        $this->get(route('runs.show', $run))->assertSee('class="log" x-data="runLog(true)"', false);
+
+        $run->update(['status' => RunStatus::PrOpened]);
+
+        $this->get(route('runs.show', $run))->assertSee('class="log" x-data="runLog(false)"', false);
+    }
 }
