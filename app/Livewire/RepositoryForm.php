@@ -206,7 +206,10 @@ class RepositoryForm extends Component
             'verify_script' => ['nullable', 'string'],
             'toolchain_path' => ['nullable', 'string', function ($attr, $value, $fail) {
                 foreach (explode(':', $value) as $folder) {
-                    if (! File::isDirectory($folder)) {
+                    // A relative folder would be checked against Foreman's own folder, but used in each worktree
+                    if (! str_starts_with($folder, '/')) {
+                        $fail("Use a full path for {$folder}.");
+                    } elseif (! File::isDirectory($folder)) {
                         $fail("There’s no folder at {$folder}.");
                     }
                 }

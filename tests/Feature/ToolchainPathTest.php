@@ -170,35 +170,47 @@ class ToolchainPathTest extends TestCase
 
     public function test_the_form_saves_the_toolchain_with_home_expanded(): void
     {
-        $home = rtrim((string) getenv('HOME'), '/');
-        $inHome = "{$home}/.foreman-toolchain-test-".uniqid();
-        File::ensureDirectoryExists("{$inHome}/bin");
+        // A stand-in home, so the test never writes to the real one
+        $home = getenv('HOME');
+        putenv("HOME={$this->dir}/home");
+        File::ensureDirectoryExists("{$this->dir}/home/bin");
         File::ensureDirectoryExists("{$this->dir}/php82");
         $repo = $this->repository();
 
         try {
             Livewire::test(RepositoryForm::class, ['repository' => $repo])
                 ->assertSeeHtml('id="toolchain_path"')
-                ->set('toolchain_path', '~/'.basename($inHome).'/bin:'.$this->dir.'/php82')
+                ->set('toolchain_path', "~/bin:{$this->dir}/php82")
                 ->call('save', Mockery::mock(GitHub::class)->shouldIgnoreMissing())
                 ->assertHasNoErrors();
         } finally {
-            File::deleteDirectory($inHome);
+            putenv($home === false ? 'HOME' : "HOME={$home}");
         }
 
-        $this->assertSame("{$inHome}/bin:{$this->dir}/php82", $repo->fresh()->toolchain_path);
+        $this->assertSame("{$this->dir}/home/bin:{$this->dir}/php82", $repo->fresh()->toolchain_path);
     }
 
-    public function test_the_form_rejects_a_folder_that_does_not_exist(): void
+    /** @return array<string, array{string, string}> `{dir}` stands for the test's own folder. */
+    public static function badToolchains(): array
+    {
+        return [
+            'a folder that does not exist' => ['{dir}:{dir}/missing', 'There’s no folder at {dir}/missing.'],
+            // vendor/bin exists relative to Foreman's own folder, but not in the worktrees
+            'a relative folder' => ['{dir}:vendor/bin', 'Use a full path for vendor/bin.'],
+        ];
+    }
+
+    #[DataProvider('badToolchains')]
+    public function test_the_form_rejects_a_folder_it_cannot_use(string $toolchain, string $error): void
     {
         $repo = $this->repository(['toolchain_path' => '/opt/old']);
 
         Livewire::test(RepositoryForm::class, ['repository' => $repo])
             ->assertSet('toolchain_path', '/opt/old')
-            ->set('toolchain_path', "{$this->dir}:{$this->dir}/missing")
+            ->set('toolchain_path', str_replace('{dir}', $this->dir, $toolchain))
             ->call('save', Mockery::mock(GitHub::class)->shouldIgnoreMissing())
             ->assertHasErrors('toolchain_path')
-            ->assertSee("{$this->dir}/missing");
+            ->assertSee(str_replace('{dir}', $this->dir, $error));
 
         $this->assertSame('/opt/old', $repo->fresh()->toolchain_path);
     }

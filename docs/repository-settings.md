@@ -178,7 +178,7 @@ One or more folders, joined with `:`, that Foreman puts in front of `PATH` for t
 - `~/.phpenv/versions/8.2.20/bin`
 - `/opt/homebrew/opt/php@8.2/bin`
 
-A leading `~/` is expanded to your home folder when you save. Saving checks that each folder exists. If one doesn't, the form names it and nothing is saved. Leave the field empty to use the host's `PATH` as it is.
+A leading `~/` is expanded to your home folder when you save. Saving checks that each folder is a full path and exists. If one doesn't, the form names it and nothing is saved. Leave the field empty to use the host's `PATH` as it is.
 
 These processes get `PATH=<toolchain path>:<existing PATH>`:
 
