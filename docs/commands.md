@@ -51,10 +51,10 @@ Scores every run that ended in the last 30 days and has no scorecard yet. The sc
 The scorecard shows on the run page. It lists:
 
 - **Tool errors**: failed tool calls, by tool.
-- **Files read 3+ times**: each file the agent read 3 or more times, and how often.
+- **Files read 3+ times**: each file where the agent read the same lines 3 or more times, and how often. Reading a big file in pages doesn't count.
 - **Test runs**: whole-suite test runs, and runs narrowed by a filter or a test file.
 - **Stop-hook blocks**: times the Stop hook sent the agent back.
-- **Verify failures**: Stop-hook blocks where the verify script failed, plus Foreman's gate failing before the push.
+- **Verify failures**: Stop-hook blocks where the verify script failed. A failure of Foreman's gate before the push doesn't count, because its log line doesn't say which check failed.
 - **Scope-judge vetoes**: times the scope judge vetoed the change.
 - **Test methods added**: tests the agent's edits added to test files, counted the way the test-integrity check counts them.
 

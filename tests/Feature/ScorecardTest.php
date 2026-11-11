@@ -66,14 +66,17 @@ class ScorecardTest extends TestCase
     {
         return [
             'tool errors by tool' => ['tool-errors', ['tool_errors' => ['Bash' => 2, 'Edit' => 1]]],
+            // The same lines again, not a big file read in pages
             'a file read 3 or more times' => ['repeated-reads', ['repeated_reads' => ['/wt/app/Models/Run.php' => 3]]],
+            // Commands that only name a test tool, like `cat phpunit.xml`, don't count
             'full versus filtered test runs' => ['test-runs', ['full_test_runs' => 2, 'filtered_test_runs' => 3]],
             'stop-hook blocks' => ['stop-hook', ['stop_hook_blocks' => 2]],
-            // The gate's own failure counts, since the verify script runs in it too
-            'verify failures' => ['verify-failures', ['verify_failures' => 2]],
+            // The gate's failure doesn't name its check, so it doesn't count
+            'verify failures' => ['verify-failures', ['verify_failures' => 1]],
             'a scope-judge veto' => ['scope-veto', ['scope_vetoes' => 1]],
-            // Two written, one edited in, one TypeScript and one Rust unit test. Not app code, and a removal adds none.
-            'test methods added' => ['test-methods', ['test_methods_added' => 5]],
+            // Two written, one edited in, one more by rewriting the file, one TypeScript and one Rust unit test.
+            // Not app code, and a removal adds none.
+            'test methods added' => ['test-methods', ['test_methods_added' => 6]],
         ];
     }
 
@@ -162,13 +165,19 @@ class ScorecardTest extends TestCase
         $run->scorecard()->create([
             'log_problem' => 'run-1.log is empty.',
             'tool_errors' => ['Bash' => 2, 'Edit' => 1], 'repeated_reads' => ['/wt/app/Models/Run.php' => 4],
-            'full_test_runs' => 3, 'filtered_test_runs' => 5, 'stop_hook_blocks' => 2, 'verify_failures' => 1,
-            'scope_vetoes' => 1, 'test_methods_added' => 6,
+            'full_test_runs' => 3, 'filtered_test_runs' => 5, 'stop_hook_blocks' => 12, 'verify_failures' => 11,
+            'scope_vetoes' => 13, 'test_methods_added' => 16,
         ]);
 
         $this->get(route('runs.show', $run))
-            ->assertSeeInOrder(['Scorecard', 'run-1.log is empty.', 'Tool errors', 'Bash 2, Edit 1', 'Files read 3+ times', '/wt/app/Models/Run.php (4)'])
-            ->assertSeeInOrder(['Test runs', '3 full, 5 filtered', 'Stop-hook blocks', '2', 'Verify failures', '1', 'Scope-judge vetoes', '1', 'Test methods added', '6']);
+            ->assertSeeInOrder(['Scorecard', 'run-1.log is empty.'])
+            ->assertSee('<dt>Tool errors</dt><dd>Bash 2, Edit 1</dd>', false)
+            ->assertSee('<dt>Files read 3+ times</dt><dd>/wt/app/Models/Run.php (4)</dd>', false)
+            ->assertSee('<dt>Test runs</dt><dd>3 full, 5 filtered</dd>', false)
+            ->assertSee('<dt>Stop-hook blocks</dt><dd>12</dd>', false)
+            ->assertSee('<dt>Verify failures</dt><dd>11</dd>', false)
+            ->assertSee('<dt>Scope-judge vetoes</dt><dd>13</dd>', false)
+            ->assertSee('<dt>Test methods added</dt><dd>16</dd>', false);
     }
 
     public function test_improve_runs_daily_at_3am_in_the_background_without_overlapping(): void

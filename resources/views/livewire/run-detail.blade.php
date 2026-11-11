@@ -172,7 +172,7 @@
             @endif
             <dl class="facts">
                 <div><dt>Tool errors</dt><dd>{{ collect($scorecard->tool_errors)->map(fn ($count, $tool) => "{$tool} {$count}")->implode(', ') ?: 'None' }}</dd></div>
-                <div><dt>Files read 3+ times</dt><dd>{{ collect($scorecard->repeated_reads)->map(fn ($count, $path) => ($run->worktree_path ? str_replace(rtrim($run->worktree_path, '/').'/', '', $path) : $path)." ({$count})")->implode(', ') ?: 'None' }}</dd></div>
+                <div><dt>Files read 3+ times</dt><dd>{{ collect($scorecard->repeated_reads)->map(fn ($count, $path) => "{$path} ({$count})")->implode(', ') ?: 'None' }}</dd></div>
                 <div><dt>Test runs</dt><dd>{{ $scorecard->full_test_runs }} full, {{ $scorecard->filtered_test_runs }} filtered</dd></div>
                 <div><dt>Stop-hook blocks</dt><dd>{{ $scorecard->stop_hook_blocks }}</dd></div>
                 <div><dt>Verify failures</dt><dd>{{ $scorecard->verify_failures }}</dd></div>

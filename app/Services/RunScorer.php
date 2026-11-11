@@ -15,10 +15,15 @@ use Illuminate\Support\Facades\File;
 /** Measures a run's facts from its transcript and its log, in plain code with no model call (ADR 0008). */
 class RunScorer
 {
-    /** A shell command that runs tests. */
-    private const TEST_COMMAND = '/\b(pest|phpunit|artisan test|vitest|jest|pytest)\b'
-        .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?test\b'
-        .'|\bcargo\s+(\+\S+\s+)?(test|nextest)\b/';
+    /**
+     * A shell command that runs tests: a test tool at the start of the command or of one step in a chain, after any
+     * env vars and a launcher such as `npx`. So `cat phpunit.xml` and `grep jest package.json` don't count.
+     */
+    private const TEST_COMMAND = '/(?:^|[;&|(])\s*(?:\w+=\S*\s+)*'
+        .'(?:(?:(?:npx|bunx|php|python3?\s+-m|uv\s+run)\s+)?(?:\S*\/)?(?:pest|phpunit|vitest|jest|pytest)(?![\w.\/-])'
+        .'|php\s+artisan\s+test\b'
+        .'|(?:npm|pnpm|yarn|bun|composer)\s+(?:run\s+)?test\b'
+        .'|cargo\s+(?:\+\S+\s+)?(?:test|nextest)\b)/';
 
     /** A test run narrowed by a filter flag or a test file. */
     private const FILTERED = '/\s(--filter|--testNamePattern|-t|-k)[\s=]|\s\S*(Test\.php|\.(test|spec)\.[cm]?[jt]sx?|_test\.py|test_\w+\.py)\b/';
@@ -40,8 +45,8 @@ class RunScorer
             'filtered_test_runs' => $testRuns['filtered'],
             // Lines StopHook and ProcessRun write. Only entries that start a log line count, not text quoted inside one.
             'stop_hook_blocks' => preg_match_all('/^\[[\d:]+\] Blocked the stop \(/m', $log),
-            // The gate's failure doesn't name its check, so it counts too: the verify script runs in the gate
-            'verify_failures' => preg_match_all('/^\[[\d:]+\] (Blocked the stop \(.*Verify script.* failed\.$|Foreman\'s gate failed\.)/m', $log),
+            // Stop-hook blocks that name the verify script. The gate's own failure line doesn't say which check failed.
+            'verify_failures' => preg_match_all('/^\[[\d:]+\] Blocked the stop \(.*Verify script.* failed\.$/m', $log),
             'scope_vetoes' => preg_match_all('/^\[[\d:]+\] Scope judge vetoed the change/m', $log),
             'test_methods_added' => $this->testMethodsAdded($tools),
         ]);
@@ -128,12 +133,15 @@ class RunScorer
     /**
      * Test markers each edit added to a test file, by the stacks' own tables as the test-integrity check counts them.
      * Rust unit tests sit in source files, so any `.rs` file counts. An edit that removes tests adds none.
+     * A Write counts against the tests the transcript already put in that file. A file that existed before the run
+     * and is rewritten whole counts all its tests, since the transcript doesn't hold what it had.
      */
     private function testMethodsAdded(array $tools): int
     {
         $stacks = new StackSet(array_map(fn (string $stack) => new $stack('', ['']), [Php::class, TypeScript::class, Rust::class, Python::class]));
         $testFiles = $stacks->rules('testFiles');
         $markers = $stacks->rules('testMarkers');
+        $known = [];   // path => tests the transcript put there so far
         $added = 0;
 
         foreach ($tools as $tool) {
@@ -144,19 +152,26 @@ class RunScorer
                 continue;
             }
 
-            $edits = match ($tool['name'] ?? null) {
-                'Write' => [['old_string' => '', 'new_string' => $input['content'] ?? '']],
-                'Edit' => [$input],
-                'MultiEdit' => $input['edits'] ?? [],
+            $changes = match ($tool['name'] ?? null) {
+                'Write' => [$this->countMarkers((string) ($input['content'] ?? ''), $markers) - ($known[$path] ?? 0)],
+                'Edit' => [$this->markersAdded($input, $markers)],
+                'MultiEdit' => array_map(fn ($edit) => $this->markersAdded((array) $edit, $markers), $input['edits'] ?? []),
                 default => [],
             };
 
-            foreach ($edits as $edit) {
-                $added += max(0, $this->countMarkers((string) ($edit['new_string'] ?? ''), $markers) - $this->countMarkers((string) ($edit['old_string'] ?? ''), $markers));
+            foreach ($changes as $change) {
+                $known[$path] = ($known[$path] ?? 0) + $change;
+                $added += max(0, $change);
             }
         }
 
         return $added;
+    }
+
+    /** Test markers one edit added, less those it removed. */
+    private function markersAdded(array $edit, array $markers): int
+    {
+        return $this->countMarkers((string) ($edit['new_string'] ?? ''), $markers) - $this->countMarkers((string) ($edit['old_string'] ?? ''), $markers);
     }
 
     /** Same rule as the test-integrity script: a marker that starts with a letter can't follow one, so `->setUp(` isn't `test(`. */
@@ -172,18 +187,26 @@ class RunScorer
         return $count;
     }
 
-    /** @return array<string,int> Path => reads, for files read 3 or more times, most first. */
+    /**
+     * Path => reads of its most-read range, for files with a range read 3 or more times, most first.
+     * Reading a big file in pages reads each range once, so it doesn't count.
+     *
+     * @return array<string,int>
+     */
     private function repeatedReads(array $tools): array
     {
-        $paths = [];
+        $ranges = [];
 
         foreach ($tools as $tool) {
-            if (($tool['name'] ?? null) === 'Read' && is_string($tool['input']['file_path'] ?? null)) {
-                $paths[] = $tool['input']['file_path'];
+            $input = $tool['input'] ?? [];
+
+            if (($tool['name'] ?? null) === 'Read' && is_string($input['file_path'] ?? null)) {
+                $range = ($input['offset'] ?? '').':'.($input['limit'] ?? '');
+                $ranges[$input['file_path']][$range] = ($ranges[$input['file_path']][$range] ?? 0) + 1;
             }
         }
 
-        $reads = array_filter(array_count_values($paths), fn (int $count) => $count >= 3);
+        $reads = array_filter(array_map(fn (array $counts) => max($counts), $ranges), fn (int $count) => $count >= 3);
         arsort($reads);
 
         return $reads;
