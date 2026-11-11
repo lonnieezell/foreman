@@ -1,0 +1,4 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"/wt/app/Models/Run.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r2","name":"Read","input":{"file_path":"/wt/routes/web.php"}},{"type":"tool_use","id":"r3","name":"Read","input":{"file_path":"/wt/app/Models/Run.php","offset":100}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r4","name":"Read","input":{"file_path":"/wt/routes/web.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r5","name":"Read","input":{"file_path":"/wt/app/Models/Run.php"}}]}}

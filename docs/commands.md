@@ -40,6 +40,26 @@ Prints the difficulty, the step after clamping, the source (`classifier`, `label
 | `--repo=<id>` | The repository. |
 | `--issue=<n>` | The issue number. |
 
+### foreman:improve
+
+```bash
+php artisan foreman:improve
+```
+
+Scores every run that ended in the last 30 days and has no scorecard yet. The scheduler runs it daily at 03:00, in the background. It reads each run's `logs/run-<id>.jsonl` and `logs/run-<id>.log` with plain code, so it spends no tokens. Each run is scored once. Cancelled runs are never scored. Neither are runs still on the line or still watching their PR.
+
+The scorecard shows on the run page. It lists:
+
+- **Tool errors**: failed tool calls, by tool.
+- **Files read 3+ times**: each file the agent read 3 or more times, and how often.
+- **Test runs**: whole-suite test runs, and runs narrowed by a filter or a test file.
+- **Stop-hook blocks**: times the Stop hook sent the agent back.
+- **Verify failures**: Stop-hook blocks where the verify script failed, plus Foreman's gate failing before the push.
+- **Scope-judge vetoes**: times the scope judge vetoed the change.
+- **Test methods added**: tests the agent's edits added to test files, counted the way the test-integrity check counts them.
+
+When a log is missing or empty, the scorecard says so, and the facts from that log read as zero.
+
 ### foreman:install-ci
 
 ```bash

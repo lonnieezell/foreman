@@ -1,0 +1,6 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":"./vendor/bin/pint && ./vendor/bin/pest"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b2","name":"Bash","input":{"command":"php artisan test --filter=StackDetectionTest"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b3","name":"Bash","input":{"command":"composer test"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b4","name":"Bash","input":{"command":"npx vitest run src/cart.test.ts"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b5","name":"Bash","input":{"command":"npm run lint"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b6","name":"Bash","input":{"command":"./vendor/bin/phpunit tests/Feature/GateTest.php"}}]}}
