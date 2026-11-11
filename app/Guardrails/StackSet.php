@@ -54,6 +54,12 @@ class StackSet
         return new self($stacks);
     }
 
+    /** Every stack Foreman knows, for reading their rule tables without a worktree. */
+    public static function all(): self
+    {
+        return new self(array_map(fn (string $class) => new $class('', ['']), array_keys(self::MARKERS)));
+    }
+
     /** @return list<string> */
     public function names(): array
     {

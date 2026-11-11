@@ -3,14 +3,11 @@
 namespace App\Services;
 
 use App\Guardrails\Guard;
-use App\Guardrails\Stacks\Php;
-use App\Guardrails\Stacks\Python;
-use App\Guardrails\Stacks\Rust;
-use App\Guardrails\Stacks\TypeScript;
 use App\Guardrails\StackSet;
 use App\Models\Run;
 use App\Models\Scorecard;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
 /** Measures a run's facts from its transcript and its log, in plain code with no model call (ADR 0008). */
 class RunScorer
@@ -19,7 +16,7 @@ class RunScorer
      * A shell command that runs tests: a test tool at the start of the command or of one step in a chain, after any
      * env vars and a launcher such as `npx`. So `cat phpunit.xml` and `grep jest package.json` don't count.
      */
-    private const TEST_COMMAND = '/(?:^|[;&|(])\s*(?:\w+=\S*\s+)*'
+    private const TEST_COMMAND = '/'.Guard::COMMAND_START
         .'(?:(?:(?:npx|bunx|php|python3?\s+-m|uv\s+run)\s+)?(?:\S*\/)?(?:pest|phpunit|vitest|jest|pytest)(?![\w.\/-])'
         .'|php\s+artisan\s+test\b'
         .'|(?:npm|pnpm|yarn|bun|composer)\s+(?:run\s+)?test\b'
@@ -30,16 +27,14 @@ class RunScorer
 
     public function score(Run $run): Scorecard
     {
-        ['text' => $transcript, 'problem' => $transcriptProblem] = $this->read($run->rawLogPath());
+        ['tools' => $tools, 'failed' => $failed, 'problem' => $transcriptProblem] = $this->transcript($run->rawLogPath());
         ['text' => $log, 'problem' => $logProblem] = $this->read($run->logPath());
 
-        $events = $this->events($transcript);
-        $tools = $this->blocks($events, 'assistant', 'tool_use');
         $testRuns = $this->testRuns($tools);
 
         return $run->scorecard()->create([
             'log_problem' => implode(' ', array_filter([$transcriptProblem, $logProblem])) ?: null,
-            'tool_errors' => $this->toolErrors($events, $tools),
+            'tool_errors' => $this->toolErrors($tools, $failed),
             'repeated_reads' => $this->repeatedReads($tools),
             'full_test_runs' => $testRuns['full'],
             'filtered_test_runs' => $testRuns['filtered'],
@@ -48,7 +43,7 @@ class RunScorer
             // Stop-hook blocks that name the verify script. The gate's own failure line doesn't say which check failed.
             'verify_failures' => preg_match_all('/^\[[\d:]+\] Blocked the stop \(.*Verify script.* failed\.$/m', $log),
             'scope_vetoes' => preg_match_all('/^\[[\d:]+\] Scope judge vetoed the change/m', $log),
-            'test_methods_added' => $this->testMethodsAdded($tools),
+            'test_methods_added' => $this->testMethodsAdded($tools, (string) $run->worktree_path),
         ]);
     }
 
@@ -66,55 +61,58 @@ class RunScorer
         return ['text' => $text, 'problem' => trim($text) === '' ? "{$name} is empty." : null];
     }
 
-    /** @return list<array<string,mixed>> The transcript's events, skipping lines that aren't JSON objects. */
-    private function events(string $transcript): array
-    {
-        return array_values(array_filter(array_map(fn (string $line) => json_decode($line, true), explode("\n", $transcript)), 'is_array'));
-    }
-
     /**
-     * Content blocks of one type from the events of one type.
+     * The agent's tool calls and the ids of those that failed, skipping lines that aren't JSON objects, and why the
+     * transcript can't be scored when it is missing or blank. Read a line at a time and kept to those blocks, so a long
+     * run's tool output never sits in memory.
      *
-     * @return list<array<string,mixed>>
+     * @return array{tools:list<array<string,mixed>>,failed:list<string>,problem:?string}
      */
-    private function blocks(array $events, string $eventType, string $blockType): array
+    private function transcript(string $path): array
     {
-        $blocks = [];
+        $name = basename($path);
+        $tools = $failed = [];
+        $blank = true;
 
-        foreach ($events as $event) {
-            if (($event['type'] ?? null) !== $eventType || ! is_array($event['message']['content'] ?? null)) {
-                continue;
-            }
+        if (! File::exists($path)) {
+            return ['tools' => [], 'failed' => [], 'problem' => "{$name} is missing."];
+        }
 
-            foreach ($event['message']['content'] as $block) {
-                if (($block['type'] ?? null) === $blockType) {
-                    $blocks[] = $block;
+        foreach (File::lines($path) as $line) {
+            $blank = $blank && trim($line) === '';
+            $event = json_decode($line, true);
+            $content = is_array($event) ? ($event['message']['content'] ?? null) : null;
+
+            foreach (is_array($content) ? $content : [] as $block) {
+                $type = [$event['type'] ?? null, $block['type'] ?? null];
+
+                if ($type === ['assistant', 'tool_use']) {
+                    $tools[] = $block;
+                } elseif ($type === ['user', 'tool_result'] && ($block['is_error'] ?? false)) {
+                    $failed[] = (string) ($block['tool_use_id'] ?? '');
                 }
             }
         }
 
-        return $blocks;
+        return ['tools' => $tools, 'failed' => $failed, 'problem' => $blank ? "{$name} is empty." : null];
     }
 
     /** @return array<string,int> Tool name => failed calls, most first. */
-    private function toolErrors(array $events, array $tools): array
+    private function toolErrors(array $tools, array $failed): array
     {
         $names = array_column($tools, 'name', 'id');
-        $errors = [];
-
-        foreach ($this->blocks($events, 'user', 'tool_result') as $result) {
-            if ($result['is_error'] ?? false) {
-                $name = $names[$result['tool_use_id'] ?? ''] ?? 'unknown';
-                $errors[$name] = ($errors[$name] ?? 0) + 1;
-            }
-        }
-
+        $errors = array_count_values(array_map(fn (string $id) => $names[$id] ?? 'unknown', $failed));
         arsort($errors);
 
         return $errors;
     }
 
-    /** @return array{full:int,filtered:int} Bash calls that ran tests: the whole suite, or narrowed by a filter or a file. */
+    /**
+     * Bash calls that ran tests: the whole suite, or narrowed by a filter or a file. Each line and each step of a chain is
+     * checked on its own, so a test file named by `php -l` in another step doesn't make the run look filtered.
+     *
+     * @return array{full:int,filtered:int}
+     */
     private function testRuns(array $tools): array
     {
         $runs = ['full' => 0, 'filtered' => 0];
@@ -122,8 +120,14 @@ class RunScorer
         foreach ($tools as $tool) {
             $command = $tool['input']['command'] ?? null;
 
-            if (($tool['name'] ?? null) === 'Bash' && is_string($command) && preg_match(self::TEST_COMMAND, $command)) {
-                $runs[preg_match(self::FILTERED, $command) ? 'filtered' : 'full']++;
+            if (($tool['name'] ?? null) !== 'Bash' || ! is_string($command)) {
+                continue;
+            }
+
+            $steps = preg_grep(self::TEST_COMMAND, preg_split('/[;&|\n]/', $command));
+
+            if ($steps) {
+                $runs[preg_match(self::FILTERED, implode(' ', $steps)) ? 'filtered' : 'full']++;
             }
         }
 
@@ -136,9 +140,9 @@ class RunScorer
      * A Write counts against the tests the transcript already put in that file. A file that existed before the run
      * and is rewritten whole counts all its tests, since the transcript doesn't hold what it had.
      */
-    private function testMethodsAdded(array $tools): int
+    private function testMethodsAdded(array $tools, string $worktree): int
     {
-        $stacks = new StackSet(array_map(fn (string $stack) => new $stack('', ['']), [Php::class, TypeScript::class, Rust::class, Python::class]));
+        $stacks = StackSet::all();
         $testFiles = $stacks->rules('testFiles');
         $markers = $stacks->rules('testMarkers');
         $known = [];   // path => tests the transcript put there so far
@@ -147,6 +151,8 @@ class RunScorer
         foreach ($tools as $tool) {
             $input = $tool['input'] ?? [];
             $path = (string) ($input['file_path'] ?? '');
+            // Relative to the worktree, so a `tests` folder above it doesn't make every file a test file
+            $path = $worktree === '' ? $path : Str::after($path, rtrim($worktree, '/').'/');
 
             if (! str_ends_with($path, '.rs') && ! Guard::matchesAny($testFiles, $path, anywhere: true)) {
                 continue;
@@ -160,7 +166,8 @@ class RunScorer
             };
 
             foreach ($changes as $change) {
-                $known[$path] = ($known[$path] ?? 0) + $change;
+                // Tests removed from what the file had before the run take nothing off a later Write
+                $known[$path] = max(0, ($known[$path] ?? 0) + $change);
                 $added += max(0, $change);
             }
         }

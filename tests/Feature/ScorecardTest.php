@@ -68,15 +68,16 @@ class ScorecardTest extends TestCase
             'tool errors by tool' => ['tool-errors', ['tool_errors' => ['Bash' => 2, 'Edit' => 1]]],
             // The same lines again, not a big file read in pages
             'a file read 3 or more times' => ['repeated-reads', ['repeated_reads' => ['/wt/app/Models/Run.php' => 3]]],
-            // Commands that only name a test tool, like `cat phpunit.xml`, don't count
-            'full versus filtered test runs' => ['test-runs', ['full_test_runs' => 2, 'filtered_test_runs' => 3]],
+            // Commands that only name a test tool, like `cat phpunit.xml`, don't count. Each line and step is its own command,
+            // so a test file named by `php -l` doesn't narrow the suite run after it.
+            'full versus filtered test runs' => ['test-runs', ['full_test_runs' => 3, 'filtered_test_runs' => 4]],
             'stop-hook blocks' => ['stop-hook', ['stop_hook_blocks' => 2]],
             // The gate's failure doesn't name its check, so it doesn't count
             'verify failures' => ['verify-failures', ['verify_failures' => 1]],
             'a scope-judge veto' => ['scope-veto', ['scope_vetoes' => 1]],
             // Two written, one edited in, one more by rewriting the file, one TypeScript and one Rust unit test.
-            // Not app code, and a removal adds none.
-            'test methods added' => ['test-methods', ['test_methods_added' => 6]],
+            // Not app code, and a removal adds none. A file stripped of its old tests and rewritten whole counts what it has.
+            'test methods added' => ['test-methods', ['test_methods_added' => 7]],
         ];
     }
 
@@ -132,6 +133,20 @@ class ScorecardTest extends TestCase
         $this->assertSame(2, $run->scorecard->stop_hook_blocks);
         $this->assertSame("run-{$noLogs->id}.jsonl is missing. run-{$noLogs->id}.log is missing.", $noLogs->scorecard->log_problem);
         $this->assertSame(2, Scorecard::count());
+    }
+
+    public function test_improve_keeps_scoring_after_a_run_it_cannot_score(): void
+    {
+        $broken = $this->makeRun();
+        File::ensureDirectoryExists(dirname($broken->logPath()));
+        File::put($broken->rawLogPath(), '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"m1","name":"MultiEdit","input":{"file_path":"/wt/tests/FooTest.php","edits":"not a list"}}]}}'."\n");
+        $run = $this->makeRun();
+        $this->giveLogs($run, 'stop-hook');
+
+        $this->artisan('foreman:improve')->assertSuccessful();
+
+        $this->assertNull($broken->scorecard);
+        $this->assertSame(2, $run->scorecard->stop_hook_blocks);
     }
 
     public static function unscoredStatuses(): array

@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Models\Run;
 use App\Services\RunScorer;
 use Illuminate\Console\Command;
+use Throwable;
 
 class Improve extends Command
 {
@@ -26,10 +27,16 @@ class Improve extends Command
             ->whereNotIn('status', $notEnded)
             ->whereDoesntHave('scorecard')
             ->whereRaw('coalesce(finished_at, updated_at) >= ?', [now()->subDays(self::BACKFILL_DAYS)])
-            ->orderBy('id')
-            ->each(function (Run $run) use ($scorer, &$scored) {
-                $scorer->score($run);
-                $scored++;
+            // By id, not by offset: each scored run drops out of the query, so offset pages would skip runs
+            ->eachById(function (Run $run) use ($scorer, &$scored) {
+                // One unreadable transcript must not stop the pass, or it would stop every pass after it too
+                try {
+                    $scorer->score($run);
+                    $scored++;
+                } catch (Throwable $e) {
+                    report($e);
+                    $this->warn("Couldn't score run {$run->id}: {$e->getMessage()}");
+                }
             });
 
         $this->line("Scored {$scored} ".str('run')->plural($scored).'.');
