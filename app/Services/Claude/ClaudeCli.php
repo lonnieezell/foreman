@@ -68,7 +68,7 @@ class ClaudeCli implements Claude
         $this->saveSession = $saveSession;
 
         $process = Process::path($worktree)
-            ->env([...ForemanEnv::forWorktree($worktree), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
+            ->env([...ForemanEnv::forWorktree($worktree, $repo->toolchain_path), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
             ->forever()
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
@@ -218,6 +218,7 @@ class ClaudeCli implements Claude
             'hooks_dir' => $dir,
             'base' => $run->worktree()->baseRef(),
             'verify_script' => trim((string) $run->repository->verify_script),   // empty: the hook uses the detected stacks' checks
+            'toolchain_path' => $run->repository->toolchain_path,
             'stop_counter' => "{$dir}/run-{$run->id}-stops",
         ]));
         File::delete("{$dir}/run-{$run->id}-stops");   // each start of the agent, resumes included, gets its own 3 blocks

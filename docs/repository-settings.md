@@ -170,6 +170,25 @@ If the checks keep failing, the agent is sent back three times and then allowed 
 
 The verify script runs as you, with no sandbox. Changes apply to new runs.
 
+### Toolchain path
+
+One or more folders, joined with `:`, that Foreman puts in front of `PATH` for the processes that run this repository's code. Use it when the repository needs a `php`, `node` or `composer` other than the one first on the host's `PATH`. For example:
+
+- `~/Library/Application Support/Herd/bin/php82` (Herd)
+- `~/.phpenv/versions/8.2.20/bin`
+- `/opt/homebrew/opt/php@8.2/bin`
+
+A leading `~/` is expanded to your home folder when you save. Saving checks that each folder exists. If one doesn't, the form names it and nothing is saved. Leave the field empty to use the host's `PATH` as it is.
+
+These processes get `PATH=<toolchain path>:<existing PATH>`:
+
+- the setup script
+- the agent, so its own shell commands find the same `php`
+- the verify script, in Foreman's gate and in the Stop hook
+- the commit formatter
+
+Foreman's own checks, such as the [test-integrity check](guardrails.md#test-integrity), keep running on Foreman's PHP. The run log shows the toolchain path once, at the start of each run. Changes apply to new runs.
+
 ## Permissions
 
 ### Allowed tools

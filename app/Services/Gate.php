@@ -21,16 +21,17 @@ class Gate
      * Runs both checks in the worktree and returns the failure text of each one that fails, keyed by its label.
      * `$before` runs ahead of each check, so the caller can stop the gate by throwing.
      * `$progress` runs on the checks' output and after each check, so the caller can keep a heartbeat fresh.
+     * Only the verify script gets the repository's `$toolchain`: the integrity check is Foreman's own code.
      *
      * @return array<string,string>
      */
-    public static function run(string $worktree, string $base, ?string $verifyScript, ?Closure $before = null, ?Closure $progress = null): array
+    public static function run(string $worktree, string $base, ?string $verifyScript, ?Closure $before = null, ?Closure $progress = null, ?string $toolchain = null): array
     {
         $verify = self::verifyScript($verifyScript, $worktree, $base);
 
         return array_filter([
             'Test-integrity check' => self::check($worktree, 'Test-integrity check', [PHP_BINARY, resource_path('guardrails/test-integrity.php'), "--base={$base}"], 120, $before, $progress),
-            'Verify script' => $verify === '' ? null : self::check($worktree, 'Verify script', ['bash', '-ec', $verify], 1500, $before, $progress),
+            'Verify script' => $verify === '' ? null : self::check($worktree, 'Verify script', ['bash', '-ec', $verify], 1500, $before, $progress, $toolchain),
         ]);
     }
 
@@ -61,7 +62,7 @@ class Gate
     }
 
     /** The failure text when the command fails, or null when it passes. */
-    private static function check(string $worktree, string $label, array $command, int $timeout, ?Closure $before, ?Closure $progress): ?string
+    private static function check(string $worktree, string $label, array $command, int $timeout, ?Closure $before, ?Closure $progress, ?string $toolchain = null): ?string
     {
         if ($before) {
             $before();
@@ -69,7 +70,7 @@ class Gate
 
         try {
             // CI keeps test runners such as Jest and react-scripts out of watch mode
-            $process = Process::path($worktree)->env([...ForemanEnv::forWorktree($worktree), ...self::withoutPushBlock(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
+            $process = Process::path($worktree)->env([...ForemanEnv::forWorktree($worktree, $toolchain), ...self::withoutPushBlock(), 'CI' => 'true'])->timeout($timeout)->run($command, $progress ? fn () => $progress() : null);
         } catch (Throwable $e) {
             return "{$label} failed: {$e->getMessage()}";
         } finally {

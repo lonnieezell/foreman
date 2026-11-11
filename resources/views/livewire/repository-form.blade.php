@@ -4,7 +4,7 @@
         'repo' => ['Repository', ['local_path', 'github_repo', 'name', 'base_branch']],
         'limits' => ['Model & limits', ['model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'effort', 'claude_profile', 'daily_budget', 'max_budget_per_run', 'concurrency', 'poll_interval_minutes', 'max_turns', 'max_minutes']],
         'labels' => ['Labels', ['ready_label', 'working_label', 'human_label']],
-        'scripts' => ['Scripts', ['setup_script', 'verify_script']],
+        'scripts' => ['Scripts', ['setup_script', 'verify_script', 'toolchain_path']],
         'perms' => ['Permissions', ['allowed_tools', 'locked_paths']],
         'instructions' => ['Instructions', ['prompt_template']],
         'after' => ['After the PR', ['watch_prs', 'auto_merge_max_tier', 'merge_method', 'cleanup_worktrees', 'stop_docker', 'sandbox']],
@@ -279,6 +279,13 @@
                         <span class="hint">Leave it empty to use the checks of the stacks Foreman finds.</span>
                         @error('verify_script') <span class="error">{{ $message }}</span> @enderror
                     </div>
+                </div>
+
+                <div class="field">
+                    <label for="toolchain_path">Toolchain path <span class="field-label-note">· goes in front of PATH in the worktrees</span></label>
+                    <input id="toolchain_path" type="text" class="input-mono" wire:model="toolchain_path" placeholder="~/Library/Application Support/Herd/bin/php82">
+                    <span class="hint">Folders joined with <code>:</code>, for a <code>php</code>, <code>node</code> or <code>composer</code> other than the host’s. For example <code>~/.phpenv/versions/8.2.20/bin</code> or <code>/opt/homebrew/opt/php@8.2/bin</code>. Leave it empty to use the host’s PATH.</span>
+                    @error('toolchain_path') <span class="error">{{ $message }}</span> @enderror
                 </div>
             </section>
 
