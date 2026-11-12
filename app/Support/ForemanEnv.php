@@ -13,11 +13,11 @@ class ForemanEnv
     /**
      * removed(), plus TMPDIR pointed at the worktree's own temp folder, which this creates.
      * Tools such as PHPStan cache in the system temp folder, so a cache left by another checkout
-     * or a concurrent run could break this one.
+     * or a concurrent run could break this one. The repository's `$toolchain` folders go in front of PATH.
      *
      * @return array<string,string|false>
      */
-    public static function forWorktree(string $worktree): array
+    public static function forWorktree(string $worktree, ?string $toolchain = null): array
     {
         $tmp = "{$worktree}/".self::TMP_DIR;
 
@@ -27,7 +27,25 @@ class ForemanEnv
             File::put("{$tmp}/.gitignore", "*\n");
         }
 
-        return [...self::removed(), 'TMPDIR' => $tmp];
+        return [...self::removed(), 'TMPDIR' => $tmp, ...self::path($toolchain)];
+    }
+
+    /**
+     * PATH with the toolchain folders in front, or nothing when there are none, so PATH is inherited as it is.
+     *
+     * @return array<string,string>
+     */
+    private static function path(?string $toolchain): array
+    {
+        $toolchain = trim((string) $toolchain);
+        $path = (string) getenv('PATH');
+
+        // The hooks inherit the agent's PATH, which already starts with the toolchain
+        if ($toolchain === '' || str_starts_with("{$path}:", "{$toolchain}:")) {
+            return [];
+        }
+
+        return ['PATH' => $path === '' ? $toolchain : "{$toolchain}:{$path}"];
     }
 
     /**

@@ -12,7 +12,7 @@ use Symfony\Component\Process\Process;
  */
 class CommitFormatter
 {
-    public function __construct(private StackSet $stacks, private string $worktree) {}
+    public function __construct(private StackSet $stacks, private string $worktree, private ?string $toolchain = null) {}
 
     public static function isCommit(string $command): bool
     {
@@ -32,7 +32,7 @@ class CommitFormatter
                 continue;
             }
 
-            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree, ForemanEnv::forWorktree($this->worktree));
+            $process = Process::fromShellCommandline($command.' '.implode(' ', array_map('escapeshellarg', $files)), $this->worktree, ForemanEnv::forWorktree($this->worktree, $this->toolchain));
             $process->setTimeout(120);
             $process->run();
 

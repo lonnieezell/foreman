@@ -69,6 +69,9 @@ class RepositoryForm extends Component
 
     public string $verify_script = '';
 
+    /** Folders joined with `:`, put in front of PATH for every process in the worktrees. */
+    public string $toolchain_path = '';
+
     public string $prompt_template = '';
 
     public bool $cleanup_worktrees = true;
@@ -107,6 +110,7 @@ class RepositoryForm extends Component
             $this->locked_paths = (string) $repository->locked_paths;
             $this->verify_script = (string) $repository->verify_script ?: Repository::defaultVerifyScript($repository->local_path, "origin/{$repository->base_branch}");
             $this->claude_profile = (string) $repository->claude_profile;
+            $this->toolchain_path = (string) $repository->toolchain_path;
             $this->prompt_template = (string) $repository->prompt_template;
         }
 
@@ -171,6 +175,10 @@ class RepositoryForm extends Component
     public function save(GitHub $github)
     {
         $this->local_path = rtrim($this->expandedPath(), '/');
+        $this->toolchain_path = implode(':', array_map(
+            self::expandHome(...),
+            array_filter(array_map('trim', explode(':', $this->toolchain_path)), 'strlen'),
+        ));
 
         $data = $this->validate([
             'name' => ['required', 'string', 'max:80'],
@@ -202,6 +210,16 @@ class RepositoryForm extends Component
             'locked_paths' => ['nullable', 'string'],
             'setup_script' => ['required', 'string'],
             'verify_script' => ['nullable', 'string'],
+            'toolchain_path' => ['nullable', 'string', function ($attr, $value, $fail) {
+                foreach (explode(':', $value) as $folder) {
+                    // A relative folder would be checked against Foreman's own folder, but used in each worktree
+                    if (! str_starts_with($folder, '/')) {
+                        $fail("Use a full path for {$folder}.");
+                    } elseif (! File::isDirectory($folder)) {
+                        $fail("There’s no folder at {$folder}.");
+                    }
+                }
+            }],
             'prompt_template' => ['required', 'string'],
             'cleanup_worktrees' => ['boolean'],
             'watch_prs' => ['boolean'],
@@ -223,6 +241,7 @@ class RepositoryForm extends Component
         $data['claude_profile'] = $data['claude_profile'] ?: null;
         $data['effort'] = $data['effort'] ?: null;
         $data['locked_paths'] = trim((string) $data['locked_paths']) ?: null;
+        $data['toolchain_path'] = $data['toolchain_path'] ?: null;
         // Store null when it's the default, so it follows later changes to the base branch and the stacks
         $verify = trim((string) $data['verify_script']);
         $data['verify_script'] = $verify === '' || $verify === Repository::defaultVerifyScript($data['local_path'], "origin/{$data['base_branch']}") ? null : $verify;
@@ -400,9 +419,14 @@ class RepositoryForm extends Component
 
     private function expandedPath(): string
     {
-        return str_starts_with($this->local_path, '~/')
-            ? rtrim((string) getenv('HOME'), '/').substr($this->local_path, 1)
-            : $this->local_path;
+        return self::expandHome($this->local_path);
+    }
+
+    private static function expandHome(string $path): string
+    {
+        return str_starts_with($path, '~/')
+            ? rtrim((string) getenv('HOME'), '/').substr($path, 1)
+            : $path;
     }
 
     public function render()

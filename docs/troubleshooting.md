@@ -56,7 +56,18 @@ Composer picks the PHP for `@php` scripts from the `PHP_BINARY` environment vari
 If you still see the error:
 
 1. Restart the workers. Queue workers keep old code until they restart.
-2. Check which PHP the setup script finds. Add `php -v` to the script, or run it in the kept worktree. If it's too old, put the right PHP first on `PATH` at the top of the script, for example `export PATH="/opt/homebrew/opt/php@8.5/bin:$PATH"`.
+2. Check which PHP the setup script finds. Add `php -v` to the script, or run it in the kept worktree. If it's too old, set the repository's [Toolchain path](repository-settings.md#toolchain-path) to the right PHP's folder, for example `/opt/homebrew/opt/php@8.5/bin`.
+
+## Tests fail because of the wrong PHP version
+
+The setup script, the verify script or the agent's own commands use a different PHP than the repository needs. Signs of this are a Composer platform error, `Your requirements could not be resolved`, or syntax errors from code that is valid on a newer PHP.
+
+Every process Foreman starts in a worktree uses the `php` that comes first on `PATH`. To pin another one for a repository, set its [Toolchain path](repository-settings.md#toolchain-path). For example, set it to `/opt/homebrew/opt/php@8.2/bin` for Homebrew's PHP 8.2. The same goes for `node` and `composer`.
+
+To check it worked:
+
+1. Look for `Toolchain path: …` near the top of the next run's log. If it's missing, the setting is empty, or the workers still run old code. Restart them.
+2. Add `php -v` to the setup script, or run `PATH="<toolchain path>:$PATH" php -v` in the kept worktree.
 
 ## A tool fails on a cache it left in the temp folder
 

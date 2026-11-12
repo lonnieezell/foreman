@@ -34,7 +34,7 @@ class StopHook extends Command
             return self::SUCCESS;
         }
 
-        $failures = Gate::run($rules['worktree'], $rules['base'], $rules['verify_script']);
+        $failures = Gate::run($rules['worktree'], $rules['base'], $rules['verify_script'], toolchain: $rules['toolchain_path'] ?? null);
 
         if (! $failures) {
             return self::SUCCESS;

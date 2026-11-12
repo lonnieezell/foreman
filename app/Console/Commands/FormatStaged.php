@@ -29,7 +29,7 @@ class FormatStaged extends Command
             return self::SUCCESS;
         }
 
-        $failure = (new CommitFormatter(StackSet::detect($rules['worktree']), $rules['worktree']))->format();
+        $failure = (new CommitFormatter(StackSet::detect($rules['worktree']), $rules['worktree'], $rules['toolchain_path'] ?? null))->format();
 
         if ($failure === null) {
             return self::SUCCESS;

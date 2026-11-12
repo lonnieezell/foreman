@@ -62,6 +62,10 @@ class ProcessRun implements ShouldQueue
 
         $run->moveTo(RunStatus::Preparing, ['started_at' => now(), 'heartbeat_at' => now()]);
 
+        if ($repo->toolchain_path) {
+            $run->log("Toolchain path: {$repo->toolchain_path}");
+        }
+
         try {
             $labels = $this->pickStep($run, $github);
 
@@ -153,7 +157,7 @@ class ProcessRun implements ShouldQueue
             $this->catchUpWithBase($run, fetch: false);
         }
 
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::forWorktree($worktree));
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $worktree, timeout: 900, env: ForemanEnv::forWorktree($worktree, $repo->toolchain_path));
 
         return $worktree;
     }
@@ -460,7 +464,7 @@ class ProcessRun implements ShouldQueue
         }
 
         // On the clean PR head: an install step would fail on a lock file full of conflict markers
-        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $path, timeout: 900, env: ForemanEnv::forWorktree($path));
+        $this->step($run, 'Running setup script', ['bash', '-ec', $repo->setup_script], $path, timeout: 900, env: ForemanEnv::forWorktree($path, $repo->toolchain_path));
 
         (new AgentReport($path))->clear();
         $git->excludeFromGit('.foreman/');
@@ -739,6 +743,7 @@ class ProcessRun implements ShouldQueue
                     $run->update(['heartbeat_at' => now()]);
                 }
             },
+            toolchain: $repo->toolchain_path,
         );
 
         $failures = [...array_values($failures), ...$this->lockedChangeFailures($run)];
