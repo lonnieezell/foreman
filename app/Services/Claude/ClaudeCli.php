@@ -30,8 +30,8 @@ class ClaudeCli implements Claude
     /** Starts each operator message Foreman sends into a live session. */
     private const OPERATOR_PREFIX = "Your operator sent this from Foreman:\n\n";
 
-    /** Starts the operator's answer to the agent's question, sent while the session waits for it. */
-    private const ANSWER_PREFIX = "Your operator answered your question from Foreman. Foreman cleared .foreman/result.json, so write it again before you stop.\n\nTheir answer:\n\n";
+    /** Starts an operator message sent after the agent's turn ended, such as the answer to its question. */
+    private const AFTER_TURN_PREFIX = "Your operator replied from Foreman. Foreman cleared .foreman/result.json, so write it again before you stop.\n\nTheir message:\n\n";
 
     /** The env variable beats `--effort`, so it is removed and the run's own effort applies (ADR 0004). */
     private const NO_EFFORT_ENV = ['CLAUDE_CODE_EFFORT_LEVEL' => false];
@@ -47,6 +47,9 @@ class ClaudeCli implements Claude
 
     /** Whether the agent ended its turn and nothing has been sent to it since. */
     private bool $turnEnded = false;
+
+    /** Whether the last turn's questions went in the run's thread while the session waited for an answer. */
+    private bool $questionsKept = false;
 
     /** Whether streamed session ids are saved on the run. */
     private bool $saveSession = true;
@@ -83,6 +86,7 @@ class ClaudeCli implements Claude
         $this->outcome = null;
         $this->limitReported = false;
         $this->turnEnded = false;
+        $this->questionsKept = false;
         $this->saveSession = $saveSession;
 
         $stdin = new InputStream;
@@ -108,7 +112,11 @@ class ClaudeCli implements Claude
                 throw new RuntimeException('Cancelled');
             }
 
-            if (now()->greaterThan($deadline)) {
+            // A question window ends at the deadline itself, and a session whose stdin is closed gets a minute to exit,
+            // so a question asked near the limit stops the run on the question instead of failing it
+            $limit = $stdin->isClosed() ? $deadline->copy()->addMinute() : $deadline;
+
+            if (now()->greaterThan($limit) && $questionUntil === null) {
                 $process->signal(15); // SIGTERM
                 $process->wait();
                 throw new RuntimeException("Hit the {$repo->max_minutes}-minute limit.");
@@ -122,14 +130,15 @@ class ClaudeCli implements Claude
             $messages = $run->messages()->where('role', RunMessage::HUMAN)->whereNull('sent_at')->get();
 
             if ($messages->isNotEmpty()) {
-                if ($questionUntil) {
-                    // The answer starts a new turn, which must end on a result file of its own
-                    (new AgentReport($worktree))->clear();
+                if ($this->turnEnded) {
+                    // The message starts a new turn, which must end on a result file of its own
+                    File::delete("{$worktree}/".AgentReport::RESULT_FILE);
                     $run->update(['question_until' => null]);
                 }
 
-                $this->send($stdin, $messages, $questionUntil ? self::ANSWER_PREFIX : self::OPERATOR_PREFIX);
+                $this->send($stdin, $messages, $this->turnEnded ? self::AFTER_TURN_PREFIX : self::OPERATOR_PREFIX);
                 $questionUntil = null;
+                $this->questionsKept = false;
                 $this->turnEnded = false;
 
                 continue;
@@ -140,16 +149,21 @@ class ClaudeCli implements Claude
             }
 
             // The CLI waits for another message after each turn, so closing stdin is what ends the session
-            $questionUntil ??= $this->openQuestionWindow($run, $worktree);
+            $questionUntil ??= $this->openQuestionWindow($run, $worktree, $deadline);
 
-            if ($questionUntil === null) {
-                $stdin->close();
-            } elseif (now()->greaterThanOrEqualTo($questionUntil)) {
-                // The result file still holds the question, so the run goes on to the usual question flow
-                $run->update(['question_until' => null]);
-                $run->log("No answer within {$repo->question_window_minutes} min. Ending the session on the question.");
-                $stdin->close();
+            if ($questionUntil !== null && now()->lessThan($questionUntil)) {
+                continue;
             }
+
+            if ($questionUntil !== null) {
+                // The result file still holds the question, so the run goes on to the usual question flow
+                $run->log("No answer within {$repo->question_window_minutes} min. Ending the session on the question.");
+                $questionUntil = null;
+            }
+
+            // A message posted from now on waits on the run, so the page stops offering to send it
+            $run->update(['question_until' => null, 'pid' => null]);
+            $stdin->close();
         }
 
         $exit = $process->wait();
@@ -168,7 +182,7 @@ class ClaudeCli implements Claude
             throw new RuntimeException('Claude exited without a result: '.str($exit->errorOutput())->limit(500));
         }
 
-        return new AgentResult($this->outcome, $this->outcome['session_id'] ?? null);
+        return new AgentResult($this->outcome, $this->outcome['session_id'] ?? null, $this->questionsKept);
     }
 
     /**
@@ -189,7 +203,7 @@ class ClaudeCli implements Claude
      * When the agent's turn ended on a question, keep its questions in the thread and say until when the session waits
      * for an answer. Null when there is nothing to wait for: no question, no window, or a conflict fix, whose questions explain a failure.
      */
-    private function openQuestionWindow(Run $run, string $worktree): ?Carbon
+    private function openQuestionWindow(Run $run, string $worktree, Carbon $deadline): ?Carbon
     {
         $minutes = $run->repository->question_window_minutes;
         $outcome = (new AgentReport($worktree))->outcome();
@@ -199,7 +213,8 @@ class ClaudeCli implements Claude
         }
 
         $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $outcome->questions));
-        $run->update(['question_until' => $until = now()->addMinutes($minutes)]);
+        $run->update(['question_until' => $until = now()->addMinutes($minutes)->min($deadline)]);
+        $this->questionsKept = true;
 
         $count = count($outcome->questions);
         $run->log("Agent asked {$count} ".str('question')->plural($count).". Waiting up to {$minutes} min for your answer.");
@@ -210,7 +225,7 @@ class ClaudeCli implements Claude
     /** One user message in the CLI's stream-json input format, as a line. */
     private static function userMessage(string $text): string
     {
-        return json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => $text]])."\n";
+        return json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => $text]], JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR)."\n";
     }
 
     public function oneShot(Repository $repo, string $prompt, ?array $schema = null): OneShotResult
@@ -388,7 +403,7 @@ class ClaudeCli implements Claude
 
             // The CLI echoes each message it takes from stdin; the first is the prompt
             if (($event['type'] ?? null) === 'user' && ($event['isReplay'] ?? false) && is_string($text = $event['message']['content'] ?? null)) {
-                foreach ([self::OPERATOR_PREFIX, self::ANSWER_PREFIX] as $prefix) {
+                foreach ([self::OPERATOR_PREFIX, self::AFTER_TURN_PREFIX] as $prefix) {
                     if (str_starts_with($text, $prefix)) {
                         $run->log('You: '.str(substr($text, strlen($prefix)))->squish()->limit(300));
                     }

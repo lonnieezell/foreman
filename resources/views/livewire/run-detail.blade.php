@@ -87,7 +87,7 @@
         </div>
     @elseif ($run->waitsForAnswer())
         <div class="notice">
-            <p>The agent has a question and is waiting for your answer. Answer in the thread below by {{ $run->question_until->format('H:i') }} and it goes straight into the same session. After that, the run stops on the question and you answer it here, then choose <strong>Continue</strong>.</p>
+            <p>The agent has a question and is waiting for your answer. Answer in the thread below, and it goes straight into the same session. The window closes {{ $run->question_until->diffForHumans() }}. After that, the run stops on the question and you answer it here, then choose <strong>Continue</strong>.</p>
         </div>
     @elseif ($run->askedQuestion())
         <div class="notice">

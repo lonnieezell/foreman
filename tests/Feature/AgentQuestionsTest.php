@@ -7,6 +7,7 @@ use App\Jobs\ProcessRun;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Services\AgentReport;
+use App\Services\Claude\AgentResult;
 use App\Services\GitHub;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -110,15 +111,15 @@ class AgentQuestionsTest extends TestCase
         $this->claude->onAgent = function (array $call) {
             $call['run']->messages()->create(['role' => 'agent', 'body' => 'Include archived rows?']);
             File::ensureDirectoryExists("{$this->worktree}/.foreman");
-            File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'question', 'questions' => ['Include archived rows?', 'CSV or JSON?']]));
+            File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'question', 'questions' => ['Include archived rows?']]));
 
-            return FakeClaude::result(['type' => 'result', 'num_turns' => 1, 'session_id' => 'abc']);
+            return new AgentResult(['type' => 'result', 'num_turns' => 1], 'abc', questionsKept: true);
         };
 
         $run = $this->process($this->makeRun());
 
         $this->assertTrue($run->askedQuestion());
-        $this->assertSame(['Include archived rows?', 'CSV or JSON?'], $run->messages->pluck('body')->all());
+        $this->assertSame(['Include archived rows?'], $run->messages->pluck('body')->all());
     }
 
     /** A finished question run with the agent's questions, then each answer. */
@@ -154,15 +155,20 @@ class AgentQuestionsTest extends TestCase
 
     public function test_a_resume_leaves_out_messages_the_live_session_already_got(): void
     {
-        $asked = $this->askedRun(['Use the export job.', 'Yes, include them.']);
+        // Answered live, then a second question went unanswered until after the run stopped
+        $asked = $this->askedRun(['Use the export job.']);
         $asked->messages()->where('body', 'Use the export job.')->update(['sent_at' => now()]);
+        $asked->messages()->create(['role' => 'agent', 'body' => 'CSV or JSON?']);
+        $asked->messages()->create(['role' => 'human', 'body' => 'CSV.']);
         $this->agentWrites(['outcome' => 'needs_human', 'reason' => 'r', 'comment' => 'c']);
 
         $this->process($this->makeRun(['previous_run_id' => $asked->id]));
         $prompt = $this->claude->agentCalls[0]['prompt'];
 
-        $this->assertStringContainsString('Yes, include them.', $prompt);
+        $this->assertStringContainsString('CSV or JSON?', $prompt);
+        $this->assertStringContainsString('CSV.', $prompt);
         $this->assertStringNotContainsString('Use the export job.', $prompt);
+        $this->assertStringNotContainsString('Include archived rows?', $prompt);
     }
 
     public function test_a_resume_lists_the_questions_asked_before_the_answers(): void

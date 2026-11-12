@@ -377,9 +377,9 @@ class ProcessRun implements ShouldQueue
         if ($result->kind === Outcome::Question) {
             // The questions stay in Foreman; the issue only learns that one was asked.
             // A live session that waited for an answer already kept them (ADR 0009)
-            $kept = $run->messages()->where('role', RunMessage::AGENT)->pluck('body')->all();
-            $new = array_diff($result->questions, $kept);
-            $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $new));
+            if (! $agent->questionsKept) {
+                $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $result->questions));
+            }
             $count = count($result->questions);
             $this->handToHuman($run, $github, "Foreman's agent has a question. It's being answered in Foreman.",
                 'Agent asked '.$count.' '.str('question')->plural($count).'.', 'question');
@@ -870,8 +870,9 @@ class ProcessRun implements ShouldQueue
         // Written in Foreman, which runs on localhost only, so it is trusted operator text (ADR 0001)
         // Messages sent into the live session are already in the conversation being resumed (ADR 0009)
         $answers = $messages->where('role', RunMessage::HUMAN)->whereNull('sent_at')->pluck('body')->implode("\n\n");
-        // A session that read the issue wrote these, so they are not
-        $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
+        // A session that read the issue wrote these, so they are not. Those before the last live answer were answered in the session
+        $answeredLive = $messages->where('role', RunMessage::HUMAN)->whereNotNull('sent_at')->max('id') ?? 0;
+        $questions = $messages->where('role', RunMessage::AGENT)->where('id', '>', $answeredLive)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
         $replies = array_filter([
             $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",

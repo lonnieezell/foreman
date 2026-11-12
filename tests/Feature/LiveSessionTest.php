@@ -118,7 +118,42 @@ class LiveSessionTest extends TestCase
         // The result file is left for Foreman's usual question flow
         $this->assertFileExists("{$this->worktree}/.foreman/result.json");
         $this->assertSame('sess-9', $agent->sessionId);
+        $this->assertTrue($agent->questionsKept);
         $this->assertStringContainsString('No answer within 1 min. Ending the session on the question.', File::get($run->logPath()));
+    }
+
+    public function test_the_question_window_ends_at_the_runs_time_limit_so_the_run_stops_on_the_question(): void
+    {
+        $run = $this->makeRun(['question_window_minutes' => 10, 'max_minutes' => 1]);
+        $this->agentAsks('Include archived rows?');
+        // The fake runs on for a few ticks after stdin closes, as a real CLI may while it exits
+        $this->fakeLiveClaude([self::RESULT], idle: 35);
+
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+
+        $this->assertTrue($this->started[0]->input->isClosed());
+        $this->assertTrue($agent->questionsKept);
+        $this->assertFileExists("{$this->worktree}/.foreman/result.json");
+    }
+
+    public function test_a_message_sent_after_a_turn_ends_starts_a_new_turn_that_writes_its_own_result(): void
+    {
+        $run = $this->makeRun(['question_window_minutes' => 10]);
+        $this->agentAsks('Include archived rows?');
+        File::put("{$this->worktree}/.foreman/review.json", '{}');
+        // Posted before Foreman opened the window for the question
+        $run->messages()->create(['role' => 'human', 'body' => 'Use the export job instead.']);
+        $this->fakeLiveClaude([self::RESULT]);
+
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+
+        $sent = $this->sentMessages()[1]['message']['content'];
+        $this->assertStringContainsString('Use the export job instead.', $sent);
+        $this->assertStringContainsString('.foreman/result.json', $sent);
+        $this->assertFileDoesNotExist("{$this->worktree}/.foreman/result.json");
+        $this->assertFileExists("{$this->worktree}/.foreman/review.json");
+        $this->assertSame(0, $run->messages()->where('role', 'agent')->count());
+        $this->assertFalse($agent->questionsKept);
     }
 
     public function test_a_question_with_the_window_off_ends_the_session_at_once(): void
