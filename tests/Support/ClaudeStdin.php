@@ -13,7 +13,7 @@ final class ClaudeStdin
     private static ?WeakMap $read = null;
 
     /**
-     * The stream-json messages written so far, in order. Reading reopens the stream, so check `isClosed()` first.
+     * The stream-json messages written so far, in order.
      *
      * @return list<array>
      */
@@ -27,6 +27,7 @@ final class ClaudeStdin
             return [];
         }
         $messages = self::$read[$stream] ?? [];
+        $closed = $stream->isClosed();
 
         // Once drained, the stream yields '' for as long as it's open
         foreach ($stream as $chunk) {
@@ -35,6 +36,11 @@ final class ClaudeStdin
             }
 
             $messages[] = json_decode($chunk, true);
+        }
+
+        // Iterating reopens the stream, so it is closed again for tests that check it
+        if ($closed) {
+            $stream->close();
         }
 
         return self::$read[$stream] = $messages;

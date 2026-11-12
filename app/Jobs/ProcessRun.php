@@ -236,7 +236,9 @@ class ProcessRun implements ShouldQueue
         };
 
         // A fresh session is never saved: a correction round or a continued run must resume the implementation's
-        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh);
+        // A conflict fix's questions explain a failure, so it doesn't wait for answers
+        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh,
+            questionWindow: $run->isConflictFix() ? 0 : $repo->question_window_minutes);
         // Adds to what the run already spent, such as the classifier's call or an earlier pass
         $run->addUsage($agent->usage());
 
@@ -378,7 +380,7 @@ class ProcessRun implements ShouldQueue
             // The questions stay in Foreman; the issue only learns that one was asked.
             // A live session that waited for an answer already kept them (ADR 0009)
             if (! $agent->questionsKept) {
-                $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $result->questions));
+                $run->keepQuestions($result->questions);
             }
             $count = count($result->questions);
             $this->handToHuman($run, $github, "Foreman's agent has a question. It's being answered in Foreman.",

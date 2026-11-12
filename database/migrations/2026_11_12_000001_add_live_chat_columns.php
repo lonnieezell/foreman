@@ -18,15 +18,20 @@ return new class extends Migration
             $table->timestamp('question_until')->nullable();
         });
 
-        // When Foreman sent an operator's message into the live session. Null: it waits for Continue or Start over
+        // When Foreman sent an operator's message into the live session. Null: it waits for Continue or Start over.
+        // The index serves the live session's look for unsent messages every few seconds
         Schema::table('run_messages', function (Blueprint $table) {
             $table->timestamp('sent_at')->nullable();
+            $table->index(['run_id', 'sent_at']);
         });
     }
 
     public function down(): void
     {
-        Schema::table('run_messages', fn (Blueprint $table) => $table->dropColumn('sent_at'));
+        Schema::table('run_messages', function (Blueprint $table) {
+            $table->dropIndex(['run_id', 'sent_at']);
+            $table->dropColumn('sent_at');
+        });
         Schema::table('runs', fn (Blueprint $table) => $table->dropColumn('question_until'));
         Schema::table('repositories', fn (Blueprint $table) => $table->dropColumn('question_window_minutes'));
     }

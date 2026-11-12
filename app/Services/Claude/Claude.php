@@ -18,8 +18,9 @@ interface Claude
      * @param  string|float|null  $budget  The most this pass may spend, in USD. Null means no cap.
      * @param  bool  $allowLockFiles  Lets the agent edit lock files, for issues labelled `dependencies`.
      * @param  bool  $saveSession  Saves the session id on the run as it streams, so a later run can resume it.
+     * @param  int  $questionWindow  Minutes a turn that ends on a question keeps the session open for the operator's answer. 0 ends it at once (ADR 0009).
      */
-    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true): AgentResult;
+    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true, int $questionWindow = 0): AgentResult;
 
     /**
      * A single Haiku call with no tools, outside any project, for the scope judge and the usage probe.

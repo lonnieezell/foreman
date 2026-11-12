@@ -293,6 +293,8 @@ class ConflictFixTest extends TestCase
         $this->assertSame('sess-1', $call['resume']);
         $this->assertStringContainsString('app/Foo.php', $call['prompt']);
         $this->assertStringContainsString('origin/main', $call['prompt']);
+        // Its questions explain a failure, so it never waits for answers (ADR 0009)
+        $this->assertSame(0, $call['questionWindow']);
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('ccccccc3333', $run->head_sha);
         $this->assertSame(1, $run->pr_round);

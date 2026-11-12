@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\AgentReport;
 use App\Services\Claude\ClaudeCli;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
@@ -71,12 +72,12 @@ class LiveSessionTest extends TestCase
     private function agentAsks(string ...$questions): void
     {
         File::ensureDirectoryExists("{$this->worktree}/.foreman");
-        File::put("{$this->worktree}/.foreman/result.json", json_encode(['outcome' => 'question', 'questions' => $questions]));
+        File::put("{$this->worktree}/".AgentReport::RESULT_FILE, json_encode(['outcome' => 'question', 'questions' => $questions]));
     }
 
     public function test_an_answer_inside_the_question_window_goes_into_the_same_session(): void
     {
-        $run = $this->makeRun(['question_window_minutes' => 10]);
+        $run = $this->makeRun();
         $this->agentAsks('Include archived rows?');
         $this->fakeLiveClaude([self::RESULT], idle: 20);
 
@@ -88,35 +89,35 @@ class LiveSessionTest extends TestCase
             }
         });
 
-        (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+        (new ClaudeCli)->agent($run, $this->worktree, 'Do it', questionWindow: 10);
 
         $this->assertCount(1, $this->started);
         // Still open for the agent's next turn
         $this->assertFalse($this->started[0]->input->isClosed());
         $answer = $this->sentMessages()[1]['message']['content'];
         $this->assertStringContainsString('No, only active rows.', $answer);
-        $this->assertStringContainsString('.foreman/result.json', $answer);
+        $this->assertStringContainsString(AgentReport::RESULT_FILE, $answer);
         $this->assertSame([['agent', 'Include archived rows?'], ['human', 'No, only active rows.']], $run->messages->map(fn ($m) => [$m->role, $m->body])->all());
         $this->assertNull($run->fresh()->question_until);
         // The agent writes a fresh result for the turn the answer starts
-        $this->assertFileDoesNotExist("{$this->worktree}/.foreman/result.json");
+        $this->assertFileDoesNotExist("{$this->worktree}/".AgentReport::RESULT_FILE);
         $this->assertStringContainsString('Agent asked 1 question. Waiting up to 10 min for your answer.', File::get($run->logPath()));
     }
 
     public function test_with_no_answer_in_the_question_window_the_session_ends_on_the_question(): void
     {
-        $run = $this->makeRun(['question_window_minutes' => 1]);
+        $run = $this->makeRun();
         $this->agentAsks('Include archived rows?');
         // 2 seconds a tick, so the minute runs out well before the fake process stops
         $this->fakeLiveClaude([self::RESULT], idle: 40);
 
-        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it', questionWindow: 1);
 
         $this->assertTrue($this->started[0]->input->isClosed());
         $this->assertCount(1, $this->sentMessages());
         $this->assertNull($run->fresh()->question_until);
         // The result file is left for Foreman's usual question flow
-        $this->assertFileExists("{$this->worktree}/.foreman/result.json");
+        $this->assertFileExists("{$this->worktree}/".AgentReport::RESULT_FILE);
         $this->assertSame('sess-9', $agent->sessionId);
         $this->assertTrue($agent->questionsKept);
         $this->assertStringContainsString('No answer within 1 min. Ending the session on the question.', File::get($run->logPath()));
@@ -124,33 +125,33 @@ class LiveSessionTest extends TestCase
 
     public function test_the_question_window_ends_at_the_runs_time_limit_so_the_run_stops_on_the_question(): void
     {
-        $run = $this->makeRun(['question_window_minutes' => 10, 'max_minutes' => 1]);
+        $run = $this->makeRun(['max_minutes' => 1]);
         $this->agentAsks('Include archived rows?');
         // The fake runs on for a few ticks after stdin closes, as a real CLI may while it exits
         $this->fakeLiveClaude([self::RESULT], idle: 35);
 
-        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it', questionWindow: 10);
 
         $this->assertTrue($this->started[0]->input->isClosed());
         $this->assertTrue($agent->questionsKept);
-        $this->assertFileExists("{$this->worktree}/.foreman/result.json");
+        $this->assertFileExists("{$this->worktree}/".AgentReport::RESULT_FILE);
     }
 
     public function test_a_message_sent_after_a_turn_ends_starts_a_new_turn_that_writes_its_own_result(): void
     {
-        $run = $this->makeRun(['question_window_minutes' => 10]);
+        $run = $this->makeRun();
         $this->agentAsks('Include archived rows?');
         File::put("{$this->worktree}/.foreman/review.json", '{}');
         // Posted before Foreman opened the window for the question
         $run->messages()->create(['role' => 'human', 'body' => 'Use the export job instead.']);
         $this->fakeLiveClaude([self::RESULT]);
 
-        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+        $agent = (new ClaudeCli)->agent($run, $this->worktree, 'Do it', questionWindow: 10);
 
         $sent = $this->sentMessages()[1]['message']['content'];
         $this->assertStringContainsString('Use the export job instead.', $sent);
-        $this->assertStringContainsString('.foreman/result.json', $sent);
-        $this->assertFileDoesNotExist("{$this->worktree}/.foreman/result.json");
+        $this->assertStringContainsString(AgentReport::RESULT_FILE, $sent);
+        $this->assertFileDoesNotExist("{$this->worktree}/".AgentReport::RESULT_FILE);
         $this->assertFileExists("{$this->worktree}/.foreman/review.json");
         $this->assertSame(0, $run->messages()->where('role', 'agent')->count());
         $this->assertFalse($agent->questionsKept);
@@ -158,7 +159,7 @@ class LiveSessionTest extends TestCase
 
     public function test_a_question_with_the_window_off_ends_the_session_at_once(): void
     {
-        $run = $this->makeRun(['question_window_minutes' => 0]);
+        $run = $this->makeRun();
         $this->agentAsks('Include archived rows?');
         $this->fakeLiveClaude([self::RESULT]);
 

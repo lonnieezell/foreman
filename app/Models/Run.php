@@ -58,6 +58,18 @@ class Run extends Model
         return $this->hasMany(RunMessage::class)->orderBy('id');
     }
 
+    /** The operator's messages the agent hasn't had yet: not sent into a live session (ADR 0009). */
+    public function unsentReplies(): HasMany
+    {
+        return $this->messages()->where('role', RunMessage::HUMAN)->whereNull('sent_at');
+    }
+
+    /** @param  list<string>  $questions  The agent's questions, kept in the run's thread (ADR 0001). */
+    public function keepQuestions(array $questions): void
+    {
+        $this->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $questions));
+    }
+
     /** @return Collection<int,Run> This run and the runs it continues, oldest first. */
     public function chain(): Collection
     {
@@ -181,7 +193,7 @@ class Run extends Model
     /** Whether the operator wrote anything in Foreman that the agent hasn't had yet. */
     public function hasOperatorReply(): bool
     {
-        return $this->messages()->where('role', RunMessage::HUMAN)->whereNull('sent_at')->exists();
+        return $this->unsentReplies()->exists();
     }
 
     /**

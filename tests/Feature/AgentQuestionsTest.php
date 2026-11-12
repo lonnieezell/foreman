@@ -102,6 +102,7 @@ class AgentQuestionsTest extends TestCase
         $this->assertSame([['agent', 'Include archived rows?'], ['agent', 'CSV or JSON?']],
             $run->messages->map(fn ($m) => [$m->role, $m->body])->all());
         $this->assertStringContainsString('Agent asked 2 questions.', $run->tail());
+        $this->assertSame(10, $this->claude->agentCalls[0]['questionWindow']);
         $this->assertFalse($this->git->didPush());
     }
 
