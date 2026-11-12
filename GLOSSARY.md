@@ -49,8 +49,12 @@ A short, normalized name for what an **observation** or measured fact is about, 
 _Avoid_: fingerprint, signature
 
 **Question**:
-An agent's stop to ask the operator something it can't decide alone, such as what an ambiguous spec means. It is the `question` outcome. It is answered in Foreman, then the run resumes. Compare a **blocker** (`needs_human`), which needs the operator to change the repo, the issue or the settings, and stays on the issue. See ADR 0001.
+An agent's stop to ask the operator something it can't decide alone, such as what an ambiguous spec means. It is the `question` outcome. It is answered in Foreman: live during the **question window**, or later with Continue. Compare a **blocker** (`needs_human`), which needs the operator to change the repo, the issue or the settings, and stays on the issue. See ADR 0001.
 _Avoid_: clarification, needs_human (for questions)
+
+**Question window**:
+How long a live session stays open for the operator's answer after the agent asks a **question**. An answer inside it goes into the same session. With no answer in time, the run ends on the question and waits for Continue. A repository setting, 0 to 120 minutes. See ADR 0009.
+_Avoid_: timeout, grace period
 
 **Scorecard**:
 One run's record for the self-improvement loop: its measured facts, from plain code, plus the judge's **observations**. Each ended run gets one, except cancelled runs. See ADR 0008.

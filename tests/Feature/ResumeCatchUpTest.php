@@ -13,6 +13,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Mockery;
+use Tests\Support\ClaudeStdin;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
@@ -27,6 +28,8 @@ class ResumeCatchUpTest extends TestCase
 
     /** @var list<string>|null What the Worktree had done when the agent started. */
     private ?array $beforeAgent = null;
+
+    private ?string $agentPrompt = null;
 
     /** @var list<string>|null What the Worktree had done when the setup script ran. */
     private ?array $beforeSetup = null;
@@ -71,6 +74,7 @@ class ResumeCatchUpTest extends TestCase
 
             if ($process->command[0] === 'claude') {
                 $this->beforeAgent ??= $this->git->calls;
+                $this->agentPrompt ??= ClaudeStdin::prompt($process);
             }
 
             if ($process->command === ['bash', '-ec', 'true']) {
@@ -91,9 +95,7 @@ class ResumeCatchUpTest extends TestCase
     /** The prompt the agent was started with. */
     private function prompt(): string
     {
-        $claude = collect($this->ran)->first(fn (array $command) => $command[0] === 'claude');
-
-        return $claude[array_search('-p', $claude, true) + 1];
+        return $this->agentPrompt;
     }
 
     public function test_a_resumed_run_catches_up_with_the_base_after_fetching_before_the_agent_starts(): void

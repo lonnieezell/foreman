@@ -94,7 +94,7 @@ class RunThreadTest extends TestCase
     public static function runsWithoutABox(): array
     {
         return [
-            'active' => [['status' => RunStatus::Working, 'stop_reason' => null, 'finished_at' => null]],
+            'active with no agent running' => [['status' => RunStatus::Reviewing, 'stop_reason' => null, 'finished_at' => null]],
             'handed over with a PR' => [['stop_reason' => 'rounds_ran_out', 'pr_url' => 'https://github.com/owner/app/pull/3']],
         ];
     }
@@ -110,6 +110,29 @@ class RunThreadTest extends TestCase
             ->call('postMessage');
 
         $this->assertSame(0, $run->messages()->count());
+    }
+
+    public function test_a_run_whose_agent_is_live_takes_a_message_for_the_session(): void
+    {
+        $run = $this->makeRun(['status' => RunStatus::Working, 'stop_reason' => null, 'finished_at' => null, 'pid' => 4242]);
+
+        Livewire::test(RunDetail::class, ['run' => $run])
+            ->assertSee('The agent gets it within a few seconds')
+            ->assertDontSee('The agent has a question')
+            ->set('message', 'Stop, that is the wrong file.')
+            ->call('postMessage');
+
+        $this->assertSame(['Stop, that is the wrong file.'], $run->messages()->pluck('body')->all());
+    }
+
+    public function test_a_run_waiting_in_its_question_window_asks_for_an_answer_now(): void
+    {
+        $run = $this->makeRun(['status' => RunStatus::Working, 'stop_reason' => null, 'finished_at' => null, 'pid' => 4242, 'question_until' => now()->addMinutes(10)]);
+        $run->messages()->create(['role' => 'agent', 'body' => 'Include archived rows?']);
+
+        Livewire::test(RunDetail::class, ['run' => $run])
+            ->assertSee('The agent has a question and is waiting for your answer')
+            ->assertSee('Your answer');
     }
 
     public function test_continue_on_a_question_run_asks_for_a_confirm_only_while_nothing_answers_the_question(): void

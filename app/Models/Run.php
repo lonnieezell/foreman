@@ -35,6 +35,7 @@ class Run extends Model
             'heartbeat_at' => 'datetime',
             'watch_started_at' => 'datetime',
             'handled_at' => 'datetime',
+            'question_until' => 'datetime',
             'pr_feedback' => 'array',
             'risk_tier' => 'integer',
         ];
@@ -140,12 +141,24 @@ class Run extends Model
     }
 
     /**
-     * The operator can post in the thread once the run stops. A run with a PR is the human's from here.
+     * The operator can post in the thread while the agent is live, or once the run stops. A run with a PR is the human's from here.
      * Only the issue's newest run takes messages, because a resume reads them from the run it continues.
      */
     public function takesMessages(): bool
     {
-        return ! $this->status->isActive() && ! $this->pr_url && $this->isNewestForIssue();
+        return $this->isLive() || (! $this->status->isActive() && ! $this->pr_url && $this->isNewestForIssue());
+    }
+
+    /** The agent's session is running, so a message goes straight into it (ADR 0009). */
+    public function isLive(): bool
+    {
+        return $this->status->isActive() && $this->pid !== null;
+    }
+
+    /** The agent asked a question and its session is still open for the answer (ADR 0009). */
+    public function waitsForAnswer(): bool
+    {
+        return $this->isLive() && $this->question_until?->isFuture();
     }
 
     private function isNewestForIssue(): bool
@@ -165,10 +178,10 @@ class Run extends Model
         return (string) str($this->messages()->where('role', RunMessage::AGENT)->value('body'))->squish();
     }
 
-    /** Whether the operator wrote anything in Foreman since the run stopped. */
+    /** Whether the operator wrote anything in Foreman that the agent hasn't had yet. */
     public function hasOperatorReply(): bool
     {
-        return $this->messages()->where('role', RunMessage::HUMAN)->exists();
+        return $this->messages()->where('role', RunMessage::HUMAN)->whereNull('sent_at')->exists();
     }
 
     /**

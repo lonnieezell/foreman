@@ -57,6 +57,8 @@ class RepositoryForm extends Component
 
     public int $max_minutes = 45;
 
+    public int $question_window_minutes = 10;
+
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
 
     public string $locked_paths = '';
@@ -94,7 +96,7 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'max_turns',
-                'max_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
+                'max_minutes', 'question_window_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
             ]));
             $this->auto_merge_max_tier = (string) $repository->auto_merge_max_tier;
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
@@ -192,6 +194,7 @@ class RepositoryForm extends Component
             'claude_profile' => [config('foreman.claude_profiles') ? 'required' : 'nullable', Rule::in(array_keys(config('foreman.claude_profiles')))],
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
+            'question_window_minutes' => ['required', 'integer', 'between:0,120'],
             'allowed_tools' => ['required', 'string'],
             'locked_paths' => ['nullable', 'string'],
             'setup_script' => ['required', 'string'],

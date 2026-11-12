@@ -62,7 +62,7 @@ The file says one of four things:
 | Outcome | What the file holds | What Foreman does | The run ends as |
 | --- | --- | --- | --- |
 | `pr` | A title and a body | Runs the checks below, then pushes the branch and opens the PR. It adds `Closes #<n>` to the top of the body unless the body already starts with it, and its own footer at the bottom. It also adds a `risk:tier-<n>` label to the PR. | **Watching PR**, or **PR opened** if Watch PRs is off |
-| `question` | One or more questions | Saves each question in Foreman, adds the human label and posts one fixed comment: "Foreman's agent has a question. It's being answered in Foreman." The questions themselves never go on the issue. | **Needs you** |
+| `question` | One or more questions | Waits for your answer in the live session for the [question window](repository-settings.md#question-window). With no answer in time: saves each question in Foreman, adds the human label and posts one fixed comment: "Foreman's agent has a question. It's being answered in Foreman." The questions themselves never go on the issue. | **Needs you** |
 | `needs_human` | A comment and a reason | Posts the comment on the issue and adds the human label (`needs-human`) | **Needs you** |
 | `already_done` | A comment | Posts the comment on the issue and adds the human label | **Needs you** |
 

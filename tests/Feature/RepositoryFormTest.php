@@ -193,6 +193,23 @@ class RepositoryFormTest extends TestCase
             ->assertHasNoErrors();
     }
 
+    public function test_the_question_window_loads_saves_and_must_be_0_to_120_minutes(): void
+    {
+        $repository = $this->repository(['question_window_minutes' => 10]);
+        $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
+
+        Livewire::test(RepositoryForm::class, ['repository' => $repository])
+            ->assertSet('question_window_minutes', 10)
+            ->set('question_window_minutes', 121)
+            ->call('save', $github)
+            ->assertHasErrors('question_window_minutes')
+            ->set('question_window_minutes', 0)
+            ->call('save', $github)
+            ->assertHasNoErrors();
+
+        $this->assertSame(0, $repository->fresh()->question_window_minutes);
+    }
+
     public function test_saving_a_changed_label_creates_the_labels(): void
     {
         $github = Mockery::mock(GitHub::class);

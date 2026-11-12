@@ -375,8 +375,11 @@ class ProcessRun implements ShouldQueue
         }
 
         if ($result->kind === Outcome::Question) {
-            // The questions stay in Foreman; the issue only learns that one was asked
-            $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $result->questions));
+            // The questions stay in Foreman; the issue only learns that one was asked.
+            // A live session that waited for an answer already kept them (ADR 0009)
+            $kept = $run->messages()->where('role', RunMessage::AGENT)->pluck('body')->all();
+            $new = array_diff($result->questions, $kept);
+            $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $new));
             $count = count($result->questions);
             $this->handToHuman($run, $github, "Foreman's agent has a question. It's being answered in Foreman.",
                 'Agent asked '.$count.' '.str('question')->plural($count).'.', 'question');
@@ -865,7 +868,8 @@ class ProcessRun implements ShouldQueue
         $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at);
         $messages = $run->previousRun?->messages ?? collect();
         // Written in Foreman, which runs on localhost only, so it is trusted operator text (ADR 0001)
-        $answers = $messages->where('role', RunMessage::HUMAN)->pluck('body')->implode("\n\n");
+        // Messages sent into the live session are already in the conversation being resumed (ADR 0009)
+        $answers = $messages->where('role', RunMessage::HUMAN)->whereNull('sent_at')->pluck('body')->implode("\n\n");
         // A session that read the issue wrote these, so they are not
         $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
