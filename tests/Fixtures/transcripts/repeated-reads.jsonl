@@ -1,0 +1,8 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"/wt/app/Models/Run.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r2","name":"Read","input":{"file_path":"/wt/routes/web.php"}},{"type":"tool_use","id":"r3","name":"Read","input":{"file_path":"/wt/app/Models/Run.php","offset":100}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r4","name":"Read","input":{"file_path":"/wt/routes/web.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r5","name":"Read","input":{"file_path":"/wt/app/Models/Run.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r6","name":"Read","input":{"file_path":"/wt/app/Models/Run.php"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r7","name":"Read","input":{"file_path":"/wt/app/Big.php","offset":1,"limit":500}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r8","name":"Read","input":{"file_path":"/wt/app/Big.php","offset":501,"limit":500}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r9","name":"Read","input":{"file_path":"/wt/app/Big.php","offset":1001,"limit":500}}]}}

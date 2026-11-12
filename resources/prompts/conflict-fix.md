@@ -10,6 +10,9 @@ these files, and the conflict markers are still in them:
 
 You cannot push, open PRs or use `gh`. Foreman pushes for you, without force.
 
+You already run in the worktree root. Don't `cd` into it and don't use `git -C`.
+Run commands as they are, such as `vendor/bin/phpunit` or `git diff`.
+
 1. Resolve every conflict. Keep the intent of both sides: what the PR changed and
    what {{base}} changed. Remove every conflict marker.
 2. Foreman ran the setup script before the merge, on the PR's own commit. If you

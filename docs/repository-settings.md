@@ -188,11 +188,13 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 
 - read and edit files, search, and use skills and sub-agents
 - run the git commands that inspect and commit: `git status`, `git diff`, `git log`, `git show`, `git add` and `git commit`
-- copy and move files and make folders: `cp`, `mv` and `mkdir`. `rm` is not on the list.
-- run `composer`, `php`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
+- run everyday git work: `git checkout`, `git restore`, `git rm`, `git mv`, `git stash`, `git clean`, `git fetch`, `git check-ignore` and `git grep`
+- copy, move and delete files, make folders, and edit with `sed`: `cp`, `mv`, `rm`, `mkdir` and `sed`
+- read and search with shell tools: `grep`, `ls`, `cat`, `head`, `tail`, `wc`, `find` and `echo`
+- run `composer`, `php`, `./vendor/bin/*`, `vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
 - run Rust tools (`cargo`, `rustfmt`) and Python tools (`python`, `python3`, `pytest`, `ruff`, `mypy`, `pyright`, `uv` and `poetry`)
 
-The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). A call that isn't on the list waits for you to [approve it](runs.md#approving-tool-calls) on the run page. With no answer within the [approval timeout](#approval-timeout), it is refused. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command. It also says that a `needs_human` result caused by a refusal must name each refused command.
+The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). A call that isn't on the list waits for you to [approve it](runs.md#approving-tool-calls) on the run page. With no answer within the [approval timeout](#approval-timeout), it is refused. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command. It also says that a `needs_human` result caused by a refusal must name each refused command. The agent prompts also tell the agent it already runs in the worktree root. A `cd` into it or `git -C` would turn a plain command into one that doesn't match the list.
 
 The form shows the list as chips, grouped into Files, Agents, Shell and Other. A shell chip shows what's inside `Bash(…)`, so `Bash(npm:*)` shows as `npm:*`. Hover a chip to see the full entry.
 
@@ -204,13 +206,13 @@ Fix-up rounds use the same list. Foreman reads the CI results and puts them in t
 
 #### Old tool lists
 
-A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman doesn't touch saved lists. Instead, the settings page shows a notice above the list, and the old entries are struck through. **Remove them** takes out just those entries and keeps the rest of the list. When it takes out `Bash(git:*)`, it adds the six narrower git entries above that are missing, so the agent can still commit. Click **Save changes** to keep the result.
+A repository saved before Foreman took over pushing may still list `Bash(git:*)`, `Bash(gh issue:*)` or `Bash(gh pr create:*)`. Foreman never removes entries from a saved list. Instead, the settings page shows a notice above the list, and the old entries are struck through. **Remove them** takes out just those entries and keeps the rest of the list. When it takes out `Bash(git:*)`, it adds the narrower git entries above that are missing, so the agent can still commit. Click **Save changes** to keep the result.
 
 If the list can't run `git add` and `git commit`, the settings page shows a warning. The agent can't commit its work without them, so every run ends as **Needs you**.
 
 The `gh` entries do nothing now. The guard hook blocks every `gh` command and `git push`, whatever the list says. `Bash(git:*)` still matters, because it lets the agent run git commands beyond inspecting and committing. Keep it only if you need that.
 
-A saved list also misses entries added to the default later, such as `Bash(php:*)`, `Bash(cp:*)`, `Bash(mv:*)` and `Bash(mkdir:*)`. Without it, commands like `php -v` or `php -l` are refused. Add it with **+ Add tool**, or click **Restore default**. Then click **Save changes**.
+A saved list doesn't follow the default on its own. When the default gained the shell tools and git commands above and `Bash(vendor/bin/*)`, a migration added every default entry each saved list was missing. That includes older ones, such as `Bash(php:*)`. It kept the entries you added and removed nothing. It also put back any default entry you had taken out, so take it out again if you still don't want it. Entries added to the default later reach a saved list only when you add them with **+ Add tool** or click **Restore default**.
 
 ### Locked paths
 

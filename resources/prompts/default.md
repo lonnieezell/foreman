@@ -23,6 +23,9 @@ It holds one JSON object, in one of four shapes:
 - `{"outcome": "needs_human", "reason": "<short reason>", "comment": "<comment for the issue>"}`
 - `{"outcome": "already_done", "comment": "<comment for the issue>"}`
 
+You already run in the worktree root. Don't `cd` into it and don't use `git -C`.
+Run commands as they are, such as `vendor/bin/phpunit` or `git diff`.
+
 Bash runs only commands on an allowlist. A command off the list waits for your
 operator to allow it in Foreman. A denial covers only the commands in that call,
 not Bash as a whole. If one

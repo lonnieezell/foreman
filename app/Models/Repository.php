@@ -12,7 +12,7 @@ use RuntimeException;
 class Repository extends Model
 {
     /** The agent may inspect and commit but not push, and it has no `gh`: Foreman acts on GitHub. */
-    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*),Bash(cp:*),Bash(mv:*),Bash(mkdir:*),Bash(composer:*),Bash(php:*),Bash(./vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(cargo:*),Bash(rustfmt:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(pyright:*),Bash(uv:*),Bash(poetry:*)';
+    public const DEFAULT_ALLOWED_TOOLS = 'Read,Edit,Write,Glob,Grep,Skill,Agent,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*),Bash(git checkout:*),Bash(git restore:*),Bash(git rm:*),Bash(git mv:*),Bash(git stash:*),Bash(git clean:*),Bash(git fetch:*),Bash(git check-ignore:*),Bash(git grep:*),Bash(cp:*),Bash(mv:*),Bash(mkdir:*),Bash(rm:*),Bash(sed:*),Bash(grep:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(echo:*),Bash(composer:*),Bash(php:*),Bash(./vendor/bin/*),Bash(vendor/bin/*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(cargo:*),Bash(rustfmt:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(pyright:*),Bash(uv:*),Bash(poetry:*)';
 
     /** Entries from the old default that let the agent push or act on GitHub itself. */
     public const LEGACY_ALLOWED_TOOLS = ['Bash(git:*)', 'Bash(gh issue:*)', 'Bash(gh pr create:*)'];
