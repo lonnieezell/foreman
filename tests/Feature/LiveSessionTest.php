@@ -218,6 +218,18 @@ class LiveSessionTest extends TestCase
         $this->assertStringContainsString($logged, $log);
     }
 
+    public function test_a_request_left_from_an_earlier_session_is_not_answered_in_the_next(): void
+    {
+        $run = $this->makeRun();
+        $run->permissionRequests()->create(['request_id' => 'old', 'tool_name' => 'Bash', 'input' => ['command' => 'make'], 'expires_at' => now()->subMinute()]);
+        $this->fakeLiveClaude([self::RESULT]);
+
+        (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+
+        $this->assertCount(1, $this->sentMessages());
+        $this->assertSame(0, $run->permissionRequests()->count());
+    }
+
     public function test_a_session_of_several_turns_reports_its_whole_usage(): void
     {
         $run = $this->makeRun();

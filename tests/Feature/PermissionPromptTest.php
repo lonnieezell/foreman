@@ -86,16 +86,23 @@ class PermissionPromptTest extends TestCase
         $this->assertSame('Read,Edit,Bash(./vault test:*)', $run->repository->fresh()->allowed_tools);
     }
 
-    public function test_a_pattern_with_a_comma_or_nothing_in_it_is_refused(): void
+    public static function badPatterns(): array
+    {
+        return [
+            'a comma' => ['Bash(a:*),Bash'],
+            'nothing' => ['  '],
+            'no closing paren' => ['Bash(./vault:*'],
+        ];
+    }
+
+    #[DataProvider('badPatterns')]
+    public function test_a_pattern_that_isnt_one_allowlist_entry_is_refused(string $pattern): void
     {
         $run = $this->liveRun();
         $request = $this->ask($run);
 
         Livewire::test(RunDetail::class, ['run' => $run])
-            ->set("patterns.{$request->id}", 'Bash(a:*),Bash')
-            ->call('alwaysAllow', $request->id)
-            ->assertHasErrors("patterns.{$request->id}")
-            ->set("patterns.{$request->id}", '  ')
+            ->set("patterns.{$request->id}", $pattern)
             ->call('alwaysAllow', $request->id)
             ->assertHasErrors("patterns.{$request->id}");
 
@@ -103,19 +110,35 @@ class PermissionPromptTest extends TestCase
         $this->assertSame('Read,Edit', $run->repository->fresh()->allowed_tools);
     }
 
-    public function test_an_answer_after_the_call_timed_out_changes_nothing(): void
+    public static function lateAnswers(): array
+    {
+        return [
+            'the call timed out' => [fn (Run $run, PermissionRequest $request) => $request->decide(PermissionRequest::TIMEOUT), PermissionRequest::TIMEOUT],
+            'the session ended' => [fn (Run $run) => $run->update(['pid' => null]), null],
+        ];
+    }
+
+    #[DataProvider('lateAnswers')]
+    public function test_an_answer_that_comes_too_late_changes_nothing(\Closure $tooLate, ?string $decision): void
     {
         $run = $this->liveRun();
         $request = $this->ask($run);
-        $request->decide(PermissionRequest::TIMEOUT);
+        $page = Livewire::test(RunDetail::class, ['run' => $run])->set("patterns.{$request->id}", 'Bash(./vault:*)');
 
-        Livewire::test(RunDetail::class, ['run' => $run])
-            ->set("patterns.{$request->id}", 'Bash(./vault:*)')
-            ->call('alwaysAllow', $request->id)
+        $tooLate($run, $request);
+        $page->call('alwaysAllow', $request->id)
             ->assertSet('flash', 'That call was already answered, or it timed out.');
 
-        $this->assertSame(PermissionRequest::TIMEOUT, $request->fresh()->decision);
+        $this->assertSame($decision, $request->fresh()->decision);
         $this->assertSame('Read,Edit', $run->repository->fresh()->allowed_tools);
+    }
+
+    public function test_an_empty_input_goes_back_to_the_cli_as_an_object(): void
+    {
+        $request = $this->ask($this->liveRun(), 'mcp__docs__list', []);
+        $request->decide(PermissionRequest::ALLOW);
+
+        $this->assertStringContainsString('"updatedInput":{}', $request->controlResponse());
     }
 
     public function test_the_dashboard_flags_a_run_waiting_for_approval(): void

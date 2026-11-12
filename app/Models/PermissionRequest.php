@@ -40,7 +40,7 @@ class PermissionRequest extends Model
     /** Save the CLI's `can_use_tool` request, when `$event` is one, for the operator to answer before it expires. */
     public static function record(Run $run, array $event): void
     {
-        if (($event['type'] ?? null) !== 'control_request' || ($event['request']['subtype'] ?? null) !== 'can_use_tool') {
+        if (($event['type'] ?? null) !== 'control_request' || ($event['request']['subtype'] ?? null) !== 'can_use_tool' || ! isset($event['request_id'])) {
             return;
         }
 
@@ -111,8 +111,9 @@ class PermissionRequest extends Model
     private function response(): array
     {
         return match ($this->decision) {
-            self::ALLOW => ['behavior' => 'allow', 'updatedInput' => $this->input],
-            self::ALWAYS => ['behavior' => 'allow', 'updatedInput' => $this->input, 'updatedPermissions' => [
+            // An object, so an empty input is still `{}`
+            self::ALLOW => ['behavior' => 'allow', 'updatedInput' => (object) $this->input],
+            self::ALWAYS => ['behavior' => 'allow', 'updatedInput' => (object) $this->input, 'updatedPermissions' => [
                 ['type' => 'addRules', 'rules' => [self::rule($this->pattern)], 'behavior' => 'allow', 'destination' => 'session'],
             ]],
             self::DENY => ['behavior' => 'deny', 'message' => 'Your operator denied this call in Foreman.'.self::NEEDS_HUMAN],
@@ -133,7 +134,8 @@ class PermissionRequest extends Model
 
     private function timeoutMinutes(): int
     {
-        return (int) $this->created_at->diffInMinutes($this->expires_at, true);
+        // Rounded: created_at is set a moment after expires_at was worked out
+        return (int) round($this->created_at->diffInMinutes($this->expires_at, true));
     }
 
     /** `Bash(./vault:*)` as the CLI's rule: tool name and content. */

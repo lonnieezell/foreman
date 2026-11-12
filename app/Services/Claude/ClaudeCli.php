@@ -90,6 +90,8 @@ class ClaudeCli implements Claude
         $this->turnEnded = false;
         $this->echoes = [null];
         $this->saveSession = $saveSession;
+        // A request an earlier session left can't be answered: the CLI that asked is gone (ADR 0010)
+        $run->permissionRequests()->whereNull('sent_at')->delete();
 
         $stdin = new InputStream;
         $stdin->write(self::userMessage($prompt));

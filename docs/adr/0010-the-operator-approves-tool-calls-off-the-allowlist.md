@@ -24,6 +24,7 @@ Foreman answers permission prompts itself, over the live session's stdin. There 
 - **The operator answers on the run page.** Allow once, Always allow, or Deny. Always allow adds a pattern to the repository's allowed tools. Foreman suggests one from the call's first word, such as `Bash(./vault:*)`, and the operator can edit it. The answer also adds the pattern for the rest of the session.
 - **The live loop sends the answer.** Every 2 seconds it denies the requests past `expires_at`, then writes each answer the session hasn't had. It logs what was chosen.
 - **The first answer wins.** Deciding is a conditional update on an undecided row. A click after the timeout changes nothing, and the page says so.
+- **A request belongs to its session.** When a session starts, Foreman deletes the requests an earlier session left without an answer sent. The page only takes answers while the session is live.
 - **The dashboard flags a waiting run** with a **needs approval** badge.
 
 ## Consequences
