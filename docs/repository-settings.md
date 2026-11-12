@@ -112,6 +112,12 @@ The limit is not shared across a run. The [review pass](guardrails.md#risk-tiers
 
 A wall-clock limit each time Foreman starts the agent, from 1 to 600. Default: 45. When it's reached, Foreman stops Claude and the run fails with "Hit the 45-minute limit." The setup script doesn't count toward it. Like **Max turns per issue**, each pass of a run gets the full time again.
 
+### Question window
+
+How long a run with a question waits for your answer, from 0 to 120 minutes. Default: 10. While it waits, the agent's session stays open and holds a worker. An answer posted in time goes straight into the same session. With no answer in time, the run stops at **Needs you** and you answer, then click **Continue**. 0 stops the run as soon as the agent asks. See [Answering a question](runs.md#answering-a-question).
+
+The wait counts toward **Max time per issue**, and it never runs past that limit.
+
 ## Labels
 
 Foreman uses three GitHub labels. It creates them when you add the repository, and again when you save a change to a label or to the GitHub repository. Other saves skip GitHub, so they're quick. If a label already exists, Foreman updates its colour and description.

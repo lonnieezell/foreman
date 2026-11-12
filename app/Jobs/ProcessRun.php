@@ -236,7 +236,9 @@ class ProcessRun implements ShouldQueue
         };
 
         // A fresh session is never saved: a correction round or a continued run must resume the implementation's
-        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh);
+        // A conflict fix's questions explain a failure, so it doesn't wait for answers
+        $agent = app(Claude::class)->agent($run, $worktree, $prompt, $resume, $budget, $this->allowLockFiles, saveSession: ! $fresh,
+            questionWindow: $run->isConflictFix() ? 0 : $repo->question_window_minutes);
         // Adds to what the run already spent, such as the classifier's call or an earlier pass
         $run->addUsage($agent->usage());
 
@@ -375,8 +377,11 @@ class ProcessRun implements ShouldQueue
         }
 
         if ($result->kind === Outcome::Question) {
-            // The questions stay in Foreman; the issue only learns that one was asked
-            $run->messages()->createMany(array_map(fn (string $q) => ['role' => RunMessage::AGENT, 'body' => $q], $result->questions));
+            // The questions stay in Foreman; the issue only learns that one was asked.
+            // A live session that waited for an answer already kept them (ADR 0009)
+            if (! $agent->questionsKept) {
+                $run->keepQuestions($result->questions);
+            }
             $count = count($result->questions);
             $this->handToHuman($run, $github, "Foreman's agent has a question. It's being answered in Foreman.",
                 'Agent asked '.$count.' '.str('question')->plural($count).'.', 'question');
@@ -865,9 +870,11 @@ class ProcessRun implements ShouldQueue
         $comments = $github->trustedComments($run->repository, $run->issue_number, $run->previousRun?->finished_at);
         $messages = $run->previousRun?->messages ?? collect();
         // Written in Foreman, which runs on localhost only, so it is trusted operator text (ADR 0001)
-        $answers = $messages->where('role', RunMessage::HUMAN)->pluck('body')->implode("\n\n");
-        // A session that read the issue wrote these, so they are not
-        $questions = $messages->where('role', RunMessage::AGENT)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
+        // Messages sent into the live session are already in the conversation being resumed (ADR 0009)
+        $answers = $messages->where('role', RunMessage::HUMAN)->whereNull('sent_at')->pluck('body')->implode("\n\n");
+        // A session that read the issue wrote these, so they are not. Those before the last live answer were answered in the session
+        $answeredLive = $messages->where('role', RunMessage::HUMAN)->whereNotNull('sent_at')->max('id') ?? 0;
+        $questions = $messages->where('role', RunMessage::AGENT)->where('id', '>', $answeredLive)->map(fn (RunMessage $m) => IssueSanitiser::wrapText($m->body, clean: false))->implode("\n\n");
 
         $replies = array_filter([
             $answers === '' ? null : "Your operator answered in Foreman. Their messages are below.\n\n{$answers}",

@@ -1,6 +1,6 @@
 # Agent questions are answered in Foreman, not on the issue
 
-Status: accepted (2026-11-03)
+Status: accepted (2026-11-03). Partly superseded by ADR 0009: a question now waits in the live session for the question window before the run ends.
 
 ## Context
 

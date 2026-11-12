@@ -7,10 +7,12 @@ final class AgentResult
 {
     /**
      * @param  array|null  $outcome  The `result` event Claude ended on, or null when it never sent one.
+     * @param  bool  $questionsKept  The session already put the agent's last questions in the run's thread, while it waited for an answer (ADR 0009).
      */
     public function __construct(
         public readonly ?array $outcome = null,
         public readonly ?string $sessionId = null,
+        public readonly bool $questionsKept = false,
     ) {}
 
     /**

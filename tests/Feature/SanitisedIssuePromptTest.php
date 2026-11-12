@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Tests\Support\ClaudeStdin;
 use Tests\TestCase;
 
 class SanitisedIssuePromptTest extends TestCase
@@ -48,7 +49,7 @@ class SanitisedIssuePromptTest extends TestCase
         $prompt = null;
         Process::assertRan(function (PendingProcess $process) use (&$prompt) {
             if ($process->command[0] === 'claude') {
-                $prompt = $process->command[2];
+                $prompt = ClaudeStdin::prompt($process);
             }
 
             return $prompt !== null;

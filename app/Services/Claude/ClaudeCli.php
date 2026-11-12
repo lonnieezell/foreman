@@ -2,15 +2,22 @@
 
 namespace App\Services\Claude;
 
+use App\Enums\Outcome;
 use App\Enums\RunStatus;
 use App\Guardrails\Sandbox;
 use App\Models\Repository;
 use App\Models\Run;
+use App\Models\RunMessage;
+use App\Services\AgentReport;
 use App\Services\Usage;
 use App\Support\ForemanEnv;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 use RuntimeException;
+use Symfony\Component\Process\InputStream;
 
 /** The real `claude` CLI. The only place that builds its command line. */
 class ClaudeCli implements Claude
@@ -19,6 +26,12 @@ class ClaudeCli implements Claude
     public const CHECK_COMMAND = '/\b(pest|phpunit|phpstan|pint|artisan test|vitest|jest|playwright|eslint|prettier|biome|tsc|rustfmt|pytest|ruff|mypy|pyright)\b'
         .'|\b(npm|pnpm|yarn|bun|composer)\s+(run\s+)?(test|lint|typecheck|type-check|check|format)\b'
         .'|\bcargo\s+(\+\S+\s+)?(test|nextest|clippy|fmt|check)\b/';
+
+    /** Starts each operator message Foreman sends into a live session. */
+    private const OPERATOR_PREFIX = "Your operator sent this from Foreman:\n\n";
+
+    /** Starts an operator message sent after the agent's turn ended, such as the answer to its question. */
+    private const AFTER_TURN_PREFIX = "Your operator replied from Foreman. Foreman cleared .foreman/result.json, so write it again before you stop.\n\nTheir message:\n\n";
 
     /** The env variable beats `--effort`, so it is removed and the run's own effort applies (ADR 0004). */
     private const NO_EFFORT_ENV = ['CLAUDE_CODE_EFFORT_LEVEL' => false];
@@ -32,15 +45,22 @@ class ClaudeCli implements Claude
     /** Whether a rate_limit_event already reported the limit as hit. */
     private bool $limitReported = false;
 
+    /** Whether the agent ended its turn and nothing has been sent to it since. */
+    private bool $turnEnded = false;
+
+    /** @var list<string|null> What the CLI will echo back next, oldest first: null for the prompt, then each operator message. */
+    private array $echoes = [];
+
     /** Whether streamed session ids are saved on the run. */
     private bool $saveSession = true;
 
-    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true): AgentResult
+    public function agent(Run $run, string $worktree, string $prompt, ?string $resume = null, string|float|null $budget = null, bool $allowLockFiles = false, bool $saveSession = true, int $questionWindow = 0): AgentResult
     {
         $repo = $run->repository;
 
         $command = [
-            'claude', '-p', $prompt,
+            // A live session: the prompt is the first message on stdin, which stays open for the operator's (ADR 0009)
+            'claude', '-p', '--input-format', 'stream-json', '--replay-user-messages',
             '--model', $run->model,
             '--max-turns', (string) $repo->max_turns,
             '--allowedTools', $repo->allowed_tools,
@@ -65,18 +85,25 @@ class ClaudeCli implements Claude
         $this->buffer = '';
         $this->outcome = null;
         $this->limitReported = false;
+        $this->turnEnded = false;
+        $this->echoes = [null];
         $this->saveSession = $saveSession;
+
+        $stdin = new InputStream;
+        $stdin->write(self::userMessage($prompt));
 
         $process = Process::path($worktree)
             ->env([...ForemanEnv::forWorktree($worktree), ...$repo->claudeEnv(), ...self::agentEnv($repo->sandbox), ...self::NO_EFFORT_ENV])
             ->forever()
+            ->input($stdin)
             ->start($command, fn (string $type, string $output) => $type === 'out' ? $this->consume($run, $output) : null);
 
         $run->update(['pid' => $process->id()]);
         $deadline = now()->addMinutes($repo->max_minutes);
+        $questionsKept = false;   // the last turn's questions went in the thread while the session waited for an answer
 
         while ($process->running()) {
-            sleep(2);
+            Sleep::for(2)->seconds();
             $run->update(['heartbeat_at' => now()]);
 
             if ($run->fresh()->cancel_requested) {
@@ -85,7 +112,38 @@ class ClaudeCli implements Claude
                 throw new RuntimeException('Cancelled');
             }
 
-            if (now()->greaterThan($deadline)) {
+            // Mid-turn, the CLI holds a message until the current tool call ends; after a turn, it starts another
+            $messages = $stdin->isClosed() ? collect() : $run->unsentReplies()->get();
+
+            if ($messages->isNotEmpty()) {
+                if ($this->turnEnded) {
+                    // The message starts a new turn, which must end on a result file of its own
+                    File::delete("{$worktree}/".AgentReport::RESULT_FILE);
+                    $run->update(['question_until' => null]);
+                }
+
+                $this->send($stdin, $messages, $this->turnEnded ? self::AFTER_TURN_PREFIX : self::OPERATOR_PREFIX);
+                $questionsKept = $this->turnEnded = false;
+            } elseif ($this->turnEnded && ! $stdin->isClosed()) {
+                if ($run->question_until === null) {
+                    $questionsKept = $this->openQuestionWindow($run, $worktree, $questionWindow, $deadline);
+                }
+
+                // The CLI waits for another message after each turn, so closing stdin is what ends the session
+                if (! $run->question_until?->isFuture()) {
+                    if ($questionsKept) {
+                        // The result file still holds the question, so the run goes on to the usual question flow
+                        $run->log("No answer within {$questionWindow} min. Ending the session on the question.");
+                    }
+
+                    // A message posted from now on waits on the run, so the page stops offering to send it
+                    $run->update(['question_until' => null, 'pid' => null]);
+                    $stdin->close();
+                }
+            }
+
+            // The question window ends at the deadline, so stdin is closed by then, and a closing session gets a minute to exit
+            if (now()->greaterThan($stdin->isClosed() ? $deadline->copy()->addMinute() : $deadline)) {
                 $process->signal(15); // SIGTERM
                 $process->wait();
                 throw new RuntimeException("Hit the {$repo->max_minutes}-minute limit.");
@@ -108,7 +166,50 @@ class ClaudeCli implements Claude
             throw new RuntimeException('Claude exited without a result: '.str($exit->errorOutput())->limit(500));
         }
 
-        return new AgentResult($this->outcome, $this->outcome['session_id'] ?? null);
+        return new AgentResult($this->outcome, $this->outcome['session_id'] ?? null, $questionsKept);
+    }
+
+    /**
+     * Write the operator's messages to the session, oldest first.
+     *
+     * @param  Collection<int,RunMessage>  $messages
+     */
+    private function send(InputStream $stdin, Collection $messages, string $prefix): void
+    {
+        foreach ($messages as $message) {
+            // Trusted operator text: Foreman runs on localhost with no login (ADR 0001)
+            $stdin->write(self::userMessage($prefix.$message->body));
+            $this->echoes[] = $message->body;
+        }
+
+        RunMessage::whereKey($messages->modelKeys())->update(['sent_at' => now()]);
+    }
+
+    /**
+     * When the agent's turn ended on a question, keep its questions in the thread and hold the session open for an answer,
+     * until the window or the run's time limit ends. Gives whether it did.
+     */
+    private function openQuestionWindow(Run $run, string $worktree, int $minutes, Carbon $deadline): bool
+    {
+        $outcome = (new AgentReport($worktree))->outcome();
+
+        if ($minutes < 1 || $outcome?->kind !== Outcome::Question) {
+            return false;
+        }
+
+        $run->keepQuestions($outcome->questions);
+        $run->update(['question_until' => now()->addMinutes($minutes)->min($deadline)]);
+
+        $count = count($outcome->questions);
+        $run->log("Agent asked {$count} ".str('question')->plural($count).". Waiting up to {$minutes} min for your answer.");
+
+        return true;
+    }
+
+    /** One user message in the CLI's stream-json input format, as a line. */
+    private static function userMessage(string $text): string
+    {
+        return json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => $text]], JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR)."\n";
     }
 
     public function oneShot(Repository $repo, string $prompt, ?array $schema = null): OneShotResult
@@ -277,8 +378,18 @@ class ClaudeCli implements Claude
             }
 
             if (($event['type'] ?? null) === 'result') {
-                $this->outcome = $event;
+                $this->outcome = self::addEarlierTurns($event, $this->outcome);
+                $this->turnEnded = true;
                 $run->log(sprintf('Finished after %d turns, $%.2f', $event['num_turns'] ?? 0, $event['total_cost_usd'] ?? 0));
+
+                continue;
+            }
+
+            // The CLI echoes each message it takes from stdin, in the order they were sent; the first is the prompt
+            if (($event['type'] ?? null) === 'user' && ($event['isReplay'] ?? false)) {
+                if (($body = array_shift($this->echoes)) !== null) {
+                    $run->log('You: '.str($body)->squish()->limit(300));
+                }
 
                 continue;
             }
@@ -297,6 +408,25 @@ class ClaudeCli implements Claude
                 }
             }
         }
+    }
+
+    /**
+     * A later turn's `result` event with the earlier turns' counts added. The CLI reports the session's total cost,
+     * but the turns and tokens of that turn alone.
+     */
+    private static function addEarlierTurns(array $event, ?array $earlier): array
+    {
+        if ($earlier === null) {
+            return $event;
+        }
+
+        $event['num_turns'] = ($event['num_turns'] ?? 0) + ($earlier['num_turns'] ?? 0);
+
+        foreach (['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'] as $key) {
+            $event['usage'][$key] = ($event['usage'][$key] ?? 0) + ($earlier['usage'][$key] ?? 0);
+        }
+
+        return $event;
     }
 
     private function logToolUse(Run $run, array $block): void

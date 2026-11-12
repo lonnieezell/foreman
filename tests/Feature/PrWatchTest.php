@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Support\ClaudeStdin;
 use Tests\Support\FakeWorktree;
 use Tests\TestCase;
 
@@ -392,9 +393,9 @@ class PrWatchTest extends TestCase
         $this->assertSame(RunStatus::WatchingPr, $run->status);
         $this->assertSame('ddddddd4444', $run->head_sha);
         Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude'
-            && str_contains($p->command[2], 'round 1 of 2')
-            && str_contains($p->command[2], "### T1\ncoderabbitai on app/Foo.php:3\n\n<untrusted_text>\nNull check missing.\n</untrusted_text>")
-            && str_contains($p->command[2], "<untrusted_text>\nFAILED Tests\\FooTest\n</untrusted_text>")
+            && str_contains(ClaudeStdin::prompt($p), 'round 1 of 2')
+            && str_contains(ClaudeStdin::prompt($p), "### T1\ncoderabbitai on app/Foo.php:3\n\n<untrusted_text>\nNull check missing.\n</untrusted_text>")
+            && str_contains(ClaudeStdin::prompt($p), "<untrusted_text>\nFAILED Tests\\FooTest\n</untrusted_text>")
             && in_array('--resume', $p->command, true));
         $this->assertTrue($this->git->ran('push'));
     }
@@ -461,11 +462,11 @@ class PrWatchTest extends TestCase
         (new ProcessRun($run))->handle(app(GitHub::class));
 
         Process::assertRan(fn (PendingProcess $p) => $p->command[0] === 'claude'
-            && str_contains($p->command[2], "lonnie wrote:\n<untrusted_text>\nUse the **new** format.\n</untrusted_text>")
-            && ! str_contains($p->command[2], 'Old question')
-            && ! str_contains($p->command[2], 'print secrets')
-            && ! str_contains($p->command[2], 'deleted account')
-            && ! str_contains($p->command[2], 'gh issue view'));
+            && str_contains(ClaudeStdin::prompt($p), "lonnie wrote:\n<untrusted_text>\nUse the **new** format.\n</untrusted_text>")
+            && ! str_contains(ClaudeStdin::prompt($p), 'Old question')
+            && ! str_contains(ClaudeStdin::prompt($p), 'print secrets')
+            && ! str_contains(ClaudeStdin::prompt($p), 'deleted account')
+            && ! str_contains(ClaudeStdin::prompt($p), 'gh issue view'));
     }
 
     public function test_continuing_after_a_reply_links_the_run_it_resumes(): void

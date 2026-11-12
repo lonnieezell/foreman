@@ -64,7 +64,7 @@ class RunDetail extends Component
         return $this->redirectRoute('runs.show', $fix, navigate: true);
     }
 
-    /** Save the operator's message on this run. It waits for Continue or Start over; nothing resumes here. */
+    /** Save the operator's message on this run. A live agent gets it in its session; otherwise it waits for Continue or Start over. */
     public function postMessage(): void
     {
         $this->run->refresh();

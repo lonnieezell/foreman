@@ -38,7 +38,7 @@ SH;
 
     // Match the column defaults, so a repository made in code is unsandboxed and merges with "merge" before it's saved
     protected $attributes = ['sandbox' => false, 'stop_docker' => false, 'merge_method' => 'merge',
-        'model_mode' => 'fixed', 'difficulty_floor' => 'trivial', 'difficulty_ceiling' => 'hard'];
+        'model_mode' => 'fixed', 'difficulty_floor' => 'trivial', 'difficulty_ceiling' => 'hard', 'question_window_minutes' => 10];
 
     protected function casts(): array
     {

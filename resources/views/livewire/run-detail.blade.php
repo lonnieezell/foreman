@@ -85,6 +85,10 @@
         <div class="notice">
             <p>Foreman’s scope judge gave no usable answer twice, so nothing was pushed. The details are in the comment on the issue. Choose <strong>Continue after my reply</strong> to resume with everything the agent already knows, or <strong>Start over</strong> for a fresh run.</p>
         </div>
+    @elseif ($run->waitsForAnswer())
+        <div class="notice">
+            <p>The agent has a question and is waiting for your answer. Answer in the thread below, and it goes straight into the same session. The window closes {{ $run->question_until->diffForHumans() }}. After that, the run stops on the question and you answer it here, then choose <strong>Continue</strong>.</p>
+        </div>
     @elseif ($run->askedQuestion())
         <div class="notice">
             <p>The agent has a question. Answer it in the thread below, then choose <strong>Continue</strong> to resume with everything it already knows. Or choose <strong>Start over</strong> for a fresh run, which also gets the questions and your answers.</p>
@@ -125,11 +129,15 @@
             @endif
             @if ($takesMessages)
                 <form class="thread-form field" wire:submit="postMessage">
-                    <label for="message">{{ $run->askedQuestion() ? 'Your answer' : 'A message for the agent' }}</label>
+                    <label for="message">{{ $run->askedQuestion() || $run->waitsForAnswer() ? 'Your answer' : 'A message for the agent' }}</label>
                     <textarea id="message" rows="5" wire:model="message"></textarea>
                     @error('message')<p class="hint">{{ $message }}</p>@enderror
                     <div class="thread-form-foot">
-                        <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
+                        @if ($run->isLive())
+                            <p class="hint">Sent into the agent’s session. The agent gets it within a few seconds, once its current step ends. Each message spends tokens.</p>
+                        @else
+                            <p class="hint">Saved straight away. The agent reads it when you choose Continue or Start over.</p>
+                        @endif
                         <button class="btn btn-go" type="submit">Post</button>
                     </div>
                 </form>

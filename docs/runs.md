@@ -86,7 +86,9 @@ Foreman stopped and wants a human. There are ten ways to get here:
 
 ### Answering a question
 
-When the agent has a question, Foreman adds the human label to the issue and posts one fixed comment there. The questions stay in Foreman.
+When the agent has a question, its session first stays open for the repository's [question window](repository-settings.md#question-window). The run page shows the questions in the **Thread** and asks for your answer. An answer posted in time goes straight into the same session, and the run carries on. No new run starts.
+
+With no answer in time, the run stops. Foreman adds the human label to the issue and posts one fixed comment there. The questions stay in Foreman.
 
 The run page shows a **Thread**. It holds the agent's questions and your messages for the whole chain of runs, oldest first. Its heading shows which round this is and the total cost across the chain.
 
@@ -95,7 +97,13 @@ The run page shows a **Thread**. It holds the agent's questions and your message
 
 **Continue** starts one run only. A second click, or a click in another tab, shows an error instead of a second run. Only the issue's newest run can be continued, so a run you started over can't be resumed beside the fresh one.
 
-The message box shows on the issue's newest run once it stops, not just on question runs. Older runs, and runs with a PR, take no messages. Use it to post a correction before **Continue after my reply** or **Start over**. **Start over** gives the fresh run every earlier question and answer for the issue, under "Decisions your operator already made".
+### Talking to a running agent
+
+While the agent is working, the run page shows a message box. A message you post goes into the agent's session within a few seconds. If the agent is in the middle of a step, such as a test run, it gets the message when that step ends. It doesn't interrupt the step. The run log shows "You: …" when the message arrives. Each message spends tokens, and the run's spend cap still applies.
+
+The box is hidden while Foreman's own steps run, such as the setup script and the gate, because no agent is listening then.
+
+The message box also shows on the issue's newest run once it stops, not just on question runs. Older runs, and runs with a PR, take no messages. Use it to post a correction before **Continue after my reply** or **Start over**. **Start over** gives the fresh run every earlier question and answer for the issue, under "Decisions your operator already made".
 
 Your answers live only in Foreman's database. They don't appear on the issue, so teammates can't see them on GitHub. The [scope judge](guardrails.md#scope-judge) doesn't see them either. If an answer widens the scope, the judge may veto the change. Edit the issue to settle it.
 
@@ -120,7 +128,7 @@ Someone cancelled the run, stopped watching its PR, or closed the PR without mer
 | --- | --- | --- |
 | **Cancel run** | Run page, active runs | Stops Claude and ends the run as Cancelled. A run still Waiting is cancelled at once. |
 | **Stop watching** | Run page, Watching PR | Ends the run as Cancelled. The PR stays open. |
-| **Post** | Run page, the issue's newest run once it stops | Saves your message in the run's thread. Nothing resumes. |
+| **Post** | Run page, while the agent works or once the issue's newest run stops | Saves your message in the run's thread. A working agent gets it in its session. On a stopped run, nothing resumes. |
 | **Continue** | Run page, after a question | Resumes the agent's session with the messages you posted. Asks you to confirm when you posted none. |
 | **Continue after my reply** | Run page and dashboard, Needs you | Swaps the human label back to the working label and resumes the agent's session. Use it when the agent asked a question before opening a PR. |
 | **Fix conflicts** | Run page and dashboard, Needs you on a merge conflict | Checks the PR with GitHub again, then swaps the human label for the working label and starts a conflict fix at once. See [Fix conflicts](pr-watching.md#fix-conflicts). |
