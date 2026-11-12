@@ -161,6 +161,27 @@
         @endif
     </dl>
 
+    @if ($scorecard = $run->scorecard)
+        <section aria-labelledby="scorecard-title">
+            <header class="thread-head">
+                <h2 id="scorecard-title" class="thread-title">Scorecard</h2>
+                <span class="hint">Measured from the logs by <code>foreman:improve</code></span>
+            </header>
+            @if ($scorecard->log_problem)
+                <p class="hint">{{ $scorecard->log_problem }} Its facts read as zero.</p>
+            @endif
+            <dl class="facts">
+                <div><dt>Tool errors</dt><dd>{{ collect($scorecard->tool_errors)->map(fn ($count, $tool) => "{$tool} {$count}")->implode(', ') ?: 'None' }}</dd></div>
+                <div><dt>Files read 3+ times</dt><dd>{{ collect($scorecard->repeated_reads)->map(fn ($count, $path) => "{$path} ({$count})")->implode(', ') ?: 'None' }}</dd></div>
+                <div><dt>Test runs</dt><dd>{{ $scorecard->full_test_runs }} full, {{ $scorecard->filtered_test_runs }} filtered</dd></div>
+                <div><dt>Stop-hook blocks</dt><dd>{{ $scorecard->stop_hook_blocks }}</dd></div>
+                <div><dt>Verify failures</dt><dd>{{ $scorecard->verify_failures }}</dd></div>
+                <div><dt>Scope-judge vetoes</dt><dd>{{ $scorecard->scope_vetoes }}</dd></div>
+                <div><dt>Test methods added</dt><dd>{{ $scorecard->test_methods_added }}</dd></div>
+            </dl>
+        </section>
+    @endif
+
     @if ($run->worktree_path)
         <p class="hint" style="margin-bottom:.75rem">Worktree: <code>{{ $run->worktree_path }}</code></p>
     @endif

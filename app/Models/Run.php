@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -55,6 +56,12 @@ class Run extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(RunMessage::class)->orderBy('id');
+    }
+
+    /** The run's measured facts for the improve loop, once `foreman:improve` scored it. */
+    public function scorecard(): HasOne
+    {
+        return $this->hasOne(Scorecard::class);
     }
 
     /** @return Collection<int,Run> This run and the runs it continues, oldest first. */
