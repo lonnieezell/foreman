@@ -41,7 +41,10 @@ class ClaudeCliTest extends TestCase
         $this->assertSame('opus', $this->after($command, '--model'));
         $this->assertSame('12', $this->after($command, '--max-turns'));
         $this->assertSame('Read,Edit', $this->after($command, '--allowedTools'));
-        $this->assertSame('dontAsk', $this->after($command, '--permission-mode'));
+        // A call off the allowlist asks Foreman over stdin, instead of being denied (ADR 0010)
+        $this->assertSame('manual', $this->after($command, '--permission-mode'));
+        $this->assertSame('host', $this->after($command, '--permission-prompts'));
+        $this->assertSame('stdio', $this->after($command, '--permission-prompt-tool'));
         $this->assertSame('stream-json', $this->after($command, '--output-format'));
         $this->assertContains('--verbose', $command);
     }

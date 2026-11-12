@@ -9,6 +9,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\ClaudeCliHarness;
 use Tests\TestCase;
 
@@ -167,6 +168,54 @@ class LiveSessionTest extends TestCase
 
         $this->assertTrue($this->started[0]->input->isClosed());
         $this->assertSame(0, $run->messages()->count());
+    }
+
+    public static function permissionAnswers(): array
+    {
+        $needsHuman = " If you can't do the work without it, end with needs_human and say what you need.";
+
+        return [
+            'allowed once' => ['allow', null,
+                ['behavior' => 'allow', 'updatedInput' => ['command' => './vault test --compact x']],
+                'You allowed: ./vault test --compact x'],
+            'always allowed' => ['always', 'Bash(./vault:*)',
+                ['behavior' => 'allow', 'updatedInput' => ['command' => './vault test --compact x'],
+                    'updatedPermissions' => [['type' => 'addRules', 'rules' => [['toolName' => 'Bash', 'ruleContent' => './vault:*']], 'behavior' => 'allow', 'destination' => 'session']]],
+                'You allowed Bash(./vault:*) for this repository: ./vault test --compact x'],
+            'denied' => ['deny', null,
+                ['behavior' => 'deny', 'message' => 'Your operator denied this call in Foreman.'.$needsHuman],
+                'You denied: ./vault test --compact x'],
+            'no answer in time' => [null, null,
+                ['behavior' => 'deny', 'message' => 'Nobody approved this call in Foreman within 1 min, so it was denied.'.$needsHuman],
+                'No answer within 1 min. Denied: ./vault test --compact x'],
+        ];
+    }
+
+    #[DataProvider('permissionAnswers')]
+    public function test_a_call_off_the_allowlist_waits_for_the_operators_answer(?string $decision, ?string $pattern, array $response, string $logged): void
+    {
+        $run = $this->makeRun(['permission_timeout_minutes' => 1]);
+        $this->fakeLiveClaude([
+            '{"type":"control_request","request_id":"req-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":".\/vault test --compact x"}}}',
+        ], idle: 40);
+
+        // The operator answers a few ticks after the request shows up
+        $waited = 0;
+        Sleep::whenFakingSleep(function () use ($run, $decision, $pattern, &$waited) {
+            if ($decision && ($request = $run->pendingPermissions()->first()) && ++$waited === 3) {
+                $request->decide($decision, $pattern);
+            }
+        });
+
+        (new ClaudeCli)->agent($run, $this->worktree, 'Do it');
+
+        $this->assertSame(
+            [['type' => 'control_response', 'response' => ['subtype' => 'success', 'request_id' => 'req-1', 'response' => $response]]],
+            array_slice($this->sentMessages(), 1),
+        );
+        $log = File::get($run->logPath());
+        $this->assertStringContainsString('Waiting up to 1 min for you to allow: ./vault test --compact x', $log);
+        $this->assertStringContainsString($logged, $log);
     }
 
     public function test_a_session_of_several_turns_reports_its_whole_usage(): void

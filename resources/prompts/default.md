@@ -23,8 +23,9 @@ It holds one JSON object, in one of four shapes:
 - `{"outcome": "needs_human", "reason": "<short reason>", "comment": "<comment for the issue>"}`
 - `{"outcome": "already_done", "comment": "<comment for the issue>"}`
 
-Bash runs only commands on an allowlist. A "Permission to use Bash has been denied"
-message covers only the commands in that call, not Bash as a whole. If one
+Bash runs only commands on an allowlist. A command off the list waits for your
+operator to allow it in Foreman. A denial covers only the commands in that call,
+not Bash as a whole. If one
 command in a chained call is not allowed, the whole call is refused. Split the
 call into single commands and retry without the refused one. Use the file tools
 for reading files and listing folders where you can. To copy a file the shell

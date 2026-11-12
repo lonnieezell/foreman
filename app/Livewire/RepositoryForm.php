@@ -59,6 +59,8 @@ class RepositoryForm extends Component
 
     public int $question_window_minutes = 10;
 
+    public int $permission_timeout_minutes = 3;
+
     public string $allowed_tools = Repository::DEFAULT_ALLOWED_TOOLS;
 
     public string $locked_paths = '';
@@ -96,7 +98,7 @@ class RepositoryForm extends Component
             $this->fill($repository->only([
                 'name', 'local_path', 'github_repo', 'base_branch', 'ready_label', 'working_label',
                 'human_label', 'concurrency', 'poll_interval_minutes', 'model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'max_turns',
-                'max_minutes', 'question_window_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
+                'max_minutes', 'question_window_minutes', 'permission_timeout_minutes', 'allowed_tools', 'setup_script', 'cleanup_worktrees', 'watch_prs', 'sandbox', 'stop_docker', 'merge_method',
             ]));
             $this->auto_merge_max_tier = (string) $repository->auto_merge_max_tier;
             $this->daily_budget = (string) ($repository->daily_budget ?? '');
@@ -195,6 +197,7 @@ class RepositoryForm extends Component
             'max_turns' => ['required', 'integer', 'between:1,500'],
             'max_minutes' => ['required', 'integer', 'between:1,600'],
             'question_window_minutes' => ['required', 'integer', 'between:0,120'],
+            'permission_timeout_minutes' => ['required', 'integer', 'between:0,60'],
             'allowed_tools' => ['required', 'string'],
             'locked_paths' => ['nullable', 'string'],
             'setup_script' => ['required', 'string'],

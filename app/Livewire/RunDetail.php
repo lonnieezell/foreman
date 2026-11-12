@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Enums\RunStatus;
+use App\Models\PermissionRequest;
 use App\Models\Run;
 use App\Models\RunMessage;
 use App\Services\GitHub;
@@ -17,6 +18,9 @@ class RunDetail extends Component
 
     /** The operator's next message in the thread. */
     public string $message = '';
+
+    /** @var array<int,string> The allowlist pattern for each waiting call, which the operator may edit before "Always allow". */
+    public array $patterns = [];
 
     public function cancel(GitHub $github): void
     {
@@ -80,6 +84,35 @@ class RunDetail extends Component
         $this->message = '';
     }
 
+    /** Let the waiting call go ahead this once (ADR 0010). */
+    public function allowOnce(int $id): void
+    {
+        $this->answer($id, PermissionRequest::ALLOW);
+    }
+
+    /** Let the waiting call go ahead, and add its pattern to the repository's allowlist so later calls like it don't ask. */
+    public function alwaysAllow(int $id): void
+    {
+        $this->patterns[$id] = trim($this->patterns[$id] ?? '');
+        // The allowlist is comma-separated, so a comma would split the pattern in two
+        $this->validate(["patterns.{$id}" => ['required', 'not_regex:/,/']], [], ["patterns.{$id}" => 'pattern']);
+
+        $this->answer($id, PermissionRequest::ALWAYS, $this->patterns[$id]);
+    }
+
+    public function deny(int $id): void
+    {
+        $this->answer($id, PermissionRequest::DENY);
+    }
+
+    private function answer(int $id, string $decision, ?string $pattern = null): void
+    {
+        // The live session sends the answer within a few seconds; the timeout may have settled it first
+        if (! $this->run->permissionRequests()->findOrFail($id)->decide($decision, $pattern)) {
+            $this->flash = 'That call was already answered, or it timed out.';
+        }
+    }
+
     public function retry(GitHub $github)
     {
         $github->requeue($this->run->repository, $this->run->issue_number);
@@ -99,11 +132,18 @@ class RunDetail extends Component
     {
         $this->run->refresh();
         $chain = $this->run->chain();
+        // A request left from a session that ended can't be answered any more
+        $permissions = $this->run->isLive() ? $this->run->pendingPermissions()->get() : collect();
+
+        foreach ($permissions as $request) {
+            $this->patterns[$request->id] ??= $request->suggestedPattern();
+        }
 
         return view('livewire.run-detail', [
             'canContinue' => $this->run->canContinueAfterReply(),
             'canFixConflicts' => $this->run->canFixConflicts(),
             'takesMessages' => $this->run->takesMessages(),
+            'permissions' => $permissions,
             'chain' => $chain,
             'thread' => RunMessage::whereIn('run_id', $chain->pluck('id'))->orderBy('id')->get(),
             'log' => $this->run->logEntries(),

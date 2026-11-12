@@ -64,6 +64,18 @@ class Run extends Model
         return $this->messages()->where('role', RunMessage::HUMAN)->whereNull('sent_at');
     }
 
+    /** Tool calls off the allowlist that the agent's session asked Foreman to allow (ADR 0010). */
+    public function permissionRequests(): HasMany
+    {
+        return $this->hasMany(PermissionRequest::class)->orderBy('id');
+    }
+
+    /** The calls still waiting for the operator's answer. */
+    public function pendingPermissions(): HasMany
+    {
+        return $this->permissionRequests()->whereNull('decision');
+    }
+
     /** @param  list<string>  $questions  The agent's questions, kept in the run's thread (ADR 0001). */
     public function keepQuestions(array $questions): void
     {
@@ -171,6 +183,12 @@ class Run extends Model
     public function waitsForAnswer(): bool
     {
         return $this->isLive() && $this->question_until?->isFuture();
+    }
+
+    /** The agent's session is waiting for the operator to allow or deny a tool call (ADR 0010). */
+    public function waitsForApproval(): bool
+    {
+        return $this->isLive() && $this->pendingPermissions()->exists();
     }
 
     private function isNewestForIssue(): bool

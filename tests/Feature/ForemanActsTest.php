@@ -198,7 +198,7 @@ class ForemanActsTest extends TestCase
         $this->assertSame(RunStatus::Failed, $run->status);
     }
 
-    public function test_the_agent_runs_without_push_rights_and_in_dont_ask_mode(): void
+    public function test_the_agent_runs_without_push_rights_and_asks_foreman_about_calls_off_the_allowlist(): void
     {
         $this->fakeAgent(['outcome' => 'already_done', 'comment' => 'c']);
 
@@ -208,7 +208,7 @@ class ForemanActsTest extends TestCase
             $command = $p->command;
 
             return $command[0] === 'claude'
-                && $command[array_search('--permission-mode', $command) + 1] === 'dontAsk'
+                && $command[array_search('--permission-mode', $command) + 1] === 'manual'
                 && $p->environment['GH_TOKEN'] === false
                 && $p->environment['GITHUB_TOKEN'] === false;
         });
@@ -301,7 +301,7 @@ class ForemanActsTest extends TestCase
     {
         $prompt = file_get_contents(resource_path('prompts/default.md'));
 
-        $this->assertStringContainsString('denied', $prompt);
+        $this->assertStringContainsString('operator to allow it in Foreman', $prompt);
         $this->assertStringContainsString('only the commands in that call', $prompt);
         $this->assertStringContainsString('retry without', $prompt);
     }

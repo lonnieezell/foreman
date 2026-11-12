@@ -118,6 +118,10 @@ How long a run with a question waits for your answer, from 0 to 120 minutes. Def
 
 The wait counts toward **Max time per issue**, and it never runs past that limit.
 
+### Approval timeout
+
+How long a tool call that isn't on the [allowed tools](#allowed-tools) waits for you to allow it, from 0 to 60 minutes. Default: 3. While it waits, the run holds a worker and **Max time per issue** keeps counting. With no answer in time, the call is denied. 0 denies every such call at once, as Foreman did before. See [Approving tool calls](runs.md#approving-tool-calls).
+
 ## Labels
 
 Foreman uses three GitHub labels. It creates them when you add the repository, and again when you save a change to a label or to the GitHub repository. Other saves skip GitHub, so they're quick. If a label already exists, Foreman updates its colour and description.
@@ -188,7 +192,7 @@ The tools Claude may use, passed to `claude --allowedTools`. Anything not listed
 - run `composer`, `php`, `./vendor/bin/*`, `npm`, `npx`, `pnpm` and `yarn`
 - run Rust tools (`cargo`, `rustfmt`) and Python tools (`python`, `python3`, `pytest`, `ruff`, `mypy`, `pyright`, `uv` and `poetry`)
 
-The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). Runs use Claude's `dontAsk` permission mode, so anything not on the list is refused without asking. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command. It also says that a `needs_human` result caused by a refusal must name each refused command.
+The list has no `gh` and no `git push`. Foreman pushes the branch and opens the PR itself, and the agent's environment can't push anyway. See [Foreman pushes, not the agent](guardrails.md#foreman-pushes-not-the-agent). A call that isn't on the list waits for you to [approve it](runs.md#approving-tool-calls) on the run page. With no answer within the [approval timeout](#approval-timeout), it is refused. If one command in a chained Bash call isn't on the list, the whole call is refused. The default prompt tells the agent to split the call and retry without that command. It also says that a `needs_human` result caused by a refusal must name each refused command.
 
 The form shows the list as chips, grouped into Files, Agents, Shell and Other. A shell chip shows what's inside `Bash(…)`, so `Bash(npm:*)` shows as `npm:*`. Hover a chip to see the full entry.
 

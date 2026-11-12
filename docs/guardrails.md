@@ -58,7 +58,7 @@ The agent never acts on GitHub. It commits in its worktree and writes `.foreman/
 
 - **The environment.** The agent's process gets a push URL for `origin` that points nowhere, an empty git credential helper, and no `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. It also has no git or SSH password prompt and no SSH agent. A `git push origin` fails. Foreman's own push runs in a separate process without these changes.
 - **The allowed tools.** The [default list](repository-settings.md#allowed-tools) has no `gh` and no `git push`. Only the git commands that inspect and commit are allowed.
-- **The permission mode.** Runs use Claude's `dontAsk` mode. A tool that isn't on the list is refused, not asked about.
+- **The permission mode.** A tool that isn't on the list waits for the operator to [approve it](runs.md#approving-tool-calls) on the run page, and is refused if nobody does in time. An approval can't let through `git push` or `gh`, because the guard hook blocks them before the permission check.
 - **A missing or unreadable result file fails the run.** Foreman never guesses what the agent meant.
 
 ### Why it exists
