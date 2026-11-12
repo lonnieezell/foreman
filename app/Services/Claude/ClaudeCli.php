@@ -198,10 +198,15 @@ class ClaudeCli implements Claude
             return;
         }
 
-        $run->pendingPermissions()->where('expires_at', '<=', now())->get()
-            ->each(fn (PermissionRequest $request) => $request->decide(PermissionRequest::TIMEOUT));
+        foreach ($run->permissionRequests()->whereNull('sent_at')->get() as $request) {
+            if ($request->decision === null && $request->expires_at->isPast()) {
+                $request->decide(PermissionRequest::TIMEOUT);
+            }
 
-        foreach ($run->permissionRequests()->whereNotNull('decision')->whereNull('sent_at')->get() as $request) {
+            if ($request->decision === null) {
+                continue;   // still waiting for the operator
+            }
+
             $stdin->write($request->controlResponse());
             $request->update(['sent_at' => now()]);
             $run->log($request->decisionLine());

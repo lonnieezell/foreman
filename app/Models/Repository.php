@@ -183,6 +183,14 @@ SH;
             || array_diff(['Bash(git add:*)', 'Bash(git commit:*)'], $saved) === [];
     }
 
+    /** Add `$pattern` to the allowed tools, unless it is there already (ADR 0010). */
+    public function allowTool(string $pattern): void
+    {
+        if (! in_array($pattern, array_map('trim', explode(',', (string) $this->allowed_tools)), true)) {
+            $this->update(['allowed_tools' => rtrim((string) $this->allowed_tools, ', ').",{$pattern}"]);
+        }
+    }
+
     public function renderPrompt(Run $run, string $issueText): string
     {
         return Prompt::fill($this->prompt_template ?: Prompt::template('default'), [

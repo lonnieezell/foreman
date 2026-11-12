@@ -18,6 +18,9 @@ class PermissionRequest extends Model
     /** Nobody answered before it expired. */
     public const TIMEOUT = 'timeout';
 
+    /** One allowlist entry: a tool name, and maybe what it may do, as in `WebFetch` or `Bash(./vault:*)`. Never a comma, which would split the list. */
+    public const PATTERN = '/^([\w-]+)(?:\(([^(),]+)\))?$/';
+
     private const NEEDS_HUMAN = " If you can't do the work without it, end with needs_human and say what you need.";
 
     protected $guarded = ['id'];
@@ -27,7 +30,6 @@ class PermissionRequest extends Model
         return [
             'input' => 'array',
             'expires_at' => 'datetime',
-            'decided_at' => 'datetime',
             'sent_at' => 'datetime',
         ];
     }
@@ -45,11 +47,13 @@ class PermissionRequest extends Model
         }
 
         $minutes = $run->repository->permission_timeout_minutes;
+        $now = now();
         $request = $run->permissionRequests()->create([
             'request_id' => $event['request_id'],
             'tool_name' => $event['request']['tool_name'] ?? 'tool',
             'input' => $event['request']['input'] ?? [],
-            'expires_at' => now()->addMinutes($minutes),
+            'created_at' => $now,   // the same moment as the expiry, so the timeout reads back exactly
+            'expires_at' => $now->copy()->addMinutes($minutes),
         ]);
         $run->log("Waiting up to {$minutes} min for you to allow: {$request->summary()}");
     }
@@ -61,15 +65,10 @@ class PermissionRequest extends Model
     public function decide(string $decision, ?string $pattern = null): bool
     {
         $settled = static::whereKey($this->id)->whereNull('decision')
-            ->update(['decision' => $decision, 'pattern' => $pattern, 'decided_at' => now()]) === 1;
+            ->update(['decision' => $decision, 'pattern' => $pattern]) === 1;
 
         if ($settled && $decision === self::ALWAYS) {
-            $repo = $this->run->repository;
-            $tools = array_map('trim', explode(',', (string) $repo->allowed_tools));
-
-            if (! in_array($pattern, $tools, true)) {
-                $repo->update(['allowed_tools' => rtrim((string) $repo->allowed_tools, ',').",{$pattern}"]);
-            }
+            $this->run->repository->allowTool($pattern);
         }
 
         $this->refresh();
@@ -110,10 +109,12 @@ class PermissionRequest extends Model
     /** The answer for the CLI's `can_use_tool` request. An "always" also allows the pattern for the rest of the session. */
     private function response(): array
     {
+        // An object, so an empty input is still `{}`
+        $allow = ['behavior' => 'allow', 'updatedInput' => (object) $this->input];
+
         return match ($this->decision) {
-            // An object, so an empty input is still `{}`
-            self::ALLOW => ['behavior' => 'allow', 'updatedInput' => (object) $this->input],
-            self::ALWAYS => ['behavior' => 'allow', 'updatedInput' => (object) $this->input, 'updatedPermissions' => [
+            self::ALLOW => $allow,
+            self::ALWAYS => [...$allow, 'updatedPermissions' => [
                 ['type' => 'addRules', 'rules' => [self::rule($this->pattern)], 'behavior' => 'allow', 'destination' => 'session'],
             ]],
             self::DENY => ['behavior' => 'deny', 'message' => 'Your operator denied this call in Foreman.'.self::NEEDS_HUMAN],
@@ -134,14 +135,13 @@ class PermissionRequest extends Model
 
     private function timeoutMinutes(): int
     {
-        // Rounded: created_at is set a moment after expires_at was worked out
-        return (int) round($this->created_at->diffInMinutes($this->expires_at, true));
+        return (int) $this->created_at->diffInMinutes($this->expires_at, true);
     }
 
     /** `Bash(./vault:*)` as the CLI's rule: tool name and content. */
     private static function rule(string $pattern): array
     {
-        preg_match('/^([^(]+)(?:\((.*)\))?$/s', $pattern, $m);
+        preg_match(self::PATTERN, $pattern, $m);
 
         return isset($m[2]) ? ['toolName' => $m[1], 'ruleContent' => $m[2]] : ['toolName' => $pattern];
     }

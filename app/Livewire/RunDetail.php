@@ -94,8 +94,7 @@ class RunDetail extends Component
     public function alwaysAllow(int $id): void
     {
         $this->patterns[$id] = trim($this->patterns[$id] ?? '');
-        // One allowlist entry, like `WebFetch` or `Bash(./vault:*)`. The list is comma-separated, so a comma would split it
-        $this->validate(["patterns.{$id}" => ['required', 'regex:/^[\w-]+(\([^(),]+\))?$/']], [], ["patterns.{$id}" => 'pattern']);
+        $this->validate(["patterns.{$id}" => ['required', 'regex:'.PermissionRequest::PATTERN]], [], ["patterns.{$id}" => 'pattern']);
 
         $this->answer($id, PermissionRequest::ALWAYS, $this->patterns[$id]);
     }

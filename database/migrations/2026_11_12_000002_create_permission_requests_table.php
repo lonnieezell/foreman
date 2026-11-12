@@ -23,7 +23,6 @@ return new class extends Migration
             $table->timestamp('expires_at');
             $table->string('decision')->nullable();   // allow, always, deny or timeout
             $table->string('pattern')->nullable();    // the rule an "always" added to the repository's allowlist
-            $table->timestamp('decided_at')->nullable();
             $table->timestamp('sent_at')->nullable(); // when Foreman wrote the answer to the session
             $table->timestamps();
             $table->index(['run_id', 'decision']);
