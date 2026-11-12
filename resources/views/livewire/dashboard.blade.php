@@ -282,6 +282,7 @@
                         <a href="{{ route('runs.show', $run) }}" wire:navigate>#{{ $run->issue_number }}</a><span class="run-repo">{{ $run->repository->name }}</span>
                         <span class="status tone-{{ $run->status->tone() }}">{{ $run->statusLabel() }}</span>
                         @if ($run->askedQuestion())<span class="question-badge tone-attention">question</span>@endif
+                        @if ($run->waitsForApproval())<span class="question-badge tone-attention">needs approval</span>@endif
                         @if ($run->risk_tier)<span class="risk-tier" title="Risk tier, from the diff">Tier {{ $run->risk_tier }}</span>@endif
                         {{-- An Auto run's step is only known once it is picked --}}
                         @if (! $run->repository->isAuto() || $run->difficulty_source)<span class="risk-tier" title="Model and effort, and the difficulty Foreman picked">{{ $run->stepLabel() }}</span>@endif

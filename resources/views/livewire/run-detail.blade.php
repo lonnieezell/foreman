@@ -103,6 +103,27 @@
         </div>
     @endif
 
+    @foreach ($permissions as $request)
+        <div class="notice" wire:key="permission-{{ $request->id }}">
+            <p>
+                The agent wants to {{ $request->tool_name === 'Bash' ? 'run a command' : 'use a tool' }} that isn’t on the allowlist. It waits for you, and the call is denied {{ $request->expires_at->diffForHumans() }} if you don’t answer.
+                <a class="doc-link" href="{{ route('docs', 'runs') }}#approving-tool-calls" wire:navigate>What does this mean?</a>
+            </p>
+            <p><code>{{ $request->summary() }}</code></p>
+            <div class="field">
+                <label for="pattern-{{ $request->id }}">Pattern for Always allow</label>
+                <input id="pattern-{{ $request->id }}" type="text" wire:model="patterns.{{ $request->id }}">
+                <p class="hint">Added to this repository’s allowed tools, so later calls that match it don’t ask.</p>
+                @error("patterns.{$request->id}") <span class="error">{{ $message }}</span> @enderror
+            </div>
+            <div class="line-controls">
+                <button class="btn btn-go" wire:click="allowOnce({{ $request->id }})">Allow once</button>
+                <button class="btn" wire:click="alwaysAllow({{ $request->id }})">Always allow</button>
+                <button class="btn btn-halt" wire:click="deny({{ $request->id }})">Deny</button>
+            </div>
+        </div>
+    @endforeach
+
     @if ($run->error)
         <div class="notice notice-halt"><p>{{ $run->error }}</p></div>
     @endif

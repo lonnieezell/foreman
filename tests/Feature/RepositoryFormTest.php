@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Livewire\Livewire;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class RepositoryFormTest extends TestCase
@@ -193,21 +194,31 @@ class RepositoryFormTest extends TestCase
             ->assertHasNoErrors();
     }
 
-    public function test_the_question_window_loads_saves_and_must_be_0_to_120_minutes(): void
+    /** Minute settings that hold a worker while the agent waits for the operator. */
+    public static function waitSettings(): array
     {
-        $repository = $this->repository(['question_window_minutes' => 10]);
+        return [
+            'question window' => ['question_window_minutes', 10, 120],
+            'approval timeout' => ['permission_timeout_minutes', 3, 60],
+        ];
+    }
+
+    #[DataProvider('waitSettings')]
+    public function test_a_wait_setting_loads_saves_and_must_be_0_to_its_most_minutes(string $field, int $saved, int $most): void
+    {
+        $repository = $this->repository([$field => $saved]);
         $github = Mockery::mock(GitHub::class)->shouldIgnoreMissing();
 
         Livewire::test(RepositoryForm::class, ['repository' => $repository])
-            ->assertSet('question_window_minutes', 10)
-            ->set('question_window_minutes', 121)
+            ->assertSet($field, $saved)
+            ->set($field, $most + 1)
             ->call('save', $github)
-            ->assertHasErrors('question_window_minutes')
-            ->set('question_window_minutes', 0)
+            ->assertHasErrors($field)
+            ->set($field, 0)
             ->call('save', $github)
             ->assertHasNoErrors();
 
-        $this->assertSame(0, $repository->fresh()->question_window_minutes);
+        $this->assertSame(0, $repository->fresh()->{$field});
     }
 
     public function test_saving_a_changed_label_creates_the_labels(): void

@@ -107,6 +107,20 @@ The message box also shows on the issue's newest run once it stops, not just on 
 
 Your answers live only in Foreman's database. They don't appear on the issue, so teammates can't see them on GitHub. The [scope judge](guardrails.md#scope-judge) doesn't see them either. If an answer widens the scope, the judge may veto the change. Edit the issue to settle it.
 
+### Approving tool calls
+
+The agent may only use the tools on the repository's [allowed tools](repository-settings.md#allowed-tools) list. When it tries a call that isn't on the list, the call waits for you instead of being refused. The run page shows the call with three buttons:
+
+- **Allow once** lets this call go ahead.
+- **Always allow** lets it go ahead and adds a pattern to the repository's allowed tools, so later calls that match don't ask. Foreman suggests a pattern from the call's first word, such as `Bash(./vault:*)` for `./vault test --compact`. Edit it before you click. The pattern also applies for the rest of the running session.
+- **Deny** refuses the call. The agent is told you denied it, and to end with `needs_human` if it can't do the work without it.
+
+The call waits for the repository's [approval timeout](repository-settings.md#approval-timeout), 3 minutes by default. With no answer by then, Foreman denies it, so a run nobody watches carries on as it did before. The dashboard shows a **needs approval** badge on a run that is waiting.
+
+Each step goes in the run log: what the agent asked for, and what you chose or that the time ran out. The log line's time says when.
+
+An approval can't get around Foreman's guardrails. The [guard hook](guardrails.md) runs before the permission check, so `git push`, `gh` and `--no-verify` stay blocked even if you allow them. While a call waits, the run holds a worker and **Max time per issue** keeps counting.
+
 ### Failed
 
 The run hit an error, ran out of time, or ended without a readable result file. Foreman comments on the issue with the error, adds the human label, and keeps the worktree so you can look inside it. See [A run failed](troubleshooting.md#a-run-failed).
@@ -142,7 +156,7 @@ Each repository row shows its track and a **Done today** strip. The strip counts
 The **Issues** column groups each issue by its latest run:
 
 - **Needs your reply**, **Failed** and **Ready for review** need you. Their total shows in the stats row and in the browser tab title, like `(2) Foreman`.
-- **In progress** and **Watching PRs** are still moving.
+- **In progress** and **Watching PRs** are still moving. A run waiting for you to [approve a tool call](#approving-tool-calls) shows a **needs approval** badge.
 - **Handled** shows the last ten dismissed or cancelled issues.
 
 ### Tab icon

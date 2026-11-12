@@ -38,7 +38,7 @@ SH;
 
     // Match the column defaults, so a repository made in code is unsandboxed and merges with "merge" before it's saved
     protected $attributes = ['sandbox' => false, 'stop_docker' => false, 'merge_method' => 'merge',
-        'model_mode' => 'fixed', 'difficulty_floor' => 'trivial', 'difficulty_ceiling' => 'hard', 'question_window_minutes' => 10];
+        'model_mode' => 'fixed', 'difficulty_floor' => 'trivial', 'difficulty_ceiling' => 'hard', 'question_window_minutes' => 10, 'permission_timeout_minutes' => 3];
 
     protected function casts(): array
     {
@@ -181,6 +181,14 @@ SH;
 
         return array_intersect(['Bash', 'Bash(git:*)'], $saved) !== []
             || array_diff(['Bash(git add:*)', 'Bash(git commit:*)'], $saved) === [];
+    }
+
+    /** Add `$pattern` to the allowed tools, unless it is there already (ADR 0010). */
+    public function allowTool(string $pattern): void
+    {
+        if (! in_array($pattern, array_map('trim', explode(',', (string) $this->allowed_tools)), true)) {
+            $this->update(['allowed_tools' => rtrim((string) $this->allowed_tools, ', ').",{$pattern}"]);
+        }
     }
 
     public function renderPrompt(Run $run, string $issueText): string

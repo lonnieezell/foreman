@@ -5,6 +5,7 @@ namespace App\Services\Claude;
 use App\Enums\Outcome;
 use App\Enums\RunStatus;
 use App\Guardrails\Sandbox;
+use App\Models\PermissionRequest;
 use App\Models\Repository;
 use App\Models\Run;
 use App\Models\RunMessage;
@@ -64,7 +65,8 @@ class ClaudeCli implements Claude
             '--model', $run->model,
             '--max-turns', (string) $repo->max_turns,
             '--allowedTools', $repo->allowed_tools,
-            '--permission-mode', 'dontAsk',
+            // A call off the allowlist comes to Foreman as a `can_use_tool` request on stdout, for the operator (ADR 0010)
+            '--permission-mode', 'manual', '--permission-prompts', 'host', '--permission-prompt-tool', 'stdio',
             '--settings', $this->writeHookSettings($run, $worktree, $allowLockFiles),
             '--output-format', 'stream-json',
             '--verbose',
@@ -88,6 +90,8 @@ class ClaudeCli implements Claude
         $this->turnEnded = false;
         $this->echoes = [null];
         $this->saveSession = $saveSession;
+        // A request an earlier session left can't be answered: the CLI that asked is gone (ADR 0010)
+        $run->permissionRequests()->whereNull('sent_at')->delete();
 
         $stdin = new InputStream;
         $stdin->write(self::userMessage($prompt));
@@ -142,6 +146,8 @@ class ClaudeCli implements Claude
                 }
             }
 
+            $this->answerPermissions($run, $stdin);
+
             // The question window ends at the deadline, so stdin is closed by then, and a closing session gets a minute to exit
             if (now()->greaterThan($stdin->isClosed() ? $deadline->copy()->addMinute() : $deadline)) {
                 $process->signal(15); // SIGTERM
@@ -183,6 +189,28 @@ class ClaudeCli implements Claude
         }
 
         RunMessage::whereKey($messages->modelKeys())->update(['sent_at' => now()]);
+    }
+
+    /** Deny the calls nobody answered in time, then send the session every answer it hasn't had (ADR 0010). */
+    private function answerPermissions(Run $run, InputStream $stdin): void
+    {
+        if ($stdin->isClosed()) {
+            return;
+        }
+
+        foreach ($run->permissionRequests()->whereNull('sent_at')->get() as $request) {
+            if ($request->decision === null && $request->expires_at->isPast()) {
+                $request->decide(PermissionRequest::TIMEOUT);
+            }
+
+            if ($request->decision === null) {
+                continue;   // still waiting for the operator
+            }
+
+            $stdin->write($request->controlResponse());
+            $request->update(['sent_at' => now()]);
+            $run->log($request->decisionLine());
+        }
     }
 
     /**
@@ -376,6 +404,9 @@ class ClaudeCli implements Claude
 
                 continue;
             }
+
+            // A call off the allowlist waits for the operator, and the loop sends the answer (ADR 0010)
+            PermissionRequest::record($run, $event);
 
             if (($event['type'] ?? null) === 'result') {
                 $this->outcome = self::addEarlierTurns($event, $this->outcome);

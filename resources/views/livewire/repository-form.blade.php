@@ -2,7 +2,7 @@
     // Which section each field belongs to, for the side nav and the unsaved-changes footer
     $sections = [
         'repo' => ['Repository', ['local_path', 'github_repo', 'name', 'base_branch']],
-        'limits' => ['Model & limits', ['model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'effort', 'claude_profile', 'daily_budget', 'max_budget_per_run', 'concurrency', 'poll_interval_minutes', 'max_turns', 'max_minutes', 'question_window_minutes']],
+        'limits' => ['Model & limits', ['model_mode', 'difficulty_floor', 'difficulty_ceiling', 'model', 'effort', 'claude_profile', 'daily_budget', 'max_budget_per_run', 'concurrency', 'poll_interval_minutes', 'max_turns', 'max_minutes', 'question_window_minutes', 'permission_timeout_minutes']],
         'labels' => ['Labels', ['ready_label', 'working_label', 'human_label']],
         'scripts' => ['Scripts', ['setup_script', 'verify_script']],
         'perms' => ['Permissions', ['allowed_tools', 'locked_paths']],
@@ -207,6 +207,12 @@
                                 <div class="input-unit"><input id="question_window_minutes" type="number" min="0" max="120" wire:model="question_window_minutes"><span>min</span></div>
                                 <p class="hint">How long a run with a question waits for your answer, holding a worker. 0 stops the run at once.</p>
                                 @error('question_window_minutes') <span class="error">{{ $message }}</span> @enderror
+                            </div>
+                            <div class="field">
+                                <label for="permission_timeout_minutes">Approval timeout</label>
+                                <div class="input-unit"><input id="permission_timeout_minutes" type="number" min="0" max="60" wire:model="permission_timeout_minutes"><span>min</span></div>
+                                <p class="hint">How long a tool call off the allowlist waits for you to allow it, holding a worker. Then it is denied. 0 denies at once.</p>
+                                @error('permission_timeout_minutes') <span class="error">{{ $message }}</span> @enderror
                             </div>
                         </div>
                     </div>
