@@ -23,6 +23,9 @@ It holds one JSON object, in one of four shapes:
 - `{"outcome": "needs_human", "reason": "<short reason>", "comment": "<comment for the issue>"}`
 - `{"outcome": "already_done", "comment": "<comment for the issue>"}`
 
+You already run in the worktree root. Don't `cd` into it and don't use `git -C`.
+Run commands as they are, such as `vendor/bin/phpunit` or `git diff`.
+
 Bash runs only commands on an allowlist. A "Permission to use Bash has been denied"
 message covers only the commands in that call, not Bash as a whole. If one
 command in a chained call is not allowed, the whole call is refused. Split the

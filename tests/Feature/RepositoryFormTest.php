@@ -57,7 +57,7 @@ class RepositoryFormTest extends TestCase
         Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(git:*),Bash(npm:*),Bash(gh issue:*),Bash(gh pr create:*)'])])
             ->assertSee('Remove them')
             ->call('removeLegacyAllowedTools')
-            ->assertSet('allowed_tools', 'Read,Bash(npm:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*)')
+            ->assertSet('allowed_tools', 'Read,Bash(npm:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git commit:*),Bash(git checkout:*),Bash(git restore:*),Bash(git rm:*),Bash(git mv:*),Bash(git stash:*),Bash(git clean:*),Bash(git fetch:*),Bash(git check-ignore:*),Bash(git grep:*)')
             ->assertDontSee('Remove them');
     }
 
@@ -65,7 +65,7 @@ class RepositoryFormTest extends TestCase
     {
         Livewire::test(RepositoryForm::class, ['repository' => $this->repository(['allowed_tools' => 'Read,Bash(git:*),Bash(git add:*),Bash(git commit:*)'])])
             ->call('removeLegacyAllowedTools')
-            ->assertSet('allowed_tools', 'Read,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)');
+            ->assertSet('allowed_tools', 'Read,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git checkout:*),Bash(git restore:*),Bash(git rm:*),Bash(git mv:*),Bash(git stash:*),Bash(git clean:*),Bash(git fetch:*),Bash(git check-ignore:*),Bash(git grep:*)');
     }
 
     public function test_remove_them_adds_no_git_entries_when_only_gh_entries_were_old(): void
