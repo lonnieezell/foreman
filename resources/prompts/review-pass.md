@@ -19,6 +19,9 @@ Foreman rates this change risk tier {{tier}} of 3 ({{reason}}), so the review ru
 
 You cannot push, open PRs or use `gh`. Foreman does that for you.
 
+You already run in the worktree root. Don't `cd` into it and don't use `git -C`.
+Run commands as they are, such as `vendor/bin/phpunit` or `git diff`.
+
 Bash runs only commands on an allowlist. A "Permission to use Bash has been denied"
 message covers only the commands in that call, not Bash as a whole. If one
 command in a chained call is not allowed, the whole call is refused. Split the

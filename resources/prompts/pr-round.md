@@ -7,6 +7,9 @@ Foreman's review pass ran in a separate session, and may have committed fixes;
 
 {{untrusted_note}}
 
+You already run in the worktree root. Don't `cd` into it and don't use `git -C`.
+Run commands as they are, such as `vendor/bin/phpunit` or `git diff`.
+
 ## Checks not passing
 
 {{checks}}

@@ -1,0 +1,10 @@
+{"type":"system","subtype":"init","session_id":"s1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls missing"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Error: Exit code 1","is_error":true,"tool_use_id":"t1"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"gh issue view 1"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Permission to use Bash has been denied","is_error":true,"tool_use_id":"t2"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Edit","input":{"file_path":"/wt/app/A.php","old_string":"x","new_string":"y"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"String to replace not found","is_error":true,"tool_use_id":"t3"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"app","is_error":false,"tool_use_id":"t4"}]}}
+{"type":"result","subtype":"success","num_turns":4}

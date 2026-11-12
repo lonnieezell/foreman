@@ -279,14 +279,34 @@ class ForemanActsTest extends TestCase
         $this->assertContains('Bash(php:*)', explode(',', Repository::DEFAULT_ALLOWED_TOOLS));
     }
 
-    public function test_the_default_tools_allow_copying_moving_and_making_folders_but_not_deleting(): void
+    public function test_the_default_tools_allow_everyday_file_and_shell_commands(): void
     {
         $tools = explode(',', Repository::DEFAULT_ALLOWED_TOOLS);
 
-        foreach (['Bash(cp:*)', 'Bash(mv:*)', 'Bash(mkdir:*)'] as $tool) {
+        $everyday = ['Bash(cp:*)', 'Bash(mv:*)', 'Bash(mkdir:*)', 'Bash(rm:*)', 'Bash(sed:*)', 'Bash(vendor/bin/*)',
+            'Bash(grep:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(wc:*)', 'Bash(find:*)', 'Bash(echo:*)',
+            'Bash(git checkout:*)', 'Bash(git restore:*)', 'Bash(git rm:*)', 'Bash(git mv:*)', 'Bash(git stash:*)',
+            'Bash(git clean:*)', 'Bash(git fetch:*)', 'Bash(git check-ignore:*)', 'Bash(git grep:*)'];
+        foreach ($everyday as $tool) {
             $this->assertContains($tool, $tools);
         }
-        $this->assertNotContains('Bash(rm:*)', $tools);
+    }
+
+    public static function worktreePrompts(): array
+    {
+        return [
+            'default' => ['default'], 'pr-round' => ['pr-round'], 'conflict-fix' => ['conflict-fix'],
+            'review-pass' => ['review-pass'], 'security-review' => ['security-review'],
+        ];
+    }
+
+    #[DataProvider('worktreePrompts')]
+    public function test_the_agent_prompts_say_the_agent_already_runs_in_the_worktree_root(string $name): void
+    {
+        $prompt = file_get_contents(resource_path("prompts/{$name}.md"));
+
+        $this->assertStringContainsString('already run in the worktree root', $prompt);
+        $this->assertStringContainsString('git -C', $prompt);
     }
 
     public function test_the_default_prompt_shows_a_way_around_a_refusal_and_asks_for_the_exact_refused_commands(): void
